@@ -1,0 +1,182 @@
+buildscript {
+    ext {
+        kestraVersion = "0.1.+"
+        micronautVersion = "1.3.1"
+        lombokVersion = "1.18.10"
+        githubUrl = "kestra-io/" + project.name
+    }
+}
+
+plugins {
+    id "java-library"
+    id "idea"
+    id "com.adarshr.test-logger" version "2.0.0"
+    id "com.github.johnrengelman.shadow" version "5.2.0"
+    id "maven-publish"
+    id "com.jfrog.bintray" version "1.8.4"
+    id 'net.researchgate.release' version '2.8.1'
+}
+
+repositories {
+    mavenCentral()
+    jcenter()
+    maven { url "https://dl.bintray.com/kestra/maven" }
+}
+
+sourceCompatibility = 11
+group "org.kestra.task.kubernetes"
+
+tasks.withType(JavaCompile) {
+    options.encoding = "UTF-8"
+    options.compilerArgs.add("-parameters")
+}
+
+dependencies {
+    // micronaut
+    annotationProcessor platform("io.micronaut:micronaut-bom:$micronautVersion")
+    annotationProcessor "io.micronaut:micronaut-inject-java"
+    compileOnly platform("io.micronaut:micronaut-bom:$micronautVersion")
+    compileOnly "io.micronaut:micronaut-inject"
+
+    // lombok
+    annotationProcessor "org.projectlombok:lombok:$lombokVersion"
+    compileOnly "org.projectlombok:lombok:$lombokVersion"
+
+    // kestra
+    compileOnly group: "org.kestra", name: "core", version: kestraVersion
+
+    // plugins
+    implementation 'io.fabric8:kubernetes-client:4.7.1'
+}
+
+
+/**********************************************************************************************************************\
+ * Test
+ **********************************************************************************************************************/
+test {
+    useJUnitPlatform()
+}
+
+testlogger {
+    theme "mocha-parallel"
+    showExceptions true
+    showFullStackTraces true
+    showStandardStreams true
+    showPassedStandardStreams false
+    showSkippedStandardStreams true
+}
+
+dependencies {
+    testAnnotationProcessor platform("io.micronaut:micronaut-bom:$micronautVersion")
+    testAnnotationProcessor "io.micronaut:micronaut-inject-java"
+    testImplementation platform("io.micronaut:micronaut-bom:$micronautVersion")
+    testImplementation "io.micronaut.test:micronaut-test-junit5"
+
+    // test deps needed only for to have a runner
+    testImplementation group: "org.kestra", name: "repository-memory", version: kestraVersion
+    testImplementation group: "org.kestra", name: "runner-memory", version: kestraVersion
+    testImplementation group: "org.kestra", name: "storage-local", version: kestraVersion
+
+    // test
+    testImplementation "org.junit.jupiter:junit-jupiter-engine:5.5.2"
+    testImplementation "org.hamcrest:hamcrest:2.2"
+    testImplementation "org.hamcrest:hamcrest-library:2.2"
+
+    // plugins
+    testCompile group: 'org.junit.jupiter', name: 'junit-jupiter-migrationsupport', version: '5.6.0'
+}
+
+/**********************************************************************************************************************\
+ * Publish
+ **********************************************************************************************************************/
+jar {
+    manifest {
+        attributes(
+                "X-Kestra-Title": project.name,
+                "X-Kestra-Group": project.group,
+                "X-Kestra-Version": project.version
+        )
+    }
+}
+
+shadowJar {
+    archiveClassifier.set(null)
+    mergeServiceFiles()
+}
+
+javadoc {
+    options {
+        locale = 'en_US'
+        encoding = 'UTF-8'
+    }
+}
+
+task sourcesJar(type: Jar) {
+    archiveClassifier.set('sources')
+    from sourceSets.main.allSource
+}
+
+task javadocJar(type: Jar) {
+    archiveClassifier.set('javadoc')
+    from javadoc
+}
+
+publishing {
+    publications {
+        BintrayMavenPublication(MavenPublication) {
+            version project.version
+
+            groupId project.group
+            artifactId project.name
+
+            artifact shadowJar
+            artifact sourcesJar
+            artifact javadocJar
+        }
+    }
+}
+
+bintray {
+    user = System.getenv('BINTRAY_USER')
+    key = System.getenv('BINTRAY_KEY')
+    publications = ['BintrayMavenPublication']
+    publish = true
+    pkg {
+        userOrg = 'kestra'
+        name = project.name
+        repo = 'maven'
+        websiteUrl = 'https://kestra.io'
+        issueTrackerUrl = "https://github.com/${githubUrl}/issues"
+        vcsUrl = "https://github.com/${githubUrl}"
+        licenses = ['Apache-2.0']
+        publicDownloadNumbers = true
+        githubRepo = githubUrl
+        githubReleaseNotesFile = 'README.md'
+        version {
+            name = project.version
+            released = new Date().format("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+            vcsTag = "v" + project.version
+        }
+    }
+}
+
+/**********************************************************************************************************************\
+ * Version
+ **********************************************************************************************************************/
+release {
+    preCommitText = 'chore(version):'
+    preTagCommitMessage = 'update to version'
+    tagCommitMessage = 'tag version'
+    newVersionCommitMessage = 'update snapshot version'
+    tagTemplate = 'v${version}'
+}
+
+/**********************************************************************************************************************\
+ * Dev
+ **********************************************************************************************************************/
+idea {
+    module {
+        downloadJavadoc = true
+        downloadSources = true
+    }
+}
