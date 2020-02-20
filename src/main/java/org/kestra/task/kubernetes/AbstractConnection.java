@@ -1,8 +1,6 @@
 package org.kestra.task.kubernetes;
 
-import com.google.common.base.CaseFormat;
 import com.google.common.collect.ImmutableMap;
-import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -13,6 +11,7 @@ import org.kestra.core.models.annotations.InputProperty;
 import org.kestra.core.models.tasks.Task;
 import org.kestra.core.runners.RunContext;
 import org.kestra.core.utils.Slugify;
+import org.kestra.task.kubernetes.models.Connection;
 import org.kestra.task.kubernetes.services.ClientService;
 
 import java.util.Map;
@@ -37,13 +36,13 @@ abstract public class AbstractConnection extends Task {
         }
     )
     @NotNull
-    private Config connection;
+    private Connection connection;
 
     protected DefaultKubernetesClient client() {
         DefaultKubernetesClient client;
 
         if (this.connection != null) {
-            client = ClientService.of(this.connection);
+            client = ClientService.of(this.connection.toConfig());
         } else {
             client = ClientService.of();
         }

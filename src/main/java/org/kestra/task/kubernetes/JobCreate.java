@@ -21,6 +21,7 @@ import org.kestra.core.models.annotations.OutputProperty;
 import org.kestra.core.models.tasks.RunnableTask;
 import org.kestra.core.runners.RunContext;
 import org.kestra.core.utils.Await;
+import org.kestra.task.kubernetes.models.Metadata;
 import org.kestra.task.kubernetes.services.LoggingOutputStream;
 import org.kestra.task.kubernetes.services.InstanceService;
 import org.kestra.task.kubernetes.watchers.JobWatcher;
@@ -183,8 +184,8 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
             podLogs.close();
 
             return Output.builder()
-                .job(job.getMetadata())
-                .pod(pod.getMetadata())
+                .job(Metadata.fromObjectMeta(job.getMetadata()))
+                .pod(Metadata.fromObjectMeta(pod.getMetadata()))
                 .build();
         }
 
@@ -210,12 +211,12 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
         @OutputProperty(
             description = "The full job metadata"
         )
-        private ObjectMeta job;
+        private Metadata job;
 
         @OutputProperty(
             description = "The full pod metadata"
         )
-        private ObjectMeta pod;
+        private Metadata pod;
     }
 
 }
