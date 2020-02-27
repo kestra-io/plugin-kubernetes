@@ -15,7 +15,6 @@ import org.kestra.task.kubernetes.models.Connection;
 import org.kestra.task.kubernetes.services.ClientService;
 
 import java.util.Map;
-import javax.validation.constraints.NotNull;
 
 @SuperBuilder
 @ToString
@@ -35,7 +34,6 @@ abstract public class AbstractConnection extends Task {
             "You can pass a full configuration with all option if needed"
         }
     )
-    @NotNull
     private Connection connection;
 
     protected DefaultKubernetesClient client() {
