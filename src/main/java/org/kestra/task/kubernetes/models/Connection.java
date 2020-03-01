@@ -10,7 +10,9 @@ import lombok.Getter;
 public class Connection {
     private Boolean trustCerts;
     private Boolean disableHostnameVerification;
+    @Builder.Default
     private String masterUrl = "https://kubernetes.default.svc";
+    @Builder.Default
     private String apiVersion = "v1";
     private String namespace;
     private String caCertFile;
@@ -19,6 +21,7 @@ public class Connection {
     private String clientCertData;
     private String clientKeyFile;
     private String clientKeyData;
+    @Builder.Default
     private String clientKeyAlgo = "RSA";
     private String clientKeyPassphrase;
     private String trustStoreFile;
