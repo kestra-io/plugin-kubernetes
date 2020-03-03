@@ -1,8 +1,8 @@
 buildscript {
     ext {
         kestraVersion = "0.1.+"
-        micronautVersion = "1.3.1"
-        lombokVersion = "1.18.10"
+        micronautVersion = "1.3.2"
+        lombokVersion = "1.18.12"
         githubUrl = "kestra-io/" + project.name
     }
 }
@@ -46,7 +46,7 @@ dependencies {
     compileOnly group: "org.kestra", name: "core", version: kestraVersion
 
     // plugins
-    implementation 'io.fabric8:kubernetes-client:4.7.1'
+    implementation 'io.fabric8:kubernetes-client:4.8.0'
 }
 
 

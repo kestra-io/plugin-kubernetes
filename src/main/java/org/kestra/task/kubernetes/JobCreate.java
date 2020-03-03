@@ -16,6 +16,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.kestra.core.models.annotations.Documentation;
+import org.kestra.core.models.annotations.Example;
 import org.kestra.core.models.annotations.InputProperty;
 import org.kestra.core.models.annotations.OutputProperty;
 import org.kestra.core.models.tasks.RunnableTask;
@@ -42,6 +43,25 @@ import javax.validation.constraints.NotNull;
 @NoArgsConstructor
 @Documentation(
     description = "Create a job on a kubernetes cluster."
+)
+@Example(
+    code = {
+        "namespace: default",
+        "metadata:",
+        "  labels:",
+        "    my-label: my-value",
+        "spec:",
+        "  template:",
+        "    spec:",
+        "      containers:",
+        "      - name: unittest",
+        "        image: debian:stable-slim",
+        "        command: ",
+        "          - 'bash' ",
+        "          - '-c'",
+        "          - 'for i in {1..10}; do echo $i; sleep 0.1; done'",
+        "      restartPolicy: Never"
+    }
 )
 @Slf4j
 public class JobCreate extends AbstractConnection implements RunnableTask<JobCreate.Output> {
