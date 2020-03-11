@@ -2,6 +2,7 @@ package org.kestra.task.kubernetes.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import org.kestra.core.exceptions.IllegalVariableEvaluationException;
 import org.kestra.core.runners.RunContext;
 import org.kestra.core.serializers.JacksonMapper;
 
@@ -14,14 +15,14 @@ import java.util.Map;
 abstract public class InstanceService {
     private static final ObjectMapper mapper = JacksonMapper.ofYaml();
 
-    public static <T> T fromMap(KubernetesClient client, Class<T> cls, RunContext runContext, Map<String, Object> map) throws IOException {
+    public static <T> T fromMap(KubernetesClient client, Class<T> cls, RunContext runContext, Map<String, Object> map) throws IOException, IllegalVariableEvaluationException {
         String yaml = JacksonMapper.ofYaml().writeValueAsString(map);
         String render = runContext.render(yaml);
 
         return mapper.readValue(render, cls);
     }
 
-    public static <T> T fromMap(KubernetesClient client, Class<T> cls, RunContext runContext, Map<String, Object> map, Map<String, Object> defaults) throws IOException {
+    public static <T> T fromMap(KubernetesClient client, Class<T> cls, RunContext runContext, Map<String, Object> map, Map<String, Object> defaults) throws IOException, IllegalVariableEvaluationException {
         return fromMap(client, cls, runContext, merge(map, defaults));
     }
 
