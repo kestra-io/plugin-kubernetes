@@ -4,11 +4,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.micronaut.context.ApplicationContext;
 import io.micronaut.test.annotation.MicronautTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.migrationsupport.rules.EnableRuleMigrationSupport;
 import org.kestra.core.runners.RunContext;
+import org.kestra.core.runners.RunContextFactory;
 import org.kestra.core.serializers.JacksonMapper;
 import org.kestra.core.utils.TestsUtils;
 import org.slf4j.event.Level;
@@ -25,7 +25,7 @@ class JobCreateTest {
     private static ObjectMapper mapper = JacksonMapper.ofYaml();
 
     @Inject
-    private ApplicationContext applicationContext;
+    private RunContextFactory runContextFactory;
 
     @SuppressWarnings("unchecked")
     @Test
@@ -49,7 +49,7 @@ class JobCreateTest {
             ))
             .build();
 
-        RunContext runContext = TestsUtils.mockRunContext(applicationContext, task, ImmutableMap.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
         JobCreate.Output runOutput = task.run(runContext);
 
         assertThat(runOutput.getJob().getName(), containsStringIgnoringCase(((Map<String, String>) runContext.getVariables().get("taskrun")).get("id")));
