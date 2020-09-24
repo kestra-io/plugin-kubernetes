@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
+import org.kestra.core.exceptions.IllegalVariableEvaluationException;
 import org.kestra.core.models.annotations.InputProperty;
 import org.kestra.core.models.tasks.Task;
 import org.kestra.core.runners.RunContext;
@@ -36,11 +37,11 @@ abstract public class AbstractConnection extends Task {
     )
     private Connection connection;
 
-    protected DefaultKubernetesClient client() {
+    protected DefaultKubernetesClient client(RunContext runContext) throws IllegalVariableEvaluationException {
         DefaultKubernetesClient client;
 
         if (this.connection != null) {
-            client = ClientService.of(this.connection.toConfig());
+            client = ClientService.of(this.connection.toConfig(runContext));
         } else {
             client = ClientService.of();
         }

@@ -107,7 +107,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
 
     @Override
     public JobCreate.Output run(RunContext runContext) throws Exception {
-        try (KubernetesClient client = this.client()) {
+        try (KubernetesClient client = this.client(runContext)) {
             String namespace = runContext.render(this.namespace);
             Logger logger = runContext.logger();
 
