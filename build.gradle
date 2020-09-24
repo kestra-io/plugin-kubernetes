@@ -47,7 +47,7 @@ dependencies {
     compileOnly group: "org.kestra", name: "core", version: kestraVersion
 
     // plugins
-    api 'io.fabric8:kubernetes-client:4.10.1'
+    api 'io.fabric8:kubernetes-client:4.11.1'
 }
 
 

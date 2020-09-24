@@ -4,20 +4,30 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.micronaut.context.ApplicationContext;
 import io.micronaut.test.annotation.MicronautTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.migrationsupport.rules.EnableRuleMigrationSupport;
+import org.kestra.core.models.executions.Execution;
+import org.kestra.core.models.executions.LogEntry;
+import org.kestra.core.models.flows.Flow;
+import org.kestra.core.queues.QueueFactoryInterface;
+import org.kestra.core.queues.QueueInterface;
 import org.kestra.core.runners.RunContext;
 import org.kestra.core.runners.RunContextFactory;
 import org.kestra.core.serializers.JacksonMapper;
 import org.kestra.core.utils.TestsUtils;
 import org.slf4j.event.Level;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
+import javax.inject.Named;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
 
 @MicronautTest
 @EnableRuleMigrationSupport
@@ -27,9 +37,19 @@ class JobCreateTest {
     @Inject
     private RunContextFactory runContextFactory;
 
+    @Inject
+    private ApplicationContext applicationContext;
+
+    @Inject
+    @Named(QueueFactoryInterface.WORKERTASKLOG_NAMED)
+    private QueueInterface<LogEntry> workerTaskLogQueue;
+
     @SuppressWarnings("unchecked")
     @Test
     void run() throws Exception {
+        List<LogEntry> logs = new ArrayList<>();
+        workerTaskLogQueue.receive(logs::add);
+
         JobCreate task = JobCreate.builder()
             .id(JobCreate.class.getSimpleName())
             .type(JobCreate.class.getName())
@@ -50,12 +70,17 @@ class JobCreateTest {
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
+        runContext = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
+
         JobCreate.Output runOutput = task.run(runContext);
 
-        assertThat(runOutput.getJob().getName(), containsStringIgnoringCase(((Map<String, String>) runContext.getVariables().get("taskrun")).get("id")));
-        assertThat(runContext.logs().stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(11L));
-        assertThat(runContext.logs().stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).skip(9).findFirst().get().getMessage(), is("10"));
-        assertThat(runContext.logs().stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).skip(10).findFirst().get().getMessage(), containsString("is deleted"));
+        assertThat(runOutput.getJob().getName(), containsString(((Map<String, String>) runContext.getVariables().get("taskrun")).get("id").toLowerCase()));
+        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(11L));
+        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).skip(9).findFirst().get().getMessage(), is("10"));
+        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).skip(10).findFirst().get().getMessage(), containsString("is deleted"));
     }
 
     public static <T> Map<String, Object> convert(Class<T> cls, String... yaml) throws JsonProcessingException {

@@ -109,7 +109,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
     public JobCreate.Output run(RunContext runContext) throws Exception {
         try (KubernetesClient client = this.client()) {
             String namespace = runContext.render(this.namespace);
-            Logger logger = runContext.logger(this.getClass());
+            Logger logger = runContext.logger();
 
             // create the job
             Job job = client.batch()
