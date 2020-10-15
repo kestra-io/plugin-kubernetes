@@ -53,7 +53,7 @@ class JobCreateTest {
         JobCreate task = JobCreate.builder()
             .id(JobCreate.class.getSimpleName())
             .type(JobCreate.class.getName())
-            .namespace("default")
+            .namespace("test")
             .spec(convert(
                 ObjectMeta.class,
                 "template:",

@@ -96,14 +96,14 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
     )
     @NotNull
     @Builder.Default
-    private Duration waitUntilRunning = Duration.ofMinutes(10);
+    private final Duration waitUntilRunning = Duration.ofMinutes(10);
 
     @InputProperty(
         description = "If the job will be deleted on completion"
     )
     @NotNull
     @Builder.Default
-    private boolean delete = true;
+    private final boolean delete = true;
 
     @Override
     public JobCreate.Output run(RunContext runContext) throws Exception {
@@ -144,6 +144,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
             Await.until(
                 () -> client
                     .pods()
+                    .inNamespace(namespace)
                     .withLabel("controller-uid", job.getMetadata().getUid())
                     .list()
                     .getItems()
@@ -154,6 +155,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
 
             Pod pod = client
                 .pods()
+                .inNamespace(namespace)
                 .withLabel("controller-uid", job.getMetadata().getUid())
                 .list()
                 .getItems()
@@ -208,7 +210,6 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
                 .pod(Metadata.fromObjectMeta(pod.getMetadata()))
                 .build();
         }
-
     }
 
     private static ScalableResource<Job, DoneableJob> jobRef(KubernetesClient client, String namespace, Job job) {
@@ -231,12 +232,12 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
         @OutputProperty(
             description = "The full job metadata"
         )
-        private Metadata job;
+        private final Metadata job;
 
         @OutputProperty(
             description = "The full pod metadata"
         )
-        private Metadata pod;
+        private final Metadata pod;
     }
 
 }
