@@ -12,19 +12,19 @@ import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.dsl.LogWatch;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.fabric8.kubernetes.client.dsl.ScalableResource;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
-import org.kestra.core.models.annotations.Documentation;
 import org.kestra.core.models.annotations.Example;
-import org.kestra.core.models.annotations.InputProperty;
-import org.kestra.core.models.annotations.OutputProperty;
+import org.kestra.core.models.annotations.Plugin;
+import org.kestra.core.models.annotations.PluginProperty;
 import org.kestra.core.models.tasks.RunnableTask;
 import org.kestra.core.runners.RunContext;
 import org.kestra.core.utils.Await;
 import org.kestra.task.kubernetes.models.Metadata;
-import org.kestra.task.kubernetes.services.LoggingOutputStream;
 import org.kestra.task.kubernetes.services.InstanceService;
+import org.kestra.task.kubernetes.services.LoggingOutputStream;
 import org.kestra.task.kubernetes.watchers.JobWatcher;
 import org.kestra.task.kubernetes.watchers.PodWatcher;
 import org.slf4j.Logger;
@@ -41,65 +41,67 @@ import javax.validation.constraints.NotNull;
 @EqualsAndHashCode
 @Getter
 @NoArgsConstructor
-@Documentation(
-    description = "Create a job on a kubernetes cluster."
+@Schema(
+    title = "Create a job on a kubernetes cluster."
 )
-@Example(
-    code = {
-        "namespace: default",
-        "metadata:",
-        "  labels:",
-        "    my-label: my-value",
-        "spec:",
-        "  template:",
-        "    spec:",
-        "      containers:",
-        "      - name: unittest",
-        "        image: debian:stable-slim",
-        "        command: ",
-        "          - 'bash' ",
-        "          - '-c'",
-        "          - 'for i in {1..10}; do echo $i; sleep 0.1; done'",
-        "      restartPolicy: Never"
+@Plugin(
+    examples = {
+        @Example(
+            code = {
+                "namespace: default",
+                "metadata:",
+                "  labels:",
+                "    my-label: my-value",
+                "spec:",
+                "  template:",
+                "    spec:",
+                "      containers:",
+                "      - name: unittest",
+                "        image: debian:stable-slim",
+                "        command: ",
+                "          - 'bash' ",
+                "          - '-c'",
+                "          - 'for i in {1..10}; do echo $i; sleep 0.1; done'",
+                "      restartPolicy: Never"
+            }
+        )
     }
 )
 @Slf4j
 public class JobCreate extends AbstractConnection implements RunnableTask<JobCreate.Output> {
-    @InputProperty(
-        description = "The namespace where the job will be created",
-        dynamic = true
+    @Schema(
+        title = "The namespace where the job will be created"
     )
+    @PluginProperty(dynamic = true)
     @NotNull
     private String namespace;
 
-    @InputProperty(
-        description = "Full metadata yaml for a job.",
-        dynamic = true
+    @Schema(
+        title = "Full metadata yaml for a job."
     )
+    @PluginProperty(dynamic = true)
     private Map<String, Object> metadata;
 
-    @InputProperty(
-        description = "Full spec yaml for a job.",
-        dynamic = true
+    @Schema(
+        title = "Full spec yaml for a job."
     )
+    @PluginProperty(dynamic = true)
     @NotNull
     private Map<String, Object> spec;
 
-    @InputProperty(
-        description = "The maximum duration we need to wait until the job & the pod is created.",
-        body = {
-            "This timeout is the maximum time that k8s scheduler take to",
-            "* schedule the job",
-            "* pull the pod image ",
-            "* and start the pod",
-        }
+    @Schema(
+        title = "The maximum duration we need to wait until the job & the pod is created.",
+        description = "This timeout is the maximum time that k8s scheduler take to\n" +
+            "* schedule the job\n" +
+            "* pull the pod image\n" +
+            "* and start the pod"
     )
     @NotNull
     @Builder.Default
     private final Duration waitUntilRunning = Duration.ofMinutes(10);
 
-    @InputProperty(
-        description = "If the job will be deleted on completion"
+    @Schema(
+        title = "If the job will be deleted on completion"
     )
     @NotNull
     @Builder.Default
@@ -229,13 +231,13 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
     @Builder
     @Getter
     public static class Output implements org.kestra.core.models.tasks.Output {
-        @OutputProperty(
-            description = "The full job metadata"
+        @Schema(
+            title = "The full job metadata"
         )
         private final Metadata job;
 
-        @OutputProperty(
-            description = "The full pod metadata"
+        @Schema(
+            title = "The full pod metadata"
         )
         private final Metadata pod;
     }

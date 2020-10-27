@@ -2,123 +2,124 @@ package org.kestra.task.kubernetes.models;
 
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
 import org.kestra.core.exceptions.IllegalVariableEvaluationException;
-import org.kestra.core.models.annotations.InputProperty;
+import org.kestra.core.models.annotations.PluginProperty;
 import org.kestra.core.runners.RunContext;
 
 @Builder
 @Getter
 public class Connection {
-    @InputProperty(
-        description = "Trust all certificates"
+    @Schema(
+        title = "Trust all certificates"
     )
     private final Boolean trustCerts;
 
-    @InputProperty(
-        description = "Disable hostname verification"
+    @Schema(
+        title = "Disable hostname verification"
     )
     private final Boolean disableHostnameVerification;
 
-    @InputProperty(
-        description = "The url to kubernetes API",
-        dynamic = true
+    @Schema(
+        title = "The url to kubernetes API"
     )
+    @PluginProperty(dynamic = true)
     @Builder.Default
     private final String masterUrl = "https://kubernetes.default.svc";
 
-    @InputProperty(
-        description = "The api version of API to use",
-        dynamic = true
+    @Schema(
+        title = "The api version of API to use"
     )
+    @PluginProperty(dynamic = true)
     @Builder.Default
     private final String apiVersion = "v1";
 
-    @InputProperty(
-        description = "The namespace used",
-        dynamic = true
+    @Schema(
+        title = "The namespace used"
     )
+    @PluginProperty(dynamic = true)
     private final String namespace;
 
-    @InputProperty(
-        description = "CA certificate as file path",
-        dynamic = true
+    @Schema(
+        title = "CA certificate as file path"
     )
+    @PluginProperty(dynamic = true)
     private final String caCertFile;
 
-    @InputProperty(
-        description = "CA certificate as data (",
-        dynamic = true
+    @Schema(
+        title = "CA certificate as data ("
     )
+    @PluginProperty(dynamic = true)
     private final String caCertData;
 
-    @InputProperty(
-        description = "Client certificate as file path",
-        dynamic = true
+    @Schema(
+        title = "Client certificate as file path"
     )
+    @PluginProperty(dynamic = true)
     private final String clientCertFile;
 
-    @InputProperty(
-        description = "Client certificate as data",
-        dynamic = true
+    @Schema(
+        title = "Client certificate as data"
     )
+    @PluginProperty(dynamic = true)
     private final String clientCertData;
 
-    @InputProperty(
-        description = "Client Key as file path",
-        dynamic = true
+    @Schema(
+        title = "Client Key as file path"
     )
+    @PluginProperty(dynamic = true)
     private final String clientKeyFile;
 
-    @InputProperty(
-        description = "Client Key as data",
-        dynamic = true
+    @Schema(
+        title = "Client Key as data"
     )
+    @PluginProperty(dynamic = true)
     private final String clientKeyData;
 
-    @InputProperty(
-        description = "Client key encryption algorithm",
-        body = "default is RSA",
-        dynamic = true
+    @Schema(
+        title = "Client key encryption algorithm",
+        description = "default is RSA"
     )
+    @PluginProperty(dynamic = true)
     @Builder.Default
     private final String clientKeyAlgo = "RSA";
 
-    @InputProperty(
-        description = "Client key passphrase",
-        dynamic = true
+    @Schema(
+        title = "Client key passphrase"
     )
+    @PluginProperty(dynamic = true)
     private final String clientKeyPassphrase;
 
-    @InputProperty(
-        description = "Truststore file",
-        dynamic = true
+    @Schema(
+        title = "Truststore file"
     )
+    @PluginProperty(dynamic = true)
     private final String trustStoreFile;
 
-    @InputProperty(
-        description = "Truststore passphrase",
-        dynamic = true
+    @Schema(
+        title = "Truststore passphrase"
     )
+    @PluginProperty(dynamic = true)
     private final String trustStorePassphrase;
 
-    @InputProperty(
-        description = "Key store file",
-        dynamic = true
+    @Schema(
+        title = "Key store file"
     )
+    @PluginProperty(dynamic = true)
     private final String keyStoreFile;
 
-    @InputProperty(
-        description = "Key store passphrase",
-        dynamic = true
+    @Schema(
+        title = "Key store passphrase"
     )
+    @PluginProperty(dynamic = true)
     private final String keyStorePassphrase;
 
-    @InputProperty(
-        description = "Oauth token",
-        dynamic = true
+    @Schema(
+        title = "Oauth token"
     )
+    @PluginProperty(dynamic = true)
     private final String oauthToken;
 
     public Config toConfig(RunContext runContext) throws IllegalVariableEvaluationException {

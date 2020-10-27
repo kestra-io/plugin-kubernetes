@@ -2,13 +2,13 @@ package org.kestra.task.kubernetes;
 
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 import org.kestra.core.exceptions.IllegalVariableEvaluationException;
-import org.kestra.core.models.annotations.InputProperty;
 import org.kestra.core.models.tasks.Task;
 import org.kestra.core.runners.RunContext;
 import org.kestra.core.utils.Slugify;
@@ -23,17 +23,15 @@ import java.util.Map;
 @Getter
 @NoArgsConstructor
 abstract public class AbstractConnection extends Task {
-    @InputProperty(
-        description = "The connection parameters to Kubernetes cluster",
-        body = {
-            "If no connection is defined, we try to load connection from current context in order below: ",
-            "1. System properties",
-            "2. Environment variables",
-            "3. Kube config file",
-            "4. Service account token & mounted CA certificate",
-            "",
+    @Schema(
+        title = "The connection parameters to Kubernetes cluster",
+        description = "If no connection is defined, we try to load connection from current context in order below: \n" +
+            "1. System properties\n" +
+            "2. Environment variables\n" +
+            "3. Kube config file\n" +
+            "4. Service account token & mounted CA certificate\n" +
+            "\n" +
             "You can pass a full configuration with all option if needed"
-        }
     )
     private Connection connection;
 

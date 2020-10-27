@@ -3,9 +3,9 @@ package org.kestra.task.kubernetes.models;
 import io.fabric8.kubernetes.api.model.ManagedFieldsEntry;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.OwnerReference;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
-import org.kestra.core.models.annotations.OutputProperty;
 
 import java.time.Instant;
 import java.util.List;
@@ -14,83 +14,83 @@ import java.util.Map;
 @Builder
 @Getter
 public class Metadata {
-    @OutputProperty(
-        description = "Generated Uid of this resource"
+    @Schema(
+            title = "Generated Uid of this resource"
     )
     private String uid;
 
-    @OutputProperty(
-        description = "Name of the resource"
+    @Schema(
+            title = "Name of the resource"
     )
     private final String name;
 
-    @OutputProperty(
-        description = "Namespace of the resource"
+    @Schema(
+            title = "Namespace of the resource"
     )
     private final String namespace;
 
-    @OutputProperty(
-        description = "Name of the current cluster"
+    @Schema(
+            title = "Name of the current cluster"
     )
     private final String clusterName;
 
-    @OutputProperty(
-        description = "List of all annotations of the resource"
+    @Schema(
+            title = "List of all annotations of the resource"
     )
     private final Map<String, String> annotations;
 
-    @OutputProperty(
-        description = "List of labels"
+    @Schema(
+            title = "List of labels"
     )
     private final Map<String, String> labels;
 
-    @OutputProperty(
-        description = "Creation datetime"
+    @Schema(
+            title = "Creation datetime"
     )
     private final Instant creationTimestamp;
 
-    @OutputProperty(
-        description = "Deletetion grace period in seconds"
+    @Schema(
+            title = "Deletetion grace period in seconds"
     )
     private final Long deletionGracePeriodSeconds;
 
-    @OutputProperty(
-        description = "Deletetion datetime"
+    @Schema(
+            title = "Deletetion datetime"
     )
     private final Instant deletionTimestamp;
 
-    @OutputProperty(
-        description = "List of finalizers"
+    @Schema(
+            title = "List of finalizers"
     )
     private final List<String> finalizers;
 
-    @OutputProperty(
-        description = "Generate name of the resource"
+    @Schema(
+            title = "Generate name of the resource"
     )
     private final String generateName;
 
-    @OutputProperty(
-        description = "Generation"
+    @Schema(
+            title = "Generation"
     )
     private final Long generation;
 
-    @OutputProperty(
-        description = "List of managed fields"
+    @Schema(
+            title = "List of managed fields"
     )
     private final List<ManagedFieldsEntry> managedFields;
 
-    @OutputProperty(
-        description = "List of owner reference"
+    @Schema(
+            title = "List of owner reference"
     )
     private final List<OwnerReference> ownerReferences;
 
-    @OutputProperty(
-        description = "Resource version"
+    @Schema(
+            title = "Resource version"
     )
     private final String resourceVersion;
 
-    @OutputProperty(
-        description = "Direct link on the api of this resource"
+    @Schema(
+            title = "Direct link on the api of this resource"
     )
     private final String selfLink;
 
