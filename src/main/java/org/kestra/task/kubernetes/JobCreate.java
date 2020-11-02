@@ -105,7 +105,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
     )
     @NotNull
     @Builder.Default
-    private final boolean delete = true;
+    private final Boolean delete = true;
 
     @Override
     public JobCreate.Output run(RunContext runContext) throws Exception {
