@@ -28,11 +28,12 @@ import javax.inject.Named;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @MicronautTest
 @EnableRuleMigrationSupport
 class JobCreateTest {
-    private static ObjectMapper mapper = JacksonMapper.ofYaml();
+    private static final ObjectMapper mapper = JacksonMapper.ofYaml();
 
     @Inject
     private RunContextFactory runContextFactory;
@@ -81,6 +82,45 @@ class JobCreateTest {
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(11L));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).skip(9).findFirst().get().getMessage(), is("10"));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).skip(10).findFirst().get().getMessage(), containsString("is deleted"));
+    }
+
+    @Test
+    void failed() throws Exception {
+        List<LogEntry> logs = new ArrayList<>();
+        workerTaskLogQueue.receive(logs::add);
+
+
+        JobCreate task = JobCreate.builder()
+            .id(JobCreate.class.getSimpleName())
+            .type(JobCreate.class.getName())
+            .namespace("test")
+            .spec(convert(
+                ObjectMeta.class,
+                "template:",
+                "  spec:",
+                "    containers:",
+                "    - name: unittest",
+                "      image: debian:stable-slim",
+                "      command: ",
+                "        - 'bash' ",
+                "        - '-c'",
+                "        - 'exit 1'",
+                "    restartPolicy: Never"
+            ))
+            .build();
+
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
+        RunContext runContextFinal = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
+
+
+        IllegalStateException exception = assertThrows(
+            IllegalStateException.class,
+            () -> task.run(runContextFinal)
+        );
+        assertThat(exception.getMessage(),  containsString("'Failed', exitcode '1'"));
     }
 
     public static <T> Map<String, Object> convert(Class<T> cls, String... yaml) throws JsonProcessingException {
