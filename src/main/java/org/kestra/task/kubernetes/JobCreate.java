@@ -104,6 +104,13 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
     private final Duration waitUntilRunning = Duration.ofMinutes(10);
 
     @Schema(
+        title = "The maximum duration we need to wait until the job complete."
+    )
+    @NotNull
+    @Builder.Default
+    private final Duration waitRunning = Duration.ofHours(1);
+
+    @Schema(
         title = "If the job will be deleted on completion"
     )
     @NotNull
@@ -190,7 +197,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
         return jobRef(client, namespace, job)
             .waitUntilCondition(
                 j -> j.getStatus() == null || j.getStatus().getCompletionTime() != null,
-                this.waitUntilRunning.toSeconds(),
+                this.waitRunning.toSeconds(),
                 TimeUnit.SECONDS
             );
     }
