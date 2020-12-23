@@ -1,9 +1,6 @@
 package org.kestra.task.kubernetes;
 
-import io.fabric8.kubernetes.api.model.ContainerStatus;
-import io.fabric8.kubernetes.api.model.DoneablePod;
-import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.api.model.batch.DoneableJob;
 import io.fabric8.kubernetes.api.model.batch.Job;
 import io.fabric8.kubernetes.api.model.batch.JobBuilder;
@@ -126,10 +123,15 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
             // create the job
             Job job = createJob(runContext, client, namespace);
 
+            // timeout for watch
+            ListOptions listOptions = new ListOptionsBuilder()
+                .withTimeoutSeconds(this.waitRunning.toSeconds())
+                .build();
+
             try {
                 // watch for jobs
                 try (
-                    Watch jobWatch = jobRef(client, namespace, job).watch(new JobWatcher(logger));
+                    Watch jobWatch = jobRef(client, namespace, job).watch(listOptions, new JobWatcher(logger));
                     LogWatch jobLogs = jobRef(client, namespace, job).watchLog(new LoggingOutputStream(logger, Level.DEBUG, "Job Log:"));
                 ) {
                     // wait until pod is created
@@ -137,7 +139,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
                     Pod pod = findPod(client, namespace, job);
 
                     // watch for pods
-                    try (Watch podWatch = podRef(client, namespace, pod).watch(new PodWatcher(logger))) {
+                    try (Watch podWatch = podRef(client, namespace, pod).watch(listOptions, new PodWatcher(logger))) {
                         // wait for pods ready
                         pod = waitForPods(client, namespace, pod);
 
