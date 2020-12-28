@@ -1,13 +1,13 @@
 package org.kestra.task.kubernetes;
 
 import com.google.common.collect.ImmutableMap;
+import io.fabric8.kubernetes.api.model.ListOptions;
+import io.fabric8.kubernetes.api.model.ListOptionsBuilder;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.apache.commons.lang3.StringUtils;
 import org.kestra.core.exceptions.IllegalVariableEvaluationException;
 import org.kestra.core.models.tasks.Task;
 import org.kestra.core.runners.RunContext;
@@ -15,7 +15,9 @@ import org.kestra.core.utils.Slugify;
 import org.kestra.task.kubernetes.models.Connection;
 import org.kestra.task.kubernetes.services.ClientService;
 
+import java.time.Duration;
 import java.util.Map;
+import javax.validation.constraints.NotNull;
 
 @SuperBuilder
 @ToString
@@ -34,6 +36,30 @@ abstract public class AbstractConnection extends Task {
             "You can pass a full configuration with all option if needed"
     )
     private Connection connection;
+
+    @Schema(
+        title = "The maximum duration we need to wait until the job & the pod is created.",
+        description = "This timeout is the maximum time that k8s scheduler take to\n" +
+            "* schedule the job\n" +
+            "* pull the pod image\n" +
+            "* and start the pod"
+    )
+    @NotNull
+    @Builder.Default
+    protected final Duration waitUntilRunning = Duration.ofMinutes(10);
+
+    @Schema(
+        title = "The maximum duration we need to wait until the job complete."
+    )
+    @NotNull
+    @Builder.Default
+    protected final Duration waitRunning = Duration.ofHours(1);
+
+    protected ListOptions listOptions() {
+        return new ListOptionsBuilder()
+            .withTimeoutSeconds(this.waitRunning.toSeconds())
+            .build();
+    }
 
     protected DefaultKubernetesClient client(RunContext runContext) throws IllegalVariableEvaluationException {
         DefaultKubernetesClient client;
@@ -64,6 +90,8 @@ abstract public class AbstractConnection extends Task {
         if (name.length() > 63) {
             name = name.substring(0, 63);
         }
+
+        name = StringUtils.stripEnd(name, "-");
 
         return ImmutableMap.of(
             "name", name,

@@ -1,6 +1,5 @@
 package org.kestra.task.kubernetes;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -55,7 +54,7 @@ class JobCreateTest {
             .id(JobCreate.class.getSimpleName())
             .type(JobCreate.class.getName())
             .namespace("test")
-            .spec(convert(
+            .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "template:",
                 "  spec:",
@@ -94,7 +93,7 @@ class JobCreateTest {
             .id(JobCreate.class.getSimpleName())
             .type(JobCreate.class.getName())
             .namespace("test")
-            .spec(convert(
+            .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "template:",
                 "  spec:",
@@ -121,9 +120,5 @@ class JobCreateTest {
             () -> task.run(runContextFinal)
         );
         assertThat(exception.getMessage(),  containsString("'Failed', exitcode '1'"));
-    }
-
-    public static <T> Map<String, Object> convert(Class<T> cls, String... yaml) throws JsonProcessingException {
-        return JacksonMapper.toMap(mapper.readValue(String.join("\n", yaml), cls));
     }
 }

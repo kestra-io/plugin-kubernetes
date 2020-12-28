@@ -1,15 +1,12 @@
 package org.kestra.task.kubernetes;
 
 import io.fabric8.kubernetes.api.model.*;
-import io.fabric8.kubernetes.api.model.batch.DoneableJob;
 import io.fabric8.kubernetes.api.model.batch.Job;
 import io.fabric8.kubernetes.api.model.batch.JobBuilder;
 import io.fabric8.kubernetes.api.model.batch.JobSpec;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.dsl.LogWatch;
-import io.fabric8.kubernetes.client.dsl.PodResource;
-import io.fabric8.kubernetes.client.dsl.ScalableResource;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -19,21 +16,18 @@ import org.kestra.core.models.annotations.Plugin;
 import org.kestra.core.models.annotations.PluginProperty;
 import org.kestra.core.models.tasks.RunnableTask;
 import org.kestra.core.runners.RunContext;
-import org.kestra.core.utils.Await;
 import org.kestra.task.kubernetes.models.Metadata;
 import org.kestra.task.kubernetes.services.InstanceService;
+import org.kestra.task.kubernetes.services.JobService;
 import org.kestra.task.kubernetes.services.LoggingOutputStream;
+import org.kestra.task.kubernetes.services.PodService;
 import org.kestra.task.kubernetes.watchers.JobWatcher;
 import org.kestra.task.kubernetes.watchers.PodWatcher;
 import org.slf4j.Logger;
 import org.slf4j.event.Level;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import javax.validation.constraints.NotNull;
 
 @SuperBuilder
@@ -89,23 +83,6 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
     @NotNull
     private Map<String, Object> spec;
 
-    @Schema(
-        title = "The maximum duration we need to wait until the job & the pod is created.",
-        description = "This timeout is the maximum time that k8s scheduler take to\n" +
-            "* schedule the job\n" +
-            "* pull the pod image\n" +
-            "* and start the pod"
-    )
-    @NotNull
-    @Builder.Default
-    private final Duration waitUntilRunning = Duration.ofMinutes(10);
-
-    @Schema(
-        title = "The maximum duration we need to wait until the job complete."
-    )
-    @NotNull
-    @Builder.Default
-    private final Duration waitRunning = Duration.ofHours(1);
 
     @Schema(
         title = "If the job will be deleted on completion"
@@ -123,37 +100,32 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
             // create the job
             Job job = createJob(runContext, client, namespace);
 
-            // timeout for watch
-            ListOptions listOptions = new ListOptionsBuilder()
-                .withTimeoutSeconds(this.waitRunning.toSeconds())
-                .build();
-
             try {
                 // watch for jobs
                 try (
-                    Watch jobWatch = jobRef(client, namespace, job).watch(listOptions, new JobWatcher(logger));
-                    LogWatch jobLogs = jobRef(client, namespace, job).watchLog(new LoggingOutputStream(logger, Level.DEBUG, "Job Log:"));
+                    Watch jobWatch = JobService.jobRef(client, namespace, job).watch(listOptions(), new JobWatcher(logger));
+                    LogWatch jobLogs = JobService.jobRef(client, namespace, job).watchLog(new LoggingOutputStream(logger, Level.DEBUG, "Job Log:"));
                 ) {
                     // wait until pod is created
-                    waitForPodCreated(client, namespace, job);
-                    Pod pod = findPod(client, namespace, job);
+                    JobService.waitForPodCreated(client, namespace, job, this.waitUntilRunning);
+                    Pod pod = JobService.findPod(client, namespace, job);
 
                     // watch for pods
-                    try (Watch podWatch = podRef(client, namespace, pod).watch(listOptions, new PodWatcher(logger))) {
+                    try (Watch podWatch = PodService.podRef(client, namespace, pod).watch(listOptions(), new PodWatcher(logger))) {
                         // wait for pods ready
-                        pod = waitForPods(client, namespace, pod);
+                        pod = PodService.waitForPodReady(client, namespace, pod, this.waitUntilRunning);
 
                         if (pod.getStatus() != null && pod.getStatus().getPhase().equals("Failed")) {
-                            throw failedMessage(pod);
+                            throw PodService.failedMessage(pod);
                         }
 
                         // watch log
-                        try (LogWatch podLogs = podRef(client, namespace, pod)
+                        try (LogWatch podLogs = PodService.podRef(client, namespace, pod)
                             .tailingLines(1000)
                             .watchLog(new LoggingOutputStream(logger, Level.INFO, null));
                         ) {
                             // wait until completion of the jobs
-                            waitForJobCompletion(client, namespace, job);
+                            JobService.waitForJobCompletion(client, namespace, job, this.waitRunning);
 
                             delete(client, logger, namespace, job);
 
@@ -176,94 +148,18 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
         }
     }
 
-    private IllegalStateException failedMessage(Pod pod) throws IllegalStateException {
-        if (pod.getStatus() == null) {
-            return new IllegalStateException("Pods terminated without any status !");
-        }
-
-        return (pod.getStatus().getContainerStatuses() == null ? new ArrayList<ContainerStatus>() : pod.getStatus().getContainerStatuses())
-            .stream()
-            .filter(containerStatus -> containerStatus.getState() != null && containerStatus.getState()
-                .getTerminated() != null)
-            .map(containerStatus -> containerStatus.getState().getTerminated())
-            .findFirst()
-            .map(containerStateTerminated -> new IllegalStateException(
-                "Pods terminated with status '" + pod.getStatus().getPhase() + "', " +
-                "exitcode '" + containerStateTerminated.getExitCode() + "' & " +
-                "message '" + containerStateTerminated.getMessage() + "'"
-            ))
-            .orElse(new IllegalStateException("Pods terminated without any containers status !"));
-    }
-
-    private Job waitForJobCompletion(KubernetesClient client, String namespace, Job job) throws InterruptedException {
-        return jobRef(client, namespace, job)
-            .waitUntilCondition(
-                j -> j.getStatus() == null || j.getStatus().getCompletionTime() != null,
-                this.waitRunning.toSeconds(),
-                TimeUnit.SECONDS
-            );
-    }
-
-    private void waitForPodCreated(KubernetesClient client, String namespace, Job job) throws TimeoutException {
-        Await.until(
-            () -> client
-                .pods()
-                .inNamespace(namespace)
-                .withLabel("controller-uid", job.getMetadata().getUid())
-                .list()
-                .getItems()
-                .size() > 0,
-            Duration.ofMillis(500),
-            this.waitUntilRunning
-        );
-    }
-
-    private Pod waitForPods(KubernetesClient client, String namespace, Pod pod) throws InterruptedException {
-        return podRef(client, namespace, pod)
-            .waitUntilCondition(
-                j -> j.getStatus() == null ||
-                    j.getStatus().getPhase().equals("Failed") ||
-                    j.getStatus()
-                        .getConditions()
-                        .stream()
-                        .filter(podCondition -> podCondition.getStatus().equalsIgnoreCase("True"))
-                        .anyMatch(podCondition -> podCondition.getType().equals("ContainersReady") ||
-                            (podCondition.getReason() != null && podCondition.getReason()
-                                .equals("PodCompleted"))
-                        ),
-                this.waitUntilRunning.toSeconds(),
-                TimeUnit.SECONDS
-            );
-    }
-
-    private Pod findPod(KubernetesClient client, String namespace, Job job) {
-        return client
-            .pods()
-            .inNamespace(namespace)
-            .withLabel("controller-uid", job.getMetadata().getUid())
-            .list()
-            .getItems()
-            .stream()
-            .findFirst()
-            .orElseThrow(() -> new IllegalStateException(
-                "Can't find pod for job '" + Objects.requireNonNull(job.getMetadata()).getName() + "'"
-            ));
-    }
-
     private Job createJob(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, org.kestra.core.exceptions.IllegalVariableEvaluationException {
         return client.batch()
             .jobs()
             .inNamespace(namespace)
             .create(new JobBuilder()
                 .withMetadata(InstanceService.fromMap(
-                    client,
                     ObjectMeta.class,
                     runContext,
                     this.metadata,
                     metadata(runContext)
                 ))
                 .withSpec(InstanceService.fromMap(
-                    client,
                     JobSpec.class,
                     runContext,
                     this.spec,
@@ -275,23 +171,9 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
 
     private void delete(KubernetesClient client, Logger logger, String namespace, Job job) {
         if (delete) {
-            jobRef(client, namespace, job).delete();
+            JobService.jobRef(client, namespace, job).delete();
             logger.info("Job '{}' is deleted ", job.getMetadata().getName());
         }
-    }
-
-    private static ScalableResource<Job, DoneableJob> jobRef(KubernetesClient client, String namespace, Job job) {
-        return client
-            .batch()
-            .jobs()
-            .inNamespace(namespace)
-            .withName(job.getMetadata().getName());
-    }
-
-    private static PodResource<Pod, DoneablePod> podRef(KubernetesClient client, String namespace, Pod pod) {
-        return client.pods()
-            .inNamespace(namespace)
-            .withName(pod.getMetadata().getName());
     }
 
     @Builder

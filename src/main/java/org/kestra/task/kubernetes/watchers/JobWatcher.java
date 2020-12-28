@@ -14,7 +14,8 @@ public class JobWatcher extends AbstractWatch<Job> {
             "Type: " + resource.getClass().getSimpleName(),
             "Namespace: " + resource.getMetadata().getNamespace(),
             "Name: " + resource.getMetadata().getName(),
-            "Uid: " + resource.getMetadata().getUid()
+            "Uid: " + resource.getMetadata().getUid(),
+            "Status: " + resource.getStatus()
         );
     }
 }

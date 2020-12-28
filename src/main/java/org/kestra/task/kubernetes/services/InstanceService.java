@@ -15,15 +15,15 @@ import java.util.Map;
 abstract public class InstanceService {
     private static final ObjectMapper mapper = JacksonMapper.ofYaml();
 
-    public static <T> T fromMap(KubernetesClient client, Class<T> cls, RunContext runContext, Map<String, Object> map) throws IOException, IllegalVariableEvaluationException {
+    public static <T> T fromMap(Class<T> cls, RunContext runContext, Map<String, Object> map) throws IOException, IllegalVariableEvaluationException {
         String yaml = JacksonMapper.ofYaml().writeValueAsString(map);
         String render = runContext.render(yaml);
 
         return mapper.readValue(render, cls);
     }
 
-    public static <T> T fromMap(KubernetesClient client, Class<T> cls, RunContext runContext, Map<String, Object> map, Map<String, Object> defaults) throws IOException, IllegalVariableEvaluationException {
-        return fromMap(client, cls, runContext, merge(map, defaults));
+    public static <T> T fromMap(Class<T> cls, RunContext runContext, Map<String, Object> map, Map<String, Object> defaults) throws IOException, IllegalVariableEvaluationException {
+        return fromMap(cls, runContext, merge(map, defaults));
     }
 
     @SuppressWarnings("unchecked")
