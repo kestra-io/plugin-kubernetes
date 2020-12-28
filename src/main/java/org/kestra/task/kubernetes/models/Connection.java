@@ -122,6 +122,12 @@ public class Connection {
     @PluginProperty(dynamic = true)
     private final String oauthToken;
 
+    @Schema(
+        title = "Oauth token provider"
+    )
+    @PluginProperty(dynamic = false)
+    private final OAuthTokenProvider oauthTokenProvider;
+
     public Config toConfig(RunContext runContext) throws IllegalVariableEvaluationException {
         ConfigBuilder builder = new ConfigBuilder();
 
@@ -159,6 +165,10 @@ public class Connection {
 
         if (oauthToken != null) {
             builder.withOauthToken(runContext.render(oauthToken));
+        }
+
+        if (oauthTokenProvider != null) {
+            builder.withOauthTokenProvider(oauthTokenProvider.withRunContext(runContext));
         }
 
         if (clientCertData != null) {
