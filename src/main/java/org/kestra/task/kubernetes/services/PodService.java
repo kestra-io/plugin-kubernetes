@@ -3,6 +3,7 @@ package org.kestra.task.kubernetes.services;
 import io.fabric8.kubernetes.api.model.ContainerStatus;
 import io.fabric8.kubernetes.api.model.DoneablePod;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.batch.Job;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 
@@ -25,6 +26,15 @@ abstract public class PodService {
                                 .equals("PodCompleted"))
                         ),
                 waitUntilRunning.toSeconds(),
+                TimeUnit.SECONDS
+            );
+    }
+
+    public static Pod waitForCompletion(KubernetesClient client, String namespace, Pod job, Duration waitRunning) throws InterruptedException {
+        return podRef(client, namespace, job)
+            .waitUntilCondition(
+                j -> j == null || j.getStatus() == null || (!j.getStatus().getPhase().equals("Running") && !j.getStatus().getPhase().equals("Pending")),
+                waitRunning.toSeconds(),
                 TimeUnit.SECONDS
             );
     }

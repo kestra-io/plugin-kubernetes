@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @MicronautTest
 @EnableRuleMigrationSupport
-class JobCreateTest {
+class PodCreateTest {
     private static final ObjectMapper mapper = JacksonMapper.ofYaml();
 
     @Inject
@@ -50,22 +50,20 @@ class JobCreateTest {
         List<LogEntry> logs = new ArrayList<>();
         workerTaskLogQueue.receive(logs::add);
 
-        JobCreate task = JobCreate.builder()
-            .id(JobCreate.class.getSimpleName())
-            .type(JobCreate.class.getName())
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
             .namespace("test")
             .spec(TestUtils.convert(
                 ObjectMeta.class,
-                "template:",
-                "  spec:",
-                "    containers:",
-                "    - name: unittest",
-                "      image: debian:stable-slim",
-                "      command: ",
-                "        - 'bash' ",
-                "        - '-c'",
-                "        - 'for i in {1..10}; do echo $i; sleep 0.1; done'",
-                "    restartPolicy: Never"
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'for i in {1..10}; do echo $i; sleep 0.1; done'",
+                "restartPolicy: Never"
             ))
             .build();
 
@@ -75,9 +73,9 @@ class JobCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
         runContext = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
 
-        JobCreate.Output runOutput = task.run(runContext);
+        PodCreate.Output runOutput = task.run(runContext);
 
-        assertThat(runOutput.getJobMetadata().getName(), containsString(((Map<String, String>) runContext.getVariables().get("taskrun")).get("id").toLowerCase()));
+        assertThat(runOutput.getMetadata().getName(), containsString(((Map<String, String>) runContext.getVariables().get("taskrun")).get("id").toLowerCase()));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(11L));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).skip(9).findFirst().get().getMessage(), is("10"));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).skip(10).findFirst().get().getMessage(), containsString("is deleted"));
@@ -89,22 +87,20 @@ class JobCreateTest {
         workerTaskLogQueue.receive(logs::add);
 
 
-        JobCreate task = JobCreate.builder()
-            .id(JobCreate.class.getSimpleName())
-            .type(JobCreate.class.getName())
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
             .namespace("test")
             .spec(TestUtils.convert(
                 ObjectMeta.class,
-                "template:",
-                "  spec:",
-                "    containers:",
-                "    - name: unittest",
-                "      image: debian:stable-slim",
-                "      command: ",
-                "        - 'bash' ",
-                "        - '-c'",
-                "        - 'exit 1'",
-                "    restartPolicy: Never"
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'exit 1'",
+                "restartPolicy: Never"
             ))
             .build();
 

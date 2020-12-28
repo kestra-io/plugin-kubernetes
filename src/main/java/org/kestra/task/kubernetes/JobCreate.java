@@ -16,7 +16,9 @@ import org.kestra.core.models.annotations.Plugin;
 import org.kestra.core.models.annotations.PluginProperty;
 import org.kestra.core.models.tasks.RunnableTask;
 import org.kestra.core.runners.RunContext;
+import org.kestra.task.kubernetes.models.JobStatus;
 import org.kestra.task.kubernetes.models.Metadata;
+import org.kestra.task.kubernetes.models.PodStatus;
 import org.kestra.task.kubernetes.services.InstanceService;
 import org.kestra.task.kubernetes.services.JobService;
 import org.kestra.task.kubernetes.services.LoggingOutputStream;
@@ -26,7 +28,6 @@ import org.kestra.task.kubernetes.watchers.PodWatcher;
 import org.slf4j.Logger;
 import org.slf4j.event.Level;
 
-import java.time.Duration;
 import java.util.Map;
 import javax.validation.constraints.NotNull;
 
@@ -125,7 +126,11 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
                             .watchLog(new LoggingOutputStream(logger, Level.INFO, null));
                         ) {
                             // wait until completion of the jobs
-                            JobService.waitForJobCompletion(client, namespace, job, this.waitRunning);
+                            Job ended = JobService.waitForCompletion(client, namespace, job, this.waitRunning);
+                            Pod podEnded = JobService.findPod(client, namespace, job);
+
+                            // let some time to gather the logs before delete
+                            Thread.sleep(1000);
 
                             delete(client, logger, namespace, job);
 
@@ -135,8 +140,10 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
                             podLogs.close();
 
                             return Output.builder()
-                                .job(Metadata.fromObjectMeta(job.getMetadata()))
-                                .pod(Metadata.fromObjectMeta(pod.getMetadata()))
+                                .jobMetadata(Metadata.from(ended.getMetadata()))
+                                .jobStatus(JobStatus.from(ended.getStatus()))
+                                .podMetadata(Metadata.from(podEnded.getMetadata()))
+                                .podStatus(PodStatus.from(podEnded.getStatus()))
                                 .build();
                         }
                     }
@@ -182,12 +189,22 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
         @Schema(
             title = "The full job metadata"
         )
-        private final Metadata job;
+        private final Metadata jobMetadata;
+
+        @Schema(
+            title = "The full job status"
+        )
+        private final JobStatus jobStatus;
 
         @Schema(
             title = "The full pod metadata"
         )
-        private final Metadata pod;
+        private final Metadata podMetadata;
+
+        @Schema(
+            title = "The full pod status"
+        )
+        private final PodStatus podStatus;
     }
 
 }

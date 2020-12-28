@@ -95,25 +95,25 @@ public class Metadata {
     private final String selfLink;
 
 
-    public static Metadata fromObjectMeta(ObjectMeta objectMeta) {
+    public static Metadata from(ObjectMeta meta) {
         MetadataBuilder builder = Metadata.builder();
 
-        builder.annotations(objectMeta.getAnnotations());
-        builder.clusterName(objectMeta.getClusterName());
-        builder.creationTimestamp(Instant.parse(objectMeta.getCreationTimestamp()));
-        builder.deletionGracePeriodSeconds(objectMeta.getDeletionGracePeriodSeconds());
-        builder.deletionTimestamp(objectMeta.getDeletionTimestamp() != null ? Instant.parse(objectMeta.getDeletionTimestamp()) : null);
-        builder.finalizers(objectMeta.getFinalizers());
-        builder.generateName(objectMeta.getGenerateName());
-        builder.generation(objectMeta.getGeneration());
-        builder.labels(objectMeta.getLabels());
-        builder.managedFields(objectMeta.getManagedFields());
-        builder.name(objectMeta.getName());
-        builder.namespace(objectMeta.getNamespace());
-        builder.ownerReferences(objectMeta.getOwnerReferences());
-        builder.resourceVersion(objectMeta.getResourceVersion());
-        builder.selfLink(objectMeta.getSelfLink());
-        builder.uid(objectMeta.getUid());
+        builder.annotations(meta.getAnnotations());
+        builder.clusterName(meta.getClusterName());
+        builder.creationTimestamp(Instant.parse(meta.getCreationTimestamp()));
+        builder.deletionGracePeriodSeconds(meta.getDeletionGracePeriodSeconds());
+        builder.deletionTimestamp(meta.getDeletionTimestamp() != null ? Instant.parse(meta.getDeletionTimestamp()) : null);
+        builder.finalizers(meta.getFinalizers());
+        builder.generateName(meta.getGenerateName());
+        builder.generation(meta.getGeneration());
+        builder.labels(meta.getLabels());
+        builder.managedFields(meta.getManagedFields());
+        builder.name(meta.getName());
+        builder.namespace(meta.getNamespace());
+        builder.ownerReferences(meta.getOwnerReferences());
+        builder.resourceVersion(meta.getResourceVersion());
+        builder.selfLink(meta.getSelfLink());
+        builder.uid(meta.getUid());
 
         return builder.build();
     }

@@ -27,7 +27,7 @@ abstract public class JobService {
         );
     }
 
-    public static Job waitForJobCompletion(KubernetesClient client, String namespace, Job job, Duration waitRunning) throws InterruptedException {
+    public static Job waitForCompletion(KubernetesClient client, String namespace, Job job, Duration waitRunning) throws InterruptedException {
         return jobRef(client, namespace, job)
             .waitUntilCondition(
                 j -> j == null || j.getStatus() == null || j.getStatus().getCompletionTime() != null,
