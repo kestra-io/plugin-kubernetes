@@ -86,7 +86,6 @@ class PodCreateTest {
         List<LogEntry> logs = new ArrayList<>();
         workerTaskLogQueue.receive(logs::add);
 
-
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
@@ -104,12 +103,44 @@ class PodCreateTest {
             ))
             .build();
 
-
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
         RunContext runContextFinal = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
 
+        IllegalStateException exception = assertThrows(
+            IllegalStateException.class,
+            () -> task.run(runContextFinal)
+        );
+        assertThat(exception.getMessage(),  containsString("'Failed', exitcode '1'"));
+    }
+
+    @Test
+    void failedAfterStartup() throws Exception {
+        List<LogEntry> logs = new ArrayList<>();
+        workerTaskLogQueue.receive(logs::add);
+
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace("test")
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'sleep 1 && exit 1'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
+        RunContext runContextFinal = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
 
         IllegalStateException exception = assertThrows(
             IllegalStateException.class,

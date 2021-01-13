@@ -30,6 +30,15 @@ abstract public class PodService {
             );
     }
 
+    public static void handleEnd(Pod ended) throws InterruptedException {
+        // let some time to gather the logs before delete
+        Thread.sleep(1000);
+
+        if (ended.getStatus() != null && ended.getStatus().getPhase().equals("Failed")) {
+            throw PodService.failedMessage(ended);
+        }
+    }
+
     public static Pod waitForCompletion(KubernetesClient client, String namespace, Pod job, Duration waitRunning) throws InterruptedException {
         return podRef(client, namespace, job)
             .waitUntilCondition(

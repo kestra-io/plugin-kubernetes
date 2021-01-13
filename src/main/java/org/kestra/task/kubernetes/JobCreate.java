@@ -129,9 +129,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
                             Job ended = JobService.waitForCompletion(client, namespace, job, this.waitRunning);
                             Pod podEnded = JobService.findPod(client, namespace, job);
 
-                            // let some time to gather the logs before delete
-                            Thread.sleep(1000);
-
+                            PodService.handleEnd(podEnded);
                             delete(client, logger, namespace, job);
 
                             jobWatch.close();
