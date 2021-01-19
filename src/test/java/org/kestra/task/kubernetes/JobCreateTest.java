@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.micronaut.context.ApplicationContext;
-import io.micronaut.test.annotation.MicronautTest;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.migrationsupport.rules.EnableRuleMigrationSupport;
 import org.kestra.core.models.executions.Execution;
 import org.kestra.core.models.executions.LogEntry;
 import org.kestra.core.models.flows.Flow;
@@ -30,7 +29,6 @@ import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @MicronautTest
-@EnableRuleMigrationSupport
 class JobCreateTest {
     private static final ObjectMapper mapper = JacksonMapper.ofYaml();
 

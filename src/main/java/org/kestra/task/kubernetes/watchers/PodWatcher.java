@@ -1,6 +1,7 @@
 package org.kestra.task.kubernetes.watchers;
 
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.client.WatcherException;
 import org.slf4j.Logger;
 
 public class PodWatcher extends AbstractWatch<Pod> {
@@ -17,5 +18,15 @@ public class PodWatcher extends AbstractWatch<Pod> {
             "Uid: " + resource.getMetadata().getUid(),
             "Phase: " + resource.getStatus().getPhase()
         );
+    }
+
+    @Override
+    public void onClose() {
+
+    }
+
+    @Override
+    public void onClose(WatcherException cause) {
+
     }
 }

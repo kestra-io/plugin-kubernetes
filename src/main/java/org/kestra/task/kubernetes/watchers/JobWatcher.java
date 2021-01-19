@@ -1,6 +1,7 @@
 package org.kestra.task.kubernetes.watchers;
 
 import io.fabric8.kubernetes.api.model.batch.Job;
+import io.fabric8.kubernetes.client.WatcherException;
 import org.slf4j.Logger;
 
 public class JobWatcher extends AbstractWatch<Job> {
@@ -17,5 +18,10 @@ public class JobWatcher extends AbstractWatch<Job> {
             "Uid: " + resource.getMetadata().getUid(),
             "Status: " + resource.getStatus()
         );
+    }
+
+    @Override
+    public void onClose(WatcherException cause) {
+
     }
 }

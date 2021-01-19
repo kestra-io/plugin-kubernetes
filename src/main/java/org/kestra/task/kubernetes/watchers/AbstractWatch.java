@@ -14,7 +14,6 @@ abstract public class AbstractWatch<T> implements io.fabric8.kubernetes.client.W
         logger.debug("Received action '{}' on [{}]", action, this.logContext(resource));
     }
 
-    @Override
     public void onClose(KubernetesClientException e) {
         logger.debug("Received close on [Type: {}]", this.getClass().getSimpleName());
 

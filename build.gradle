@@ -7,6 +7,7 @@ plugins {
     id 'ru.vyarus.java-lib' version '2.1.0'
     id 'ru.vyarus.github-info' version '1.2.0'
     id "com.jfrog.bintray" version "1.8.5"
+    id "com.github.ben-manes.versions" version "0.36.0"
     id 'net.researchgate.release' version '2.8.1'
 }
 
@@ -42,7 +43,7 @@ dependencies {
     compileOnly group: "org.kestra", name: "core", version: kestraVersion
 
     // plugins
-    api 'io.fabric8:kubernetes-client:4.11.1'
+    api 'io.fabric8:kubernetes-client:5.0.0'
 }
 
 

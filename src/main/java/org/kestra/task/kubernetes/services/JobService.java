@@ -1,7 +1,6 @@
 package org.kestra.task.kubernetes.services;
 
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.batch.DoneableJob;
 import io.fabric8.kubernetes.api.model.batch.Job;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.ScalableResource;
@@ -50,7 +49,7 @@ abstract public class JobService {
             ));
     }
 
-    public static ScalableResource<Job, DoneableJob> jobRef(KubernetesClient client, String namespace, Job job) {
+    public static ScalableResource<Job> jobRef(KubernetesClient client, String namespace, Job job) {
         return client
             .batch()
             .jobs()

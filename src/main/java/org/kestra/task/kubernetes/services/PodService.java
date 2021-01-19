@@ -1,9 +1,7 @@
 package org.kestra.task.kubernetes.services;
 
 import io.fabric8.kubernetes.api.model.ContainerStatus;
-import io.fabric8.kubernetes.api.model.DoneablePod;
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.batch.Job;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 
@@ -67,7 +65,7 @@ abstract public class PodService {
             .orElse(new IllegalStateException("Pods terminated without any containers status !"));
     }
 
-    public static PodResource<Pod, DoneablePod> podRef(KubernetesClient client, String namespace, Pod pod) {
+    public static PodResource<Pod> podRef(KubernetesClient client, String namespace, Pod pod) {
         return client.pods()
             .inNamespace(namespace)
             .withName(pod.getMetadata().getName());
