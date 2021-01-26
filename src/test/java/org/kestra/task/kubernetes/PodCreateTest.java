@@ -60,12 +60,12 @@ class PodCreateTest {
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c'",
-                "    - 'for i in {1..10}; do echo $i; sleep 0.1; done'",
+                "    - 'for i in {1..10}; do echo $i; {{ inputs.command }} 0.1; done'",
                 "restartPolicy: Never"
             ))
             .build();
 
-        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of("command", "sleep"));
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
