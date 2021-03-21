@@ -1,4 +1,4 @@
-package org.kestra.task.kubernetes;
+package io.kestra.plugin.kubernetes;
 
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.ListOptions;
@@ -8,12 +8,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.apache.commons.lang3.StringUtils;
-import org.kestra.core.exceptions.IllegalVariableEvaluationException;
-import org.kestra.core.models.tasks.Task;
-import org.kestra.core.runners.RunContext;
-import org.kestra.core.utils.Slugify;
-import org.kestra.task.kubernetes.models.Connection;
-import org.kestra.task.kubernetes.services.ClientService;
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.tasks.Task;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.utils.Slugify;
+import io.kestra.plugin.kubernetes.models.Connection;
+import io.kestra.plugin.kubernetes.services.ClientService;
 
 import java.time.Duration;
 import java.util.Map;

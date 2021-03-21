@@ -1,9 +1,9 @@
-package org.kestra.task.kubernetes.services;
+package io.kestra.plugin.kubernetes.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.kestra.core.exceptions.IllegalVariableEvaluationException;
-import org.kestra.core.runners.RunContext;
-import org.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
 
 import java.io.IOException;
 import java.util.ArrayList;

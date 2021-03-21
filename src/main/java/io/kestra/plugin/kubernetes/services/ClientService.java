@@ -1,4 +1,4 @@
-package org.kestra.task.kubernetes.services;
+package io.kestra.plugin.kubernetes.services;
 
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;

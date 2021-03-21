@@ -1,4 +1,4 @@
-package org.kestra.task.kubernetes.watchers;
+package io.kestra.plugin.kubernetes.watchers;
 
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import org.slf4j.Logger;

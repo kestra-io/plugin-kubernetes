@@ -1,4 +1,4 @@
-package org.kestra.task.kubernetes;
+package io.kestra.plugin.kubernetes;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
@@ -6,15 +6,15 @@ import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import org.junit.jupiter.api.Test;
-import org.kestra.core.models.executions.Execution;
-import org.kestra.core.models.executions.LogEntry;
-import org.kestra.core.models.flows.Flow;
-import org.kestra.core.queues.QueueFactoryInterface;
-import org.kestra.core.queues.QueueInterface;
-import org.kestra.core.runners.RunContext;
-import org.kestra.core.runners.RunContextFactory;
-import org.kestra.core.serializers.JacksonMapper;
-import org.kestra.core.utils.TestsUtils;
+import io.kestra.core.models.executions.Execution;
+import io.kestra.core.models.executions.LogEntry;
+import io.kestra.core.models.flows.Flow;
+import io.kestra.core.queues.QueueFactoryInterface;
+import io.kestra.core.queues.QueueInterface;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.utils.TestsUtils;
 import org.slf4j.event.Level;
 
 import java.util.ArrayList;
@@ -72,6 +72,8 @@ class PodCreateTest {
         runContext = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
 
         PodCreate.Output runOutput = task.run(runContext);
+
+        Thread.sleep(500);
 
         assertThat(runOutput.getMetadata().getName(), containsString(((Map<String, String>) runContext.getVariables().get("taskrun")).get("id").toLowerCase()));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(11L));

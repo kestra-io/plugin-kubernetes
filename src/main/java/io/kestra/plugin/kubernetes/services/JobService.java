@@ -1,10 +1,10 @@
-package org.kestra.task.kubernetes.services;
+package io.kestra.plugin.kubernetes.services;
 
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.batch.Job;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.ScalableResource;
-import org.kestra.core.utils.Await;
+import io.kestra.core.utils.Await;
 
 import java.time.Duration;
 import java.util.Objects;

@@ -1,13 +1,13 @@
-package org.kestra.task.kubernetes.models;
+package io.kestra.plugin.kubernetes.models;
 
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
-import org.kestra.core.exceptions.IllegalVariableEvaluationException;
-import org.kestra.core.models.annotations.PluginProperty;
-import org.kestra.core.runners.RunContext;
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.runners.RunContext;
 
 @Builder
 @Getter

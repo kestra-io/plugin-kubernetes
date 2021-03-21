@@ -1,4 +1,4 @@
-package org.kestra.task.kubernetes.services;
+package io.kestra.plugin.kubernetes.services;
 
 import org.slf4j.Logger;
 import org.slf4j.event.Level;

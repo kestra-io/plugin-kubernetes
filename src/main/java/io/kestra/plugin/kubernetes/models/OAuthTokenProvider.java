@@ -1,11 +1,11 @@
-package org.kestra.task.kubernetes.models;
+package io.kestra.plugin.kubernetes.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.*;
-import org.kestra.core.models.tasks.Output;
-import org.kestra.core.models.tasks.RunnableTask;
-import org.kestra.core.models.tasks.Task;
-import org.kestra.core.runners.RunContext;
+import io.kestra.core.models.tasks.Output;
+import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.Task;
+import io.kestra.core.runners.RunContext;
 
 @Getter
 @Builder

@@ -1,4 +1,4 @@
-package org.kestra.task.kubernetes.models;
+package io.kestra.plugin.kubernetes.models;
 
 import io.fabric8.kubernetes.api.model.ContainerStatus;
 import io.fabric8.kubernetes.api.model.PodCondition;

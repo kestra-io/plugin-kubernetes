@@ -1,4 +1,4 @@
-package org.kestra.task.kubernetes;
+package io.kestra.plugin.kubernetes;
 
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.api.model.batch.Job;
@@ -11,20 +11,20 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
-import org.kestra.core.models.annotations.Example;
-import org.kestra.core.models.annotations.Plugin;
-import org.kestra.core.models.annotations.PluginProperty;
-import org.kestra.core.models.tasks.RunnableTask;
-import org.kestra.core.runners.RunContext;
-import org.kestra.task.kubernetes.models.JobStatus;
-import org.kestra.task.kubernetes.models.Metadata;
-import org.kestra.task.kubernetes.models.PodStatus;
-import org.kestra.task.kubernetes.services.InstanceService;
-import org.kestra.task.kubernetes.services.JobService;
-import org.kestra.task.kubernetes.services.LoggingOutputStream;
-import org.kestra.task.kubernetes.services.PodService;
-import org.kestra.task.kubernetes.watchers.JobWatcher;
-import org.kestra.task.kubernetes.watchers.PodWatcher;
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.runners.RunContext;
+import io.kestra.plugin.kubernetes.models.JobStatus;
+import io.kestra.plugin.kubernetes.models.Metadata;
+import io.kestra.plugin.kubernetes.models.PodStatus;
+import io.kestra.plugin.kubernetes.services.InstanceService;
+import io.kestra.plugin.kubernetes.services.JobService;
+import io.kestra.plugin.kubernetes.services.LoggingOutputStream;
+import io.kestra.plugin.kubernetes.services.PodService;
+import io.kestra.plugin.kubernetes.watchers.JobWatcher;
+import io.kestra.plugin.kubernetes.watchers.PodWatcher;
 import org.slf4j.Logger;
 import org.slf4j.event.Level;
 
@@ -153,7 +153,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
         }
     }
 
-    private Job createJob(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, org.kestra.core.exceptions.IllegalVariableEvaluationException {
+    private Job createJob(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException {
         return client.batch()
             .jobs()
             .inNamespace(namespace)
@@ -183,7 +183,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
 
     @Builder
     @Getter
-    public static class Output implements org.kestra.core.models.tasks.Output {
+    public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
             title = "The full job metadata"
         )
