@@ -3,7 +3,10 @@ package io.kestra.plugin.kubernetes.services;
 import io.fabric8.kubernetes.api.model.ContainerStatus;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.WatcherException;
 import io.fabric8.kubernetes.client.dsl.PodResource;
+import org.slf4j.Logger;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -37,13 +40,22 @@ abstract public class PodService {
         }
     }
 
-    public static Pod waitForCompletion(KubernetesClient client, String namespace, Pod job, Duration waitRunning) throws InterruptedException {
-        return podRef(client, namespace, job)
-            .waitUntilCondition(
-                j -> j == null || j.getStatus() == null || (!j.getStatus().getPhase().equals("Running") && !j.getStatus().getPhase().equals("Pending")),
-                waitRunning.toSeconds(),
-                TimeUnit.SECONDS
-            );
+    public static Pod waitForCompletion(KubernetesClient client, Logger logger, String namespace, Pod job, Duration waitRunning) throws InterruptedException {
+        try {
+            return podRef(client, namespace, job)
+                .waitUntilCondition(
+                    j -> j == null || j.getStatus() == null || (!j.getStatus().getPhase().equals("Running") && !j.getStatus().getPhase().equals("Pending")),
+                    waitRunning.toSeconds(),
+                    TimeUnit.SECONDS
+                );
+        } catch (KubernetesClientException e) {
+            if (e.getCause() instanceof WatcherException && e.getCause().getMessage().contains("too old resource version")) {
+                logger.warn("Receive old version, trying to wait more", e);
+                return PodService.waitForCompletion(client, logger, namespace, job, waitRunning);
+            }
+
+            throw e;
+        }
     }
 
     public static IllegalStateException failedMessage(Pod pod) throws IllegalStateException {

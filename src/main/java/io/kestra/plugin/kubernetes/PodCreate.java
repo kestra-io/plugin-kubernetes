@@ -135,7 +135,7 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
                     podLogService.watch(PodService.podRef(client, namespace, pod), logger);
 
                     // wait until completion of the pods
-                    Pod ended = PodService.waitForCompletion(client, namespace, pod, this.waitRunning);
+                    Pod ended = PodService.waitForCompletion(client, logger, namespace, pod, this.waitRunning);
 
                     PodService.handleEnd(ended);
                     delete(client, logger, namespace, pod);
