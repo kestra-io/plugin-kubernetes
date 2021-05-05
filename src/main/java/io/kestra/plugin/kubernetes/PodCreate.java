@@ -4,6 +4,7 @@ import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.dsl.LogWatch;
+import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -102,6 +103,13 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
     @Builder.Default
     private final Boolean delete = true;
 
+    @Schema(
+        title = "If we try to reconnect to current pod if it exist"
+    )
+    @NotNull
+    @Builder.Default
+    private final Boolean resume = false;
+
     @Override
     public PodCreate.Output run(RunContext runContext) throws Exception {
         try (KubernetesClient client = this.client(runContext)) {
@@ -148,15 +156,30 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
     }
 
     private Pod createPod(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException {
+        ObjectMeta metadata = InstanceService.fromMap(
+            ObjectMeta.class,
+            runContext,
+            this.metadata,
+            metadata(runContext)
+        );
+
+        if (this.resume) {
+            PodResource<Pod> resumePod = client.pods()
+                .inNamespace(namespace)
+                .withName(metadata.getName());
+
+            if (resumePod.get() != null) {
+                runContext.logger().info("Find a resumable pods with status '{}', resume it", resumePod.get().getStatus().getPhase());
+                return resumePod.get();
+            } else {
+                runContext.logger().debug("Unable to resume pods, start a new one");
+            }
+        }
+
         return client.pods()
             .inNamespace(namespace)
             .create(new PodBuilder()
-                .withMetadata(InstanceService.fromMap(
-                    ObjectMeta.class,
-                    runContext,
-                    this.metadata,
-                    metadata(runContext)
-                ))
+                .withMetadata(metadata)
                 .withSpec(InstanceService.fromMap(
                     PodSpec.class,
                     runContext,
@@ -187,5 +210,4 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
         )
         private final PodStatus status;
     }
-
 }
