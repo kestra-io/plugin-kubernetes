@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.event.Level;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,7 +33,7 @@ public class PodLogService implements AutoCloseable {
 
         ScheduledFuture<?> scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
             () -> {
-                if (!started.get() || outputStream.getLastTimestamp().isBefore(Instant.now().minusSeconds(60))) {
+                if (!started.get() || outputStream.getLastTimestamp() == null || outputStream.getLastTimestamp().isBefore(Instant.now().minus(Duration.ofMinutes(10)))) {
                     if (!started.get()) {
                         started.set(true);
                     } else {
