@@ -7,6 +7,8 @@ import io.fabric8.kubernetes.api.model.batch.JobSpec;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.dsl.LogWatch;
+import io.kestra.core.utils.ThreadMainFactoryBuilder;
+import io.kestra.plugin.kubernetes.services.*;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -19,10 +21,6 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.models.JobStatus;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.PodStatus;
-import io.kestra.plugin.kubernetes.services.InstanceService;
-import io.kestra.plugin.kubernetes.services.JobService;
-import io.kestra.plugin.kubernetes.services.LoggingOutputStream;
-import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.watchers.JobWatcher;
 import io.kestra.plugin.kubernetes.watchers.PodWatcher;
 import org.slf4j.Logger;
@@ -97,6 +95,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
         try (KubernetesClient client = this.client(runContext)) {
             String namespace = runContext.render(this.namespace);
             Logger logger = runContext.logger();
+            PodLogService podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class));
 
             // create the job
             Job job = createJob(runContext, client, namespace);
@@ -121,32 +120,30 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
                         }
 
                         // watch log
-                        try (LogWatch podLogs = PodService.podRef(client, namespace, pod)
-                            .tailingLines(1000)
-                            .watchLog(new LoggingOutputStream(logger, Level.INFO, null));
-                        ) {
-                            // wait until completion of the jobs
-                            Job ended = JobService.waitForCompletion(client, namespace, job, this.waitRunning);
-                            Pod podEnded = JobService.findPod(client, namespace, job);
+                        podLogService.watch(PodService.podRef(client, namespace, pod), logger);
 
-                            PodService.handleEnd(podEnded);
-                            delete(client, logger, namespace, job);
+                        // wait until completion of the jobs
+                        Job ended = JobService.waitForCompletion(client, namespace, job, this.waitRunning);
+                        Pod podEnded = JobService.findPod(client, namespace, job);
 
-                            jobWatch.close();
-                            jobLogs.close();
-                            podWatch.close();
-                            podLogs.close();
+                        PodService.handleEnd(podEnded);
+                        delete(client, logger, namespace, job);
 
-                            return Output.builder()
-                                .jobMetadata(Metadata.from(ended.getMetadata()))
-                                .jobStatus(JobStatus.from(ended.getStatus()))
-                                .podMetadata(Metadata.from(podEnded.getMetadata()))
-                                .podStatus(PodStatus.from(podEnded.getStatus()))
-                                .build();
-                        }
+                        jobWatch.close();
+                        jobLogs.close();
+                        podWatch.close();
+                        podLogService.close();
+
+                        return Output.builder()
+                            .jobMetadata(Metadata.from(ended.getMetadata()))
+                            .jobStatus(JobStatus.from(ended.getStatus()))
+                            .podMetadata(Metadata.from(podEnded.getMetadata()))
+                            .podStatus(PodStatus.from(podEnded.getStatus()))
+                            .build();
                     }
                 }
             } catch (Exception e) {
+                podLogService.close();
                 delete(client, logger, namespace, job);
                 throw e;
             }

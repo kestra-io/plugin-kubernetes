@@ -15,7 +15,6 @@ def isBuildSnapshot = version.toString().endsWith("-SNAPSHOT")
 
 repositories {
     mavenCentral()
-    jcenter()
     if (isBuildSnapshot) {
         maven { url "https://s01.oss.sonatype.org/content/repositories/snapshots/" }
     }

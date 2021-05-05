@@ -1,27 +1,29 @@
 package io.kestra.plugin.kubernetes;
 
-import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodBuilder;
+import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
-import io.fabric8.kubernetes.client.dsl.LogWatch;
 import io.fabric8.kubernetes.client.dsl.PodResource;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-import lombok.extern.slf4j.Slf4j;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.PodStatus;
 import io.kestra.plugin.kubernetes.services.InstanceService;
-import io.kestra.plugin.kubernetes.services.LoggingOutputStream;
+import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.watchers.PodWatcher;
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
-import org.slf4j.event.Level;
 
 import java.time.Duration;
 import java.util.Map;
@@ -118,6 +120,7 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
 
             // create the job
             Pod pod = createPod(runContext, client, namespace);
+            PodLogService podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class));
 
             try {
                 try (Watch podWatch = PodService.podRef(client, namespace, pod).watch(listOptions(), new PodWatcher(logger))) {
@@ -129,26 +132,24 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
                     }
 
                     // watch log
-                    try (LogWatch podLogs = PodService.podRef(client, namespace, pod)
-                        .tailingLines(1000)
-                        .watchLog(new LoggingOutputStream(logger, Level.INFO, null));
-                    ) {
-                        // wait until completion of the pods
-                        Pod ended = PodService.waitForCompletion(client, namespace, pod, this.waitRunning);
+                    podLogService.watch(PodService.podRef(client, namespace, pod), logger);
 
-                        PodService.handleEnd(ended);
-                        delete(client, logger, namespace, pod);
+                    // wait until completion of the pods
+                    Pod ended = PodService.waitForCompletion(client, namespace, pod, this.waitRunning);
 
-                        podWatch.close();
-                        podLogs.close();
+                    PodService.handleEnd(ended);
+                    delete(client, logger, namespace, pod);
 
-                        return Output.builder()
-                            .metadata(Metadata.from(ended.getMetadata()))
-                            .status(PodStatus.from(ended.getStatus()))
-                            .build();
-                    }
+                    podWatch.close();
+                    podLogService.close();
+
+                    return Output.builder()
+                        .metadata(Metadata.from(ended.getMetadata()))
+                        .status(PodStatus.from(ended.getStatus()))
+                        .build();
                 }
             } catch (Exception e) {
+                podLogService.close();
                 delete(client, logger, namespace, pod);
                 throw e;
             }

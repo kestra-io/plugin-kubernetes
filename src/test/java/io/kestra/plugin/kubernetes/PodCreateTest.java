@@ -65,7 +65,7 @@ class PodCreateTest {
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c'",
-                "    - 'for i in {1..10}; do echo $i; {{ inputs.command }} 0.1; done'",
+                "    - 'for i in {1..10}; do echo $i; {{ inputs.command }} 0.1; done; >&2 echo \"error\"'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -81,9 +81,10 @@ class PodCreateTest {
         Thread.sleep(500);
 
         assertThat(runOutput.getMetadata().getName(), containsString(((Map<String, String>) runContext.getVariables().get("taskrun")).get("id").toLowerCase()));
-        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(11L));
-        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).skip(9).findFirst().get().getMessage(), is("10"));
-        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).skip(10).findFirst().get().getMessage(), containsString("is deleted"));
+        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(12L));
+        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("10")).count(), is(1L));
+        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().contains("is deleted")).count(), is(1L));
+        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("error")).count(), is(1L));
     }
 
     @Test
