@@ -40,9 +40,9 @@ abstract public class PodService {
         }
     }
 
-    public static Pod waitForCompletion(KubernetesClient client, Logger logger, String namespace, Pod job, Duration waitRunning) throws InterruptedException {
+    public static Pod waitForCompletion(KubernetesClient client, Logger logger, String namespace, Pod pod, Duration waitRunning) throws InterruptedException {
         try {
-            return podRef(client, namespace, job)
+            return podRef(client, namespace, pod)
                 .waitUntilCondition(
                     j -> j == null || j.getStatus() == null || (!j.getStatus().getPhase().equals("Running") && !j.getStatus().getPhase().equals("Pending")),
                     waitRunning.toSeconds(),
@@ -50,8 +50,19 @@ abstract public class PodService {
                 );
         } catch (KubernetesClientException e) {
             if (e.getCause() instanceof WatcherException && e.getCause().getMessage().contains("too old resource version")) {
-                logger.warn("Receive old version, trying to wait more", e);
-                return PodService.waitForCompletion(client, logger, namespace, job, waitRunning);
+
+                PodResource<Pod> refreshPod = client.pods()
+                    .inNamespace(namespace)
+                    .withName(pod.getMetadata().getName());
+
+                if (refreshPod.get() != null) {
+                    logger.warn("Receive old version, refreshing and trying to wait more", e);
+
+                    pod = refreshPod.get();
+                    return PodService.waitForCompletion(client, logger, namespace, pod, waitRunning);
+                } else {
+                    logger.warn("Unable to refresh pods, no pods was found, the pod is deleted!", e);
+                }
             }
 
             throw e;
