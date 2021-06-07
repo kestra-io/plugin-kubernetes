@@ -37,7 +37,7 @@ public class PodLogService implements AutoCloseable {
                     if (!started.get()) {
                         started.set(true);
                     } else {
-                        logger.trace("No log for since '{}', reconnecting", outputStream.getLastTimestamp().toString());
+                        logger.trace("No log for since '{}', reconnecting", outputStream.getLastTimestamp() == null ? outputStream.getLastTimestamp().toString() : "unknown");
                     }
 
                     if (podLogs != null) {

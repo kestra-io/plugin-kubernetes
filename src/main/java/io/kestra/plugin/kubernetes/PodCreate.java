@@ -110,7 +110,7 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
     )
     @NotNull
     @Builder.Default
-    private final Boolean resume = false;
+    private final Boolean resume = true;
 
     @Override
     public PodCreate.Output run(RunContext runContext) throws Exception {
