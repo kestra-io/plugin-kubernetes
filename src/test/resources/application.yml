@@ -1,3 +1,7 @@
 kestra:
   queue:
     type: memory
+  storage:
+    type: local
+    local:
+      base-path: /tmp/unittest

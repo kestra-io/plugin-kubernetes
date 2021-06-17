@@ -1,6 +1,6 @@
 package io.kestra.plugin.kubernetes.watchers;
 
-import io.fabric8.kubernetes.api.model.batch.Job;
+import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.client.WatcherException;
 import org.slf4j.Logger;
 

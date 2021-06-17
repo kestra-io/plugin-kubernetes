@@ -1,6 +1,6 @@
 package io.kestra.plugin.kubernetes.models;
 
-import io.fabric8.kubernetes.api.model.batch.JobCondition;
+import io.fabric8.kubernetes.api.model.batch.v1.JobCondition;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -19,7 +19,7 @@ public class JobStatus {
     private final Integer succeeded;
     private final Map<String, Object> additionalProperties;
 
-    public static JobStatus from(io.fabric8.kubernetes.api.model.batch.JobStatus jobStatus) {
+    public static JobStatus from(io.fabric8.kubernetes.api.model.batch.v1.JobStatus jobStatus) {
         JobStatusBuilder builder = JobStatus.builder();
 
         builder.active(jobStatus.getActive());
