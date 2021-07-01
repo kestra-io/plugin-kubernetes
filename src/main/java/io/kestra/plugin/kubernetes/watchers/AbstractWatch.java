@@ -1,6 +1,6 @@
 package io.kestra.plugin.kubernetes.watchers;
 
-import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.WatcherException;
 import org.slf4j.Logger;
 
 abstract public class AbstractWatch<T> implements io.fabric8.kubernetes.client.Watcher<T> {
@@ -14,8 +14,12 @@ abstract public class AbstractWatch<T> implements io.fabric8.kubernetes.client.W
         logger.debug("Received action '{}' on [{}]", action, this.logContext(resource));
     }
 
-    public void onClose(KubernetesClientException e) {
+    public void onClose() {
         logger.debug("Received close on [Type: {}]", this.getClass().getSimpleName());
+    }
+
+    public void onClose(WatcherException e) {
+        logger.debug("Received close on [Type: {}] with exception", this.getClass().getSimpleName());
 
         if (e != null) {
             logger.error(e.getMessage(), e);
