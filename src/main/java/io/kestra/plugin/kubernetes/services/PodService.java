@@ -62,9 +62,9 @@ abstract public class PodService {
                         logger.warn("Unable to refresh pods, no pods was found, the pod is deleted!", e);
                         throw e;
                     }
+                } else {
+                    throw e;
                 }
-
-                throw e;
             }
         }
 

@@ -33,11 +33,13 @@ public class PodLogService implements AutoCloseable {
 
         ScheduledFuture<?> scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
             () -> {
-                if (!started.get() || outputStream.getLastTimestamp() == null || outputStream.getLastTimestamp().isBefore(Instant.now().minus(Duration.ofMinutes(10)))) {
+                Instant lastTimestamp = outputStream.getLastTimestamp() == null ? null : Instant.from(outputStream.getLastTimestamp());
+
+                if (!started.get() || lastTimestamp == null || lastTimestamp.isBefore(Instant.now().minus(Duration.ofMinutes(10)))) {
                     if (!started.get()) {
                         started.set(true);
                     } else {
-                        logger.trace("No log for since '{}', reconnecting", outputStream.getLastTimestamp() == null ? outputStream.getLastTimestamp().toString() : "unknown");
+                        logger.trace("No log for since '{}', reconnecting", lastTimestamp == null ? "uknown" : lastTimestamp.toString());
                     }
 
                     if (podLogs != null) {
@@ -46,8 +48,8 @@ public class PodLogService implements AutoCloseable {
 
                     podLogs = pod
                         .usingTimestamps()
-                        .sinceTime(outputStream.getLastTimestamp() != null ?
-                            outputStream.getLastTimestamp().plusSeconds(1).toString() :
+                        .sinceTime(lastTimestamp != null ?
+                            lastTimestamp.plusSeconds(1).toString() :
                             null
                         )
                         .watchLog(outputStream);
