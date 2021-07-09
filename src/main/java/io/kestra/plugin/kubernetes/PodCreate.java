@@ -123,22 +123,22 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
             PodLogService podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class));
 
             try {
-                try (Watch podWatch = PodService.podRef(client, namespace, pod).watch(listOptions(), new PodWatcher(logger))) {
+                try (Watch podWatch = PodService.podRef(client, pod).watch(listOptions(), new PodWatcher(logger))) {
                     // wait for pods ready
-                    pod = PodService.waitForPodReady(client, namespace, pod, this.waitUntilRunning);
+                    pod = PodService.waitForPodReady(client, pod, this.waitUntilRunning);
 
                     if (pod.getStatus() != null && pod.getStatus().getPhase().equals("Failed")) {
                         throw PodService.failedMessage(pod);
                     }
 
                     // watch log
-                    podLogService.watch(PodService.podRef(client, namespace, pod), logger);
+                    podLogService.watch(PodService.podRef(client, pod), logger);
 
                     // wait until completion of the pods
-                    Pod ended = PodService.waitForCompletion(client, logger, namespace, pod, this.waitRunning);
+                    Pod ended = PodService.waitForCompletion(client, logger, pod, this.waitRunning);
 
                     PodService.handleEnd(ended);
-                    delete(client, logger, namespace, pod);
+                    delete(client, logger, pod);
 
                     podWatch.close();
                     podLogService.close();
@@ -150,7 +150,7 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
                 }
             } catch (Exception e) {
                 podLogService.close();
-                delete(client, logger, namespace, pod);
+                delete(client, logger, pod);
                 throw e;
             }
         }
@@ -191,9 +191,9 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
             );
     }
 
-    private void delete(KubernetesClient client, Logger logger, String namespace, Pod pod) {
+    private void delete(KubernetesClient client, Logger logger, Pod pod) {
         if (delete) {
-            PodService.podRef(client, namespace, pod).delete();
+            PodService.podRef(client, pod).delete();
             logger.info("Pod '{}' is deleted ", pod.getMetadata().getName());
         }
     }

@@ -112,16 +112,16 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
                     Pod pod = JobService.findPod(client, namespace, job);
 
                     // watch for pods
-                    try (Watch podWatch = PodService.podRef(client, namespace, pod).watch(listOptions(), new PodWatcher(logger))) {
+                    try (Watch podWatch = PodService.podRef(client, pod).watch(listOptions(), new PodWatcher(logger))) {
                         // wait for pods ready
-                        pod = PodService.waitForPodReady(client, namespace, pod, this.waitUntilRunning);
+                        pod = PodService.waitForPodReady(client, pod, this.waitUntilRunning);
 
                         if (pod.getStatus() != null && pod.getStatus().getPhase().equals("Failed")) {
                             throw PodService.failedMessage(pod);
                         }
 
                         // watch log
-                        podLogService.watch(PodService.podRef(client, namespace, pod), logger);
+                        podLogService.watch(PodService.podRef(client, pod), logger);
 
                         // wait until completion of the jobs
                         Job ended = JobService.waitForCompletion(client, namespace, job, this.waitRunning);

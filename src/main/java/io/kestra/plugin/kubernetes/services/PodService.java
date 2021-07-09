@@ -4,7 +4,6 @@ import io.fabric8.kubernetes.api.model.ContainerStatus;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
-import io.fabric8.kubernetes.client.WatcherException;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import org.slf4j.Logger;
 
@@ -13,8 +12,8 @@ import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
 abstract public class PodService {
-    public static Pod waitForPodReady(KubernetesClient client, String namespace, Pod pod, Duration waitUntilRunning) throws InterruptedException {
-        return PodService.podRef(client, namespace, pod)
+    public static Pod waitForPodReady(KubernetesClient client, Pod pod, Duration waitUntilRunning) {
+        return PodService.podRef(client, pod)
             .waitUntilCondition(
                 j -> j.getStatus() == null ||
                     j.getStatus().getPhase().equals("Failed") ||
@@ -40,9 +39,9 @@ abstract public class PodService {
         }
     }
 
-    public static Pod waitForCompletion(KubernetesClient client, Logger logger, String namespace, Pod pod, Duration waitRunning) throws InterruptedException {
+    public static Pod waitForCompletion(KubernetesClient client, Logger logger, Pod pod, Duration waitRunning) throws InterruptedException {
         Pod ended = null;
-        PodResource<Pod> podResource = podRef(client, namespace, pod);
+        PodResource<Pod> podResource = podRef(client, pod);
 
         while (ended == null) {
             try {
@@ -53,16 +52,12 @@ abstract public class PodService {
                         TimeUnit.SECONDS
                     );
             } catch (KubernetesClientException e) {
-                if (e.getCause() instanceof WatcherException && e.getCause().getMessage().contains("too old resource version")) {
-                    podResource = podRef(client, namespace, pod);
+                podResource = podRef(client, pod);
 
-                    if (podResource.get() != null) {
-                        logger.debug("Receive old version, refreshing and trying to wait more", e);
-                    } else {
-                        logger.warn("Unable to refresh pods, no pods was found, the pod is deleted!", e);
-                        throw e;
-                    }
+                if (podResource.get() != null) {
+                    logger.debug("Pod is still alive, refreshing and trying to wait more", e);
                 } else {
+                    logger.warn("Unable to refresh pods, no pods was found!", e);
                     throw e;
                 }
             }
@@ -78,8 +73,7 @@ abstract public class PodService {
 
         return (pod.getStatus().getContainerStatuses() == null ? new ArrayList<ContainerStatus>() : pod.getStatus().getContainerStatuses())
             .stream()
-            .filter(containerStatus -> containerStatus.getState() != null && containerStatus.getState()
-                .getTerminated() != null)
+            .filter(containerStatus -> containerStatus.getState() != null && containerStatus.getState().getTerminated() != null)
             .map(containerStatus -> containerStatus.getState().getTerminated())
             .findFirst()
             .map(containerStateTerminated -> new IllegalStateException(
@@ -90,9 +84,9 @@ abstract public class PodService {
             .orElse(new IllegalStateException("Pods terminated without any containers status !"));
     }
 
-    public static PodResource<Pod> podRef(KubernetesClient client, String namespace, Pod pod) {
+    public static PodResource<Pod> podRef(KubernetesClient client, Pod pod) {
         return client.pods()
-            .inNamespace(namespace)
+            .inNamespace(pod.getMetadata().getNamespace())
             .withName(pod.getMetadata().getName());
     }
 }
