@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.utils.MapUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -23,7 +24,7 @@ abstract public class InstanceService {
     }
 
     public static <T> T fromMap(Class<T> cls, RunContext runContext, Map<String, Object> map, Map<String, Object> defaults) throws IOException, IllegalVariableEvaluationException {
-        return fromMap(cls, runContext, merge(map, defaults));
+        return fromMap(cls, runContext, MapUtils.merge(map, defaults));
     }
 
     @SuppressWarnings("unchecked")
@@ -81,34 +82,5 @@ abstract public class InstanceService {
         }
 
         return value;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> merge(Map<String, Object> map, Map<String, Object> defaults) {
-        Map<String, Object> copy = map != null ? new HashMap<>(map) : new HashMap<>();
-
-        for(String key : defaults.keySet()) {
-            Object value2 = defaults.get(key);
-            if (copy.containsKey(key)) {
-                Object value1 = copy.get(key);
-                if (value1 instanceof Map && value2 instanceof Map)
-                    merge((Map<String, Object>) value1, (Map<String, Object>) value2);
-                else if (value1 instanceof List && value2 instanceof List)
-                    copy.put(key, merge((List<?>) value1, (List<?>) value2));
-                else copy.put(key, value2);
-            } else copy.put(key, value2);
-        }
-
-        return copy;
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes", "SuspiciousMethodCalls"})
-    private static List merge(List list, List defaults) {
-        List<?> copy = new ArrayList<>(defaults);
-
-        copy.removeAll(list);
-        copy.addAll(list);
-
-        return copy;
     }
 }

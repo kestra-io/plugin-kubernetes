@@ -2,7 +2,9 @@ package io.kestra.plugin.kubernetes;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.io.CharStreams;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.Await;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
@@ -19,8 +21,11 @@ import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.utils.TestsUtils;
 import org.slf4j.event.Level;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -47,6 +52,9 @@ class PodCreateTest {
     @Named(QueueFactoryInterface.WORKERTASKLOG_NAMED)
     private QueueInterface<LogEntry> workerTaskLogQueue;
 
+    @Inject
+    private StorageInterface storageInterface;
+
     @SuppressWarnings("unchecked")
     @Test
     void run() throws Exception {
@@ -56,7 +64,7 @@ class PodCreateTest {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
-            .namespace("test")
+            .namespace("default")
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -95,7 +103,7 @@ class PodCreateTest {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
-            .namespace("test")
+            .namespace("default")
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -129,7 +137,7 @@ class PodCreateTest {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
-            .namespace("test")
+            .namespace("default")
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -155,7 +163,6 @@ class PodCreateTest {
         assertThat(exception.getMessage(),  containsString("'Failed', exitcode '1'"));
     }
 
-    @SuppressWarnings("unchecked")
     @Test
     void resume() throws Exception {
         List<LogEntry> logs = new ArrayList<>();
@@ -164,7 +171,7 @@ class PodCreateTest {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
-            .namespace("test")
+            .namespace("default")
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -208,5 +215,61 @@ class PodCreateTest {
         task.run(finalRunContext);
 
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("10")).count(), greaterThan(0L));
+    }
+
+    @Test
+    void inputOutputFiles() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace("default")
+            .outputFiles(Arrays.asList("xml", "csv"))
+            .inputFiles(ImmutableMap.of(
+                "files/in/in.txt", "I'm here",
+                "main.sh", "sleep 1\n" +
+                    "echo '::{\"outputs\": {\"extract\":\"'$(cat files/in/in.txt)'\"}}::'\n" +
+                    "echo 1 >> {{ outputFiles.xml }}\n" +
+                    "echo 2 >> {{ outputFiles.csv }}\n" +
+                    "echo 3 >> {{ outputFiles.xml }}\n" +
+                    "sleep 1"
+            ))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  workingDir: /kestra/working-dir",
+                "  command: ",
+                "    - 'bash' ",
+                "    - 'main.sh'",
+                "restartPolicy: Never"
+            ))
+            .resume(true)
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of("command", "sleep"));
+
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
+        runContext = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
+
+        PodCreate.Output run = task.run(runContext);
+
+        assertThat(run.getVars().get("extract"), is("I'm here"));
+
+        InputStream get = storageInterface.get(run.getOutputFiles().get("xml"));
+
+        assertThat(
+            CharStreams.toString(new InputStreamReader(get)),
+            is("1\n3\n")
+        );
+
+        get = storageInterface.get(run.getOutputFiles().get("csv"));
+
+        assertThat(
+            CharStreams.toString(new InputStreamReader(get)),
+            is("2\n")
+        );
     }
 }

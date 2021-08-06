@@ -10,12 +10,29 @@ import org.slf4j.Logger;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 abstract public class PodService {
+    public static Pod waitForInitContainerRunning(KubernetesClient client, Pod pod, String container, Duration waitUntilRunning) {
+        return PodService.podRef(client, pod)
+            .waitUntilCondition(
+                j -> j == null ||
+                    j.getStatus() == null ||
+                    j.getStatus()
+                        .getInitContainerStatuses()
+                        .stream()
+                        .filter(containerStatus -> containerStatus.getName().equals(container))
+                        .anyMatch(containerStatus -> containerStatus.getState().getRunning() != null),
+                waitUntilRunning.toSeconds(),
+                TimeUnit.SECONDS
+            );
+    }
+
     public static Pod waitForPodReady(KubernetesClient client, Pod pod, Duration waitUntilRunning) {
         return PodService.podRef(client, pod)
             .waitUntilCondition(
-                j -> j.getStatus() == null ||
+                j -> j == null ||
+                    j.getStatus() == null ||
                     j.getStatus().getPhase().equals("Failed") ||
                     j.getStatus()
                         .getConditions()
@@ -39,7 +56,33 @@ abstract public class PodService {
         }
     }
 
-    public static Pod waitForCompletion(KubernetesClient client, Logger logger, Pod pod, Duration waitRunning) throws InterruptedException {
+    public static Pod waitForCompletionExcept(KubernetesClient client, Logger logger, Pod pod, Duration waitRunning, String except) {
+        return waitForCompletion(
+            client,
+            logger,
+            pod,
+            waitRunning,
+            j -> j == null ||
+                j.getStatus() == null ||
+                j.getStatus()
+                    .getContainerStatuses()
+                    .stream()
+                    .filter(containerStatus -> !containerStatus.getName().equals(except))
+                    .allMatch(containerStatus -> containerStatus.getState().getTerminated() != null)
+        );
+    }
+
+    public static Pod waitForCompletion(KubernetesClient client, Logger logger, Pod pod, Duration waitRunning) {
+        return waitForCompletion(
+            client,
+            logger,
+            pod,
+            waitRunning,
+            j -> j == null || j.getStatus() == null || (!j.getStatus().getPhase().equals("Running") && !j.getStatus().getPhase().equals("Pending"))
+        );
+    }
+
+    public static Pod waitForCompletion(KubernetesClient client, Logger logger, Pod pod, Duration waitRunning, Predicate<Pod> condition) {
         Pod ended = null;
         PodResource<Pod> podResource = podRef(client, pod);
 
@@ -47,7 +90,7 @@ abstract public class PodService {
             try {
                 ended = podResource
                     .waitUntilCondition(
-                        j -> j == null || j.getStatus() == null || (!j.getStatus().getPhase().equals("Running") && !j.getStatus().getPhase().equals("Pending")),
+                        condition,
                         waitRunning.toSeconds(),
                         TimeUnit.SECONDS
                     );

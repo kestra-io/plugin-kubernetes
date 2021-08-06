@@ -1,9 +1,6 @@
 package io.kestra.plugin.kubernetes;
 
-import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodBuilder;
-import io.fabric8.kubernetes.api.model.PodSpec;
+import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.dsl.PodResource;
@@ -25,6 +22,8 @@ import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.Map;
 import javax.validation.constraints.NotNull;
@@ -59,7 +58,7 @@ import javax.validation.constraints.NotNull;
     }
 )
 @Slf4j
-public class PodCreate extends AbstractConnection implements RunnableTask<PodCreate.Output> {
+public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Output> {
     @Schema(
         title = "The namespace where the pod will be created"
     )
@@ -114,6 +113,8 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
 
     @Override
     public PodCreate.Output run(RunContext runContext) throws Exception {
+        super.init(runContext);
+
         try (KubernetesClient client = this.client(runContext)) {
             String namespace = runContext.render(this.namespace);
             Logger logger = runContext.logger();
@@ -124,6 +125,12 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
 
             try {
                 try (Watch podWatch = PodService.podRef(client, pod).watch(listOptions(), new PodWatcher(logger))) {
+                    // wait for init container
+                    if (this.inputFiles != null && this.outputFiles != null) {
+                        pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, this.waitUntilRunning);
+                        this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger);
+                    }
+
                     // wait for pods ready
                     pod = PodService.waitForPodReady(client, pod, this.waitUntilRunning);
 
@@ -132,10 +139,15 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
                     }
 
                     // watch log
-                    podLogService.watch(PodService.podRef(client, pod), logger);
+                    podLogService.watch(client, pod, logger, runContext);
 
                     // wait until completion of the pods
-                    Pod ended = PodService.waitForCompletion(client, logger, pod, this.waitRunning);
+                    Pod ended;
+                        if (this.outputFiles != null) {
+                        ended = PodService.waitForCompletionExcept(client, logger, pod, this.waitRunning, SIDECAR_FILES_CONTAINER_NAME);
+                    } else {
+                        ended = PodService.waitForCompletion(client, logger, pod, this.waitRunning);
+                    }
 
                     PodService.handleEnd(ended);
                     delete(client, logger, pod);
@@ -143,9 +155,18 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
                     podWatch.close();
                     podLogService.close();
 
-                    return Output.builder()
+                    Output.OutputBuilder output = Output.builder()
                         .metadata(Metadata.from(ended.getMetadata()))
                         .status(PodStatus.from(ended.getStatus()))
+                        .vars(podLogService.getOutputStream().getOutputs());
+
+                    if (this.outputFiles != null) {
+                        output.outputFiles(
+                            this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger)
+                        );
+                    }
+
+                    return output
                         .build();
                 }
             } catch (Exception e) {
@@ -156,13 +177,22 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
         }
     }
 
-    private Pod createPod(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException {
+    private Pod createPod(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException, URISyntaxException {
         ObjectMeta metadata = InstanceService.fromMap(
             ObjectMeta.class,
             runContext,
             this.metadata,
             metadata(runContext)
         );
+
+        PodSpec spec = InstanceService.fromMap(
+            PodSpec.class,
+            runContext,
+            this.spec
+        );
+
+
+        this.handleFiles(runContext, metadata, spec);
 
         if (this.resume) {
             PodResource<Pod> resumePod = client.pods()
@@ -181,12 +211,7 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
             .inNamespace(namespace)
             .create(new PodBuilder()
                 .withMetadata(metadata)
-                .withSpec(InstanceService.fromMap(
-                    PodSpec.class,
-                    runContext,
-                    this.spec,
-                    metadata(runContext)
-                ))
+                .withSpec(spec)
                 .build()
             );
     }
@@ -210,5 +235,16 @@ public class PodCreate extends AbstractConnection implements RunnableTask<PodCre
             title = "The full pod status"
         )
         private final PodStatus status;
+
+        @Schema(
+            title = "The output files uri in Kestra internal storage"
+        )
+        @PluginProperty(additionalProperties = URI.class)
+        private final Map<String, URI> outputFiles;
+
+        @Schema(
+            title = "The value extract from output of the commands"
+        )
+        private final Map<String, Object> vars;
     }
 }

@@ -51,7 +51,7 @@ class JobCreateTest {
         JobCreate task = JobCreate.builder()
             .id(JobCreate.class.getSimpleName())
             .type(JobCreate.class.getName())
-            .namespace("test")
+            .namespace("default")
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "template:",
@@ -92,7 +92,7 @@ class JobCreateTest {
         JobCreate task = JobCreate.builder()
             .id(JobCreate.class.getSimpleName())
             .type(JobCreate.class.getName())
-            .namespace("test")
+            .namespace("default")
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "template:",

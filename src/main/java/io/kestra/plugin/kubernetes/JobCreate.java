@@ -27,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.event.Level;
 
+import java.net.URISyntaxException;
 import java.util.Map;
 import javax.validation.constraints.NotNull;
 
@@ -105,7 +106,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
                 // watch for jobs
                 try (
                     Watch jobWatch = JobService.jobRef(client, namespace, job).watch(listOptions(), new JobWatcher(logger));
-                    LogWatch jobLogs = JobService.jobRef(client, namespace, job).watchLog(new LoggingOutputStream(logger, Level.DEBUG, "Job Log:"));
+                    LogWatch jobLogs = JobService.jobRef(client, namespace, job).watchLog(new LoggingOutputStream(logger, Level.DEBUG, "Job Log:", runContext));
                 ) {
                     // wait until pod is created
                     JobService.waitForPodCreated(client, namespace, job, this.waitUntilRunning);
@@ -121,7 +122,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
                         }
 
                         // watch log
-                        podLogService.watch(PodService.podRef(client, pod), logger);
+                        podLogService.watch(client, pod, logger, runContext);
 
                         // wait until completion of the jobs
                         Job ended = JobService.waitForCompletion(client, namespace, job, this.waitRunning);
@@ -151,7 +152,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
         }
     }
 
-    private Job createJob(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException {
+    private Job createJob(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException, URISyntaxException {
         return client.batch()
             .v1()
             .jobs()

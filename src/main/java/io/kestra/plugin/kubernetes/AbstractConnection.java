@@ -15,6 +15,8 @@ import io.kestra.core.utils.Slugify;
 import io.kestra.plugin.kubernetes.models.Connection;
 import io.kestra.plugin.kubernetes.services.ClientService;
 
+import java.io.IOException;
+import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.Map;
 import javax.validation.constraints.NotNull;
@@ -74,7 +76,7 @@ abstract public class AbstractConnection extends Task {
     }
 
     @SuppressWarnings("unchecked")
-    protected static Map<String, Object> metadata(RunContext runContext) {
+    protected Map<String, Object> metadata(RunContext runContext) throws IOException, IllegalVariableEvaluationException, URISyntaxException {
         Map<String, String> flow = (Map<String, String>) runContext.getVariables().get("flow");
         Map<String, String> task = (Map<String, String>) runContext.getVariables().get("task");
         Map<String, String> execution = (Map<String, String>) runContext.getVariables().get("execution");
