@@ -152,7 +152,7 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
         }
     }
 
-    private Job createJob(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException, URISyntaxException {
+    private Job createJob(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException {
         return client.batch()
             .v1()
             .jobs()

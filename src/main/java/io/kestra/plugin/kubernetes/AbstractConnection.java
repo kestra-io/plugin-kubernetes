@@ -75,8 +75,18 @@ abstract public class AbstractConnection extends Task {
         return client;
     }
 
+    private static String normalizedValue(String name) {
+        name = StringUtils.stripEnd(name, "-");
+
+        if (name.length() > 63) {
+            name = name.substring(0, 63);
+        }
+
+        return name;
+    }
+
     @SuppressWarnings("unchecked")
-    protected Map<String, Object> metadata(RunContext runContext) throws IOException, IllegalVariableEvaluationException, URISyntaxException {
+    protected Map<String, Object> metadata(RunContext runContext) {
         Map<String, String> flow = (Map<String, String>) runContext.getVariables().get("flow");
         Map<String, String> task = (Map<String, String>) runContext.getVariables().get("task");
         Map<String, String> execution = (Map<String, String>) runContext.getVariables().get("execution");
@@ -89,20 +99,14 @@ abstract public class AbstractConnection extends Task {
             task.get("id")
         ));
 
-        if (name.length() > 63) {
-            name = name.substring(0, 63);
-        }
-
-        name = StringUtils.stripEnd(name, "-");
-
         return ImmutableMap.of(
-            "name", name,
+            "name", normalizedValue(name),
             "labels", ImmutableMap.of(
-                "flow.kestra.io/id", flow.get("id"),
-                "flow.kestra.io/namespace", flow.get("namespace"),
-                "task.kestra.io/id", task.get("id"),
-                "execution.kestra.io/id", execution.get("id"),
-                "taskrun.kestra.io/id", taskrun.get("id")
+                "flow.kestra.io/id", normalizedValue(flow.get("id")),
+                "flow.kestra.io/namespace", normalizedValue(flow.get("namespace")),
+                "task.kestra.io/id", normalizedValue(task.get("id")),
+                "execution.kestra.io/id", normalizedValue(execution.get("id")),
+                "taskrun.kestra.io/id", normalizedValue(taskrun.get("id"))
             )
         );
     }
