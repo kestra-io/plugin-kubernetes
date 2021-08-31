@@ -76,11 +76,13 @@ abstract public class AbstractConnection extends Task {
     }
 
     private static String normalizedValue(String name) {
-        name = StringUtils.stripEnd(name, "-");
-
         if (name.length() > 63) {
             name = name.substring(0, 63);
         }
+
+        name = StringUtils.stripEnd(name, "-");
+        name = StringUtils.stripEnd(name, ".");
+        name = StringUtils.stripEnd(name, "_");
 
         return name;
     }
