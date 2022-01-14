@@ -143,14 +143,13 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                     // wait until completion of the pods
                     Pod ended;
-                        if (this.outputFiles != null) {
+                    if (this.outputFiles != null) {
                         ended = PodService.waitForCompletionExcept(client, logger, pod, this.waitRunning, SIDECAR_FILES_CONTAINER_NAME);
                     } else {
                         ended = PodService.waitForCompletion(client, logger, pod, this.waitRunning);
                     }
 
                     PodService.handleEnd(ended);
-                    delete(client, logger, pod);
 
                     podWatch.close();
                     podLogService.close();
@@ -165,6 +164,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                             this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger)
                         );
                     }
+
+                    delete(client, logger, pod);
 
                     return output
                         .build();
