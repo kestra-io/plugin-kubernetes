@@ -171,9 +171,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         .build();
                 }
             } catch (Exception e) {
-                podLogService.close();
                 delete(client, logger, pod);
                 throw e;
+            } finally {
+                podLogService.close();
             }
         }
     }

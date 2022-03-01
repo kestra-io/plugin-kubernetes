@@ -145,9 +145,10 @@ public class JobCreate extends AbstractConnection implements RunnableTask<JobCre
                     }
                 }
             } catch (Exception e) {
-                podLogService.close();
                 delete(client, logger, namespace, job);
                 throw e;
+            } finally {
+                podLogService.close();
             }
         }
     }

@@ -27,6 +27,7 @@ public class PodLogService implements AutoCloseable {
     private ScheduledExecutorService scheduledExecutor;
     @Getter
     private LoggingOutputStream outputStream;
+    private Thread thread;
 
     public PodLogService(ThreadMainFactoryBuilder threadFactoryBuilder) {
         this.threadFactoryBuilder = threadFactoryBuilder;
@@ -77,7 +78,7 @@ public class PodLogService implements AutoCloseable {
         );
 
         // look at exception on the main thread
-        Thread thread = new Thread(
+        thread = new Thread(
             () -> {
                 Await.until(scheduledFuture::isDone);
 
@@ -97,6 +98,11 @@ public class PodLogService implements AutoCloseable {
         if (outputStream != null) {
             outputStream.flush();
             outputStream.close();
+        }
+
+        if (thread != null) {
+            thread.interrupt();
+            thread = null;
         }
 
         if (podLogs != null) {
