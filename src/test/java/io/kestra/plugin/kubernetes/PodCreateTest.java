@@ -9,6 +9,7 @@ import io.kestra.core.utils.Await;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.executions.LogEntry;
@@ -217,6 +218,7 @@ class PodCreateTest {
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("10")).count(), greaterThan(0L));
     }
 
+    @Disabled("Corrupted TAR archive. waiting for a new release")
     @Test
     void inputOutputFiles() throws Exception {
         PodCreate task = PodCreate.builder()
