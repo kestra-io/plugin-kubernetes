@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.CharStreams;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.kestra.core.runners.WorkerTask;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.Await;
 import io.micronaut.context.ApplicationContext;
@@ -83,7 +84,7 @@ class PodCreateTest {
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
-        runContext = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
+        runContext = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         PodCreate.Output runOutput = task.run(runContext);
 
@@ -121,7 +122,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
-        RunContext runContextFinal = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
+        RunContext runContextFinal = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         IllegalStateException exception = assertThrows(
             IllegalStateException.class,
@@ -155,7 +156,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
-        RunContext runContextFinal = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
+        RunContext runContextFinal = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         IllegalStateException exception = assertThrows(
             IllegalStateException.class,
@@ -191,7 +192,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
 
-        runContext = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
+        runContext = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         RunContext finalRunContext = runContext;
 
@@ -254,7 +255,7 @@ class PodCreateTest {
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
-        runContext = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
+        runContext = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         PodCreate.Output run = task.run(runContext);
 

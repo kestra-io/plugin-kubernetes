@@ -3,6 +3,7 @@ package io.kestra.plugin.kubernetes;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.kestra.core.runners.WorkerTask;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import org.junit.jupiter.api.Test;
@@ -71,7 +72,7 @@ class JobCreateTest {
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
-        runContext = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
+        runContext = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         JobCreate.Output runOutput = task.run(runContext);
 
@@ -112,7 +113,7 @@ class JobCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
-        RunContext runContextFinal = runContext.forWorker(applicationContext, TestsUtils.mockTaskRun(flow, execution, task));
+        RunContext runContextFinal = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         IllegalStateException exception = assertThrows(
             IllegalStateException.class,
