@@ -54,7 +54,7 @@ public class PodLogService implements AutoCloseable {
                         podLogs = new ArrayList<>();
                     }
 
-                    PodResource<Pod> podResource = PodService.podRef(client, pod);
+                    PodResource podResource = PodService.podRef(client, pod);
 
                     pod
                         .getSpec()
@@ -80,7 +80,15 @@ public class PodLogService implements AutoCloseable {
         // look at exception on the main thread
         thread = new Thread(
             () -> {
-                Await.until(scheduledFuture::isDone);
+                try {
+                    Await.until(scheduledFuture::isDone);
+                } catch (RuntimeException e) {
+                    if (!e.getMessage().contains("Can't sleep")) {
+                        log.error(this.getClass().getName() + " exception", e);
+                    } else {
+                        log.debug(this.getClass().getName() + " exception", e);
+                    }
+                }
 
                 try {
                     scheduledFuture.get();

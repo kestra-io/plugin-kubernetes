@@ -84,7 +84,7 @@ abstract public class PodService {
 
     public static Pod waitForCompletion(KubernetesClient client, Logger logger, Pod pod, Duration waitRunning, Predicate<Pod> condition) {
         Pod ended = null;
-        PodResource<Pod> podResource = podRef(client, pod);
+        PodResource podResource = podRef(client, pod);
 
         while (ended == null) {
             try {
@@ -127,7 +127,7 @@ abstract public class PodService {
             .orElse(new IllegalStateException("Pods terminated without any containers status !"));
     }
 
-    public static PodResource<Pod> podRef(KubernetesClient client, Pod pod) {
+    public static PodResource podRef(KubernetesClient client, Pod pod) {
         return client.pods()
             .inNamespace(pod.getMetadata().getNamespace())
             .withName(pod.getMetadata().getName());

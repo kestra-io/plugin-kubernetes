@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.ListOptions;
 import io.fabric8.kubernetes.api.model.ListOptionsBuilder;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClient;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -63,8 +64,8 @@ abstract public class AbstractConnection extends Task {
             .build();
     }
 
-    protected DefaultKubernetesClient client(RunContext runContext) throws IllegalVariableEvaluationException {
-        DefaultKubernetesClient client;
+    protected KubernetesClient client(RunContext runContext) throws IllegalVariableEvaluationException {
+        KubernetesClient client;
 
         if (this.connection != null) {
             client = ClientService.of(this.connection.toConfig(runContext));

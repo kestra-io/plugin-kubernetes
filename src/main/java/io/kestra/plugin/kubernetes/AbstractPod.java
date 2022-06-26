@@ -72,7 +72,7 @@ abstract public class AbstractPod extends AbstractConnection {
         return runContext.tempDir().resolve("working-dir");
     }
 
-    protected void uploadInputFiles(RunContext runContext, PodResource<Pod> podResource, Logger logger) throws IOException {
+    protected void uploadInputFiles(RunContext runContext, PodResource podResource, Logger logger) throws IOException {
         podResource
             .inContainer(INIT_FILES_CONTAINER_NAME)
             .dir("/kestra/working-dir")
@@ -81,7 +81,7 @@ abstract public class AbstractPod extends AbstractConnection {
         this.uploadMarker(runContext, podResource, logger, false);
     }
 
-    protected Map<String, URI> downloadOutputFiles(RunContext runContext, PodResource<Pod> podResource, Logger logger) throws Exception {
+    protected Map<String, URI> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger) throws Exception {
         podResource
             .inContainer(SIDECAR_FILES_CONTAINER_NAME)
             .dir("/kestra/working-dir/")
@@ -108,7 +108,7 @@ abstract public class AbstractPod extends AbstractConnection {
     }
 
     @SuppressWarnings("ResultOfMethodCallIgnored")
-    protected void uploadMarker(RunContext runContext, PodResource<Pod> podResource, Logger logger, boolean finished) throws IOException {
+    protected void uploadMarker(RunContext runContext, PodResource podResource, Logger logger, boolean finished) throws IOException {
         String s = finished ? "ended" : "ready";
 
         File marker = tempDir(runContext).resolve(s).toFile();
