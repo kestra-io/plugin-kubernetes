@@ -126,7 +126,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             try {
                 try (Watch podWatch = PodService.podRef(client, pod).watch(listOptions(), new PodWatcher(logger))) {
                     // wait for init container
-                    if (this.inputFiles != null && this.outputFiles != null) {
+                    if (this.inputFiles != null || this.outputFiles != null) {
                         pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, this.waitUntilRunning);
                         this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger);
                     }
@@ -211,11 +211,12 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
         return client.pods()
             .inNamespace(namespace)
-            .create(new PodBuilder()
+            .resource(new PodBuilder()
                 .withMetadata(metadata)
                 .withSpec(spec)
                 .build()
-            );
+            )
+            .create();
     }
 
     private void delete(KubernetesClient client, Logger logger, Pod pod) {

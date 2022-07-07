@@ -64,6 +64,8 @@ abstract public class AbstractPod extends AbstractConnection {
 
     @SuppressWarnings("ResultOfMethodCallIgnored")
     protected void init(RunContext runContext) throws IOException {
+        Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
+
         additionalVars.put("workingDir", "/kestra/working-dir");
         tempDir(runContext).toFile().mkdir();
     }
