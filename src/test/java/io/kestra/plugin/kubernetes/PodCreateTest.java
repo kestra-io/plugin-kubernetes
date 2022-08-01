@@ -219,7 +219,6 @@ class PodCreateTest {
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("10")).count(), greaterThan(0L));
     }
 
-    @Disabled("Corrupted TAR archive. waiting for a new release")
     @Test
     void inputOutputFiles() throws Exception {
         PodCreate task = PodCreate.builder()
