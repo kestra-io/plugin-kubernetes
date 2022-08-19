@@ -8,7 +8,7 @@ plugins {
     id 'signing'
     id "io.github.gradle-nexus.publish-plugin" version "1.1.0"
     id "com.github.ben-manes.versions" version "0.42.0"
-    id 'net.researchgate.release' version '3.0.0'
+    id 'net.researchgate.release' version '3.0.1'
 }
 
 def isBuildSnapshot = version.toString().endsWith("-SNAPSHOT")
@@ -89,7 +89,7 @@ dependencies {
     testImplementation "org.hamcrest:hamcrest-library:2.2"
 
     // plugins
-    testCompileOnly group: 'org.junit.jupiter', name: 'junit-jupiter-migrationsupport', version: '5.8.2'
+    testCompileOnly group: 'org.junit.jupiter', name: 'junit-jupiter-migrationsupport', version: '5.9.0'
 }
 
 /**********************************************************************************************************************\
