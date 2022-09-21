@@ -89,7 +89,7 @@ dependencies {
     testImplementation "org.hamcrest:hamcrest-library:2.2"
 
     // plugins
-    testCompileOnly group: 'org.junit.jupiter', name: 'junit-jupiter-migrationsupport', version: '5.9.0'
+    testCompileOnly group: 'org.junit.jupiter', name: 'junit-jupiter-migrationsupport', version: '5.9.1'
 }
 
 /**********************************************************************************************************************\
