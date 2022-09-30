@@ -53,7 +53,7 @@ abstract public class AbstractPod extends AbstractConnection {
         additionalProperties = String.class,
         dynamic = true
     )
-    protected Map<String, String> inputFiles;
+    protected Object inputFiles;
 
     @Builder.Default
     @Getter(AccessLevel.NONE)
@@ -143,10 +143,12 @@ abstract public class AbstractPod extends AbstractConnection {
         }
 
         if (this.inputFiles != null) {
+            Map<String, String> finalInputFiles = BashService.transformInputFiles(runContext, this.inputFiles);
+
             BashService.createInputFiles(
                 runContext,
                 tempDir(runContext),
-                this.inputFiles,
+                finalInputFiles,
                 additionalVars
             );
 
