@@ -23,7 +23,7 @@ jobs:
       # Kind cluster
       - name: Download and install kind
         run: |
-          curl -Lo ./kind "https://github.com/kubernetes-sigs/kind/releases/download/v0.14.0/kind-$(uname)-amd64"
+          curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.17.0/kind-linux-amd64"
           chmod +x ./kind
           kind create cluster
           curl -LO "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl"
@@ -106,7 +106,7 @@ jobs:
           fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
           username: GitHub Actions
           icon_emoji: ':github-actions:'
-          channel: '#git'
+          channel: 'C02DQ1A7JLR'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

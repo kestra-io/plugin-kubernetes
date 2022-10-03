@@ -99,7 +99,7 @@ public class Metadata {
         MetadataBuilder builder = Metadata.builder();
 
         builder.annotations(meta.getAnnotations());
-        builder.clusterName(meta.getClusterName());
+        builder.clusterName(meta.getName());
         builder.creationTimestamp(Instant.parse(meta.getCreationTimestamp()));
         builder.deletionGracePeriodSeconds(meta.getDeletionGracePeriodSeconds());
         builder.deletionTimestamp(meta.getDeletionTimestamp() != null ? Instant.parse(meta.getDeletionTimestamp()) : null);
