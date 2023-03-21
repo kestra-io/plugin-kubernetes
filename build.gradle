@@ -2,7 +2,7 @@ plugins {
     id 'java-library'
     id "idea"
     id "com.adarshr.test-logger" version "3.2.0"
-    id "com.github.johnrengelman.shadow" version "8.1.0"
+    id "com.github.johnrengelman.shadow" version "8.1.1"
     id 'ru.vyarus.java-lib' version '2.4.0'
     id 'ru.vyarus.github-info' version '1.5.0'
     id 'signing'
@@ -54,7 +54,7 @@ dependencies {
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
 
     // plugins
-    api 'io.fabric8:kubernetes-client:6.5.0'
+    api 'io.fabric8:kubernetes-client:6.5.1'
     api group: 'commons-codec', name: 'commons-codec', version: '1.15'
     api group: 'org.apache.commons', name: 'commons-compress', version: '1.22'
 }
