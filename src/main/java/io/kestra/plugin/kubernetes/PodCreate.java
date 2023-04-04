@@ -165,15 +165,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         );
                     }
 
-                    delete(client, logger, pod);
-
                     return output
                         .build();
                 }
-            } catch (Exception e) {
-                delete(client, logger, pod);
-                throw e;
             } finally {
+                delete(client, logger, pod);
                 podLogService.close();
             }
         }
@@ -224,7 +220,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             try {
                 PodService.podRef(client, pod).delete();
                 logger.info("Pod '{}' is deleted ", pod.getMetadata().getName());
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 log.warn("Unable to delete pod {}", pod.getFullResourceName(), e);
             }
         }
