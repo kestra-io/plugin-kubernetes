@@ -1,0 +1,48 @@
+package io.kestra.plugin.kubernetes;
+
+import io.kestra.core.models.executions.Execution;
+import io.kestra.core.models.flows.State;
+import io.kestra.core.repositories.LocalFlowRepositoryLoader;
+import io.kestra.core.runners.RunnerUtils;
+import io.kestra.runner.memory.MemoryRunner;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.TimeoutException;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
+
+@MicronautTest
+class ExampleRunnerTest {
+    @Inject
+    protected MemoryRunner runner;
+
+    @Inject
+    protected RunnerUtils runnerUtils;
+
+    @Inject
+    protected LocalFlowRepositoryLoader repositoryLoader;
+
+    @BeforeEach
+    protected void init() throws IOException, URISyntaxException {
+        repositoryLoader.load(Objects.requireNonNull(ExampleRunnerTest.class.getClassLoader().getResource("flows")));
+        this.runner.run();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void flow() throws TimeoutException {
+        Execution execution = runnerUtils.runOne("io.kestra.templates", "example");
+
+        assertThat(execution.getTaskRunList(), hasSize(1));
+        assertThat(execution.getState().getCurrent(), is(State.Type.SUCCESS));
+    }
+}
