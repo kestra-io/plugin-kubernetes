@@ -129,7 +129,7 @@ public class Connection {
     private final OAuthTokenProvider oauthTokenProvider;
 
     public Config toConfig(RunContext runContext) throws IllegalVariableEvaluationException {
-        ConfigBuilder builder = new ConfigBuilder();
+        ConfigBuilder builder = new ConfigBuilder(Config.empty());
 
         if (trustCerts != null) {
             builder.withTrustCerts(trustCerts);
