@@ -54,7 +54,7 @@ dependencies {
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
 
     // plugins
-    api 'io.fabric8:kubernetes-client:6.7.2'
+    api 'io.fabric8:kubernetes-client:6.8.1'
     api group: 'commons-codec', name: 'commons-codec', version: '1.16.0'
     api group: 'org.apache.commons', name: 'commons-compress', version: '1.23.0'
 }
