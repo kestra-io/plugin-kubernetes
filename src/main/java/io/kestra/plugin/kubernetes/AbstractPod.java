@@ -5,7 +5,7 @@ import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.tasks.scripts.BashService;
+import io.kestra.core.tasks.PluginUtilsService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -15,7 +15,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -131,7 +130,7 @@ abstract public class AbstractPod extends AbstractConnection {
             .build();
 
         if (this.outputFiles != null) {
-            generatedOutputFiles = BashService.createOutputFiles(
+            generatedOutputFiles = PluginUtilsService.createOutputFiles(
                 tempDir(runContext),
                 this.outputFiles,
                 additionalVars
@@ -143,9 +142,9 @@ abstract public class AbstractPod extends AbstractConnection {
         }
 
         if (this.inputFiles != null) {
-            Map<String, String> finalInputFiles = BashService.transformInputFiles(runContext, this.inputFiles);
+            Map<String, String> finalInputFiles = PluginUtilsService.transformInputFiles(runContext, this.inputFiles);
 
-            BashService.createInputFiles(
+            PluginUtilsService.createInputFiles(
                 runContext,
                 tempDir(runContext),
                 finalInputFiles,

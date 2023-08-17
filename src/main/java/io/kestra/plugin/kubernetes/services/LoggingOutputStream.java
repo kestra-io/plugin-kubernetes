@@ -1,7 +1,7 @@
 package io.kestra.plugin.kubernetes.services;
 
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.tasks.scripts.BashService;
+import io.kestra.core.tasks.PluginUtilsService;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.event.Level;
@@ -12,7 +12,6 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -63,7 +62,7 @@ public class LoggingOutputStream extends java.io.OutputStream {
             line = String.join(" ", logs);
         }
 
-        outputs.putAll(BashService.parseOut(line, logger, runContext));
+        outputs.putAll(PluginUtilsService.parseOut(line, logger, runContext));
 
 
         switch (level) {
