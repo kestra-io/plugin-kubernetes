@@ -61,7 +61,7 @@ class PodCreateTest {
     @Test
     void run() throws Exception {
         List<LogEntry> logs = new ArrayList<>();
-        workerTaskLogQueue.receive(logs::add);
+        workerTaskLogQueue.receive(l -> logs.add(l.getLeft()));
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -100,7 +100,7 @@ class PodCreateTest {
     @Test
     void failed() throws Exception {
         List<LogEntry> logs = new ArrayList<>();
-        workerTaskLogQueue.receive(logs::add);
+        workerTaskLogQueue.receive(l -> logs.add(l.getLeft()));
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -134,7 +134,7 @@ class PodCreateTest {
     @Test
     void failedAfterStartup() throws Exception {
         List<LogEntry> logs = new ArrayList<>();
-        workerTaskLogQueue.receive(logs::add);
+        workerTaskLogQueue.receive(l -> logs.add(l.getLeft()));
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -168,7 +168,7 @@ class PodCreateTest {
     @Test
     void resume() throws Exception {
         List<LogEntry> logs = new ArrayList<>();
-        workerTaskLogQueue.receive(logs::add);
+        workerTaskLogQueue.receive(l -> logs.add(l.getLeft()));
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -199,7 +199,7 @@ class PodCreateTest {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
 
         workerTaskLogQueue.receive(logEntry -> {
-            if (logEntry.getMessage().equals("1")) {
+            if (logEntry.getLeft().getMessage().equals("1")) {
                 executorService.shutdownNow();
             }
         });
