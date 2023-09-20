@@ -29,30 +29,30 @@ import javax.validation.constraints.NotNull;
 @NoArgsConstructor
 abstract public class AbstractConnection extends Task {
     @Schema(
-        title = "The connection parameters to Kubernetes cluster",
-        description = "If no connection is defined, we try to load connection from current context in order below: \n" +
+        title = "The connection parameters to the Kubernetes cluster",
+        description = "If no connection is defined, we try to load the connection from the current context in the following order: \n" +
             "1. System properties\n" +
             "2. Environment variables\n" +
             "3. Kube config file\n" +
-            "4. Service account token & mounted CA certificate\n" +
+            "4. Service account token and a mounted CA certificate.\n" +
             "\n" +
-            "You can pass a full configuration with all option if needed"
+            "You can pass a full configuration with all options if needed."
     )
     private Connection connection;
 
     @Schema(
-        title = "The maximum duration we need to wait until the job & the pod is created.",
-        description = "This timeout is the maximum time that k8s scheduler take to\n" +
+        title = "The maximum duration to wait until the job and the pod is created.",
+        description = "This timeout is the maximum time that Kubernetes scheduler will take to\n" +
             "* schedule the job\n" +
             "* pull the pod image\n" +
-            "* and start the pod"
+            "* and start the pod."
     )
     @NotNull
     @Builder.Default
     protected final Duration waitUntilRunning = Duration.ofMinutes(10);
 
     @Schema(
-        title = "The maximum duration we need to wait until the job complete."
+        title = "The maximum duration to wait for the job completion."
     )
     @NotNull
     @Builder.Default

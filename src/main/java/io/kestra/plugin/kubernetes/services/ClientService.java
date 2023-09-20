@@ -12,7 +12,7 @@ abstract public class ClientService {
      * 1. System properties
      * 2. Environment variables
      * 3. Kube config file
-     * 4. Service account token &amp; mounted CA certificate
+     * 4. Service account token and a mounted CA certificate
      *
      * @return {@link KubernetesClient} configured from the cluster configuration
      */
