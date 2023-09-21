@@ -243,7 +243,8 @@ class PodCreateTest {
                 "  workingDir: /kestra/working-dir",
                 "  command: ",
                 "    - 'bash' ",
-                "    - 'main.sh'",
+                "    - '-c' ",
+                "    - 'ls -lh && bash main.sh'",
                 "restartPolicy: Never"
             ))
             .resume(true)

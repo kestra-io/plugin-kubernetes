@@ -18,12 +18,12 @@ jobs:
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # Kind cluster
       - name: Download and install kind
         run: |
-          curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.17.0/kind-linux-amd64"
+          curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64"
           chmod +x ./kind
           kind create cluster
           curl -LO "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl"
