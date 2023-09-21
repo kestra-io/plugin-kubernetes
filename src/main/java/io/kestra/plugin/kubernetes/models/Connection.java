@@ -23,14 +23,14 @@ public class Connection {
     private final Boolean disableHostnameVerification;
 
     @Schema(
-        title = "The url to kubernetes API"
+        title = "The url to the Kubernetes API"
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
     private final String masterUrl = "https://kubernetes.default.svc";
 
     @Schema(
-        title = "The api version of API to use"
+        title = "The API version"
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
@@ -49,13 +49,13 @@ public class Connection {
     private final String caCertFile;
 
     @Schema(
-        title = "CA certificate as data ("
+        title = "CA certificate as data"
     )
     @PluginProperty(dynamic = true)
     private final String caCertData;
 
     @Schema(
-        title = "Client certificate as file path"
+        title = "Client certificate as a file path"
     )
     @PluginProperty(dynamic = true)
     private final String clientCertFile;
@@ -67,13 +67,13 @@ public class Connection {
     private final String clientCertData;
 
     @Schema(
-        title = "Client Key as file path"
+        title = "Client key as a file path"
     )
     @PluginProperty(dynamic = true)
     private final String clientKeyFile;
 
     @Schema(
-        title = "Client Key as data"
+        title = "Client key as data"
     )
     @PluginProperty(dynamic = true)
     private final String clientKeyData;

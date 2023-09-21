@@ -33,20 +33,20 @@ abstract public class AbstractPod extends AbstractConnection {
     protected static final String OUTPUTFILES_FINALIZERS = "kestra.io/output-files";
 
     @Schema(
-        title = "Output file list that will be uploaded to internal storage",
-        description = "List of key that will generate temporary files.\n" +
-            "On the command, just can use with special variable named `outputFiles.key`.\n" +
-            "If you add a files with `[\"first\"]`, you can use the special vars `echo 1 >> {[ outputFiles.first }}`" +
-            " and you used on others tasks using `{{ outputs['task-id'].files.first }}`"
+        title = "Output file list that will be uploaded to the internal storage",
+        description = "List of keys that will generate temporary files.\n" +
+            "Within the command, you can use the special variable named `outputFiles.key` to retrieve it." 
     )
     @PluginProperty(dynamic = false)
     protected List<String> outputFiles;
 
     @Schema(
-        title = "Input files are extra files supplied by user that make it simpler organize code.",
-        description = "Describe a files map that will be written and usable in execution context. In python execution " +
-            "context is in a temp folder, for bash scripts, you can reach files using a workingDir variable " +
-            "like 'source {{workingDir}}/myfile.sh' "
+        title = "Input files are extra files provided by the user that make it easier to organize code.",
+        description = "You can provide a map of key-value pairs with key being the file name and value being the file's content." +
+            "Those files will be uploaded to the pod's working directory and will be available for the command to use within the execution context." +
+            "In a Python script, those files will be written to a temporary working directory from which the flow is executed. " + 
+            "In Bash scripts, you can reach files using a `workingDir` variable " +
+            "e.g. `source {{workingDir}}/myfile.sh`. "
     )
     @PluginProperty(
         additionalProperties = String.class,

@@ -34,7 +34,7 @@ import javax.validation.constraints.NotNull;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Create a pod on a kubernetes cluster."
+    title = "Create a pod on a Kubernetes cluster, wait until the pod stops and collect its logs."
 )
 @Plugin(
     examples = {
@@ -67,45 +67,45 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private String namespace;
 
     @Schema(
-        title = "Full metadata yaml for a pod."
+        title = "Full YAML metadata for the pod."
     )
     @PluginProperty(dynamic = true)
     private Map<String, Object> metadata;
 
     @Schema(
-        title = "Full spec yaml for a pod."
+        title = "Full YAML spec for the pod."
     )
     @PluginProperty(dynamic = true)
     @NotNull
     private Map<String, Object> spec;
 
     @Schema(
-        title = "The maximum duration we need to wait until the pod is created.",
-        description = "This timeout is the maximum time that k8s scheduler take to\n" +
+        title = "The maximum duration to wait until the pod is created.",
+        description = "This timeout is the maximum time that Kubernetes scheduler can take to\n" +
             "* schedule the pod\n" +
             "* pull the pod image\n" +
-            "* and start the pod"
+            "* and start the pod."
     )
     @NotNull
     @Builder.Default
     private final Duration waitUntilRunning = Duration.ofMinutes(10);
 
     @Schema(
-        title = "The maximum duration we need to wait until the pod complete."
+        title = "The maximum duration to wait for the pod completion."
     )
     @NotNull
     @Builder.Default
     private final Duration waitRunning = Duration.ofHours(1);
 
     @Schema(
-        title = "If the pod will be deleted on completion"
+        title = "Whether the pod should be deleted upon completion"
     )
     @NotNull
     @Builder.Default
     private final Boolean delete = true;
 
     @Schema(
-        title = "If we try to reconnect to current pod if it exist"
+        title = "Whether to reconnect to the current pod if it exists"
     )
     @NotNull
     @Builder.Default
@@ -246,7 +246,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         private final Map<String, URI> outputFiles;
 
         @Schema(
-            title = "The value extract from output of the commands"
+            title = "The value extracted from the output of the commands"
         )
         private final Map<String, Object> vars;
     }
