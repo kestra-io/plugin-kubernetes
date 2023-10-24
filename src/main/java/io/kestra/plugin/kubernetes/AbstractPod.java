@@ -9,6 +9,7 @@ import io.kestra.core.tasks.PluginUtilsService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import lombok.extern.jackson.Jacksonized;
 import org.slf4j.Logger;
 
 import java.io.File;
@@ -53,6 +54,13 @@ abstract public class AbstractPod extends AbstractConnection {
         dynamic = true
     )
     protected Object inputFiles;
+
+
+    @Schema(
+        title = "The configuration for file sidecar that handle download/upload."
+    )
+    @PluginProperty
+    protected SideCar fileSidecar = SideCar.builder().build();
 
     @Builder.Default
     @Getter(AccessLevel.NONE)
@@ -138,7 +146,7 @@ abstract public class AbstractPod extends AbstractConnection {
 
             spec
                 .getContainers()
-                .add(filesContainer(volumeMount, true));
+                .add(filesContainer(runContext, volumeMount, true));
         }
 
         if (this.inputFiles != null) {
@@ -153,7 +161,7 @@ abstract public class AbstractPod extends AbstractConnection {
 
             spec
                 .getInitContainers()
-                .add(filesContainer(volumeMount, false));
+                .add(filesContainer(runContext, volumeMount, false));
         }
 
         if (this.inputFiles != null || this.outputFiles != null) {
@@ -174,12 +182,12 @@ abstract public class AbstractPod extends AbstractConnection {
             );
     }
 
-    private Container filesContainer(VolumeMount volumeMount, boolean finished) {
+    private Container filesContainer(RunContext runContext, VolumeMount volumeMount, boolean finished) throws IllegalVariableEvaluationException {
         String s = finished ? "ended" : "ready";
 
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .withName(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
-            .withImage("busybox")
+            .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()) : "busybox")
             .withCommand(Arrays.asList(
                 "sh",
                 "-c",
@@ -197,5 +205,17 @@ abstract public class AbstractPod extends AbstractConnection {
         }
 
         return containerBuilder.build();
+    }
+
+    @Getter
+    @Builder
+    @Jacksonized
+    public static class SideCar {
+        @Schema(
+            title = "The image name used for file sidecar."
+        )
+        @PluginProperty(dynamic = true)
+        @Builder.Default
+        private String image = "busybox";
     }
 }

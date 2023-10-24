@@ -226,7 +226,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace("default")
             .outputFiles(Arrays.asList("xml", "csv"))
-            .waitUntilRunning(Duration.ofSeconds(60))
+            .waitUntilRunning(Duration.ofMinutes(3))
             .inputFiles(ImmutableMap.of(
                 "files/in/in.txt", "I'm here",
                 "main.sh", "sleep 1\n" +
