@@ -77,7 +77,7 @@ abstract public class AbstractPod extends AbstractConnection {
         tempDir(runContext).toFile().mkdir();
     }
 
-    private Path tempDir(RunContext runContext) throws IOException {
+    protected Path tempDir(RunContext runContext) throws IOException {
         return runContext.tempDir().resolve("working-dir");
     }
 
@@ -138,12 +138,6 @@ abstract public class AbstractPod extends AbstractConnection {
             .build();
 
         if (this.outputFiles != null) {
-            generatedOutputFiles = PluginUtilsService.createOutputFiles(
-                tempDir(runContext),
-                this.outputFiles,
-                additionalVars
-            );
-
             spec
                 .getContainers()
                 .add(filesContainer(runContext, volumeMount, true));

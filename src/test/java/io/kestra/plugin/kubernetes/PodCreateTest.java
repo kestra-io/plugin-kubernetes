@@ -245,7 +245,7 @@ class PodCreateTest {
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c' ",
-                "    - 'ls -lh && bash main.sh'",
+                "    - 'ls -lh && bash main.sh {{ outputFiles.xml }}'",
                 "restartPolicy: Never"
             ))
             .resume(true)

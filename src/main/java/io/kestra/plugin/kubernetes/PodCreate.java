@@ -9,6 +9,7 @@ import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.tasks.PluginUtilsService;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.PodStatus;
@@ -176,9 +177,18 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     }
 
     private Pod createPod(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException, URISyntaxException {
+        if (this.outputFiles != null) {
+            generatedOutputFiles = PluginUtilsService.createOutputFiles(
+                tempDir(runContext),
+                this.outputFiles,
+                additionalVars
+            );
+        }
+
         ObjectMeta metadata = InstanceService.fromMap(
             ObjectMeta.class,
             runContext,
+            additionalVars,
             this.metadata,
             metadata(runContext)
         );
@@ -186,6 +196,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         PodSpec spec = InstanceService.fromMap(
             PodSpec.class,
             runContext,
+            additionalVars,
             this.spec
         );
 
