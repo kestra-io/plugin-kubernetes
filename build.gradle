@@ -98,7 +98,7 @@ dependencies {
 
     // plugins
     testCompileOnly "org.junit.jupiter:junit-jupiter-migrationsupport"
-    testImplementation "org.junit-pioneer:junit-pioneer:2.1.0"
+    testImplementation "org.junit-pioneer:junit-pioneer:2.2.0"
 }
 
 /**********************************************************************************************************************\
