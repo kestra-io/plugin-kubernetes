@@ -1,11 +1,13 @@
 package io.kestra.plugin.kubernetes;
 
 import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.client.dsl.CopyOrReadable;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.tasks.PluginUtilsService;
+import io.kestra.core.utils.RetryUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -82,19 +84,27 @@ abstract public class AbstractPod extends AbstractConnection {
     }
 
     protected void uploadInputFiles(RunContext runContext, PodResource podResource, Logger logger) throws IOException {
-        podResource
-            .inContainer(INIT_FILES_CONTAINER_NAME)
-            .dir("/kestra/working-dir")
-            .upload(tempDir(runContext));
+        withRetries(
+            logger,
+            "uploadInputFiles",
+            () -> podResource
+                .inContainer(INIT_FILES_CONTAINER_NAME)
+                .dir("/kestra/working-dir")
+                .upload(tempDir(runContext))
+        );
 
         this.uploadMarker(runContext, podResource, logger, false);
     }
 
     protected Map<String, URI> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger) throws Exception {
-        podResource
-            .inContainer(SIDECAR_FILES_CONTAINER_NAME)
-            .dir("/kestra/working-dir/")
-            .copy(tempDir(runContext));
+        withRetries(
+            logger,
+            "downloadOutputFiles",
+            () -> podResource
+                .inContainer(SIDECAR_FILES_CONTAINER_NAME)
+                .dir("/kestra/working-dir/")
+                .copy(tempDir(runContext))
+        );
 
         this.uploadMarker(runContext, podResource, logger, true);
 
@@ -123,12 +133,35 @@ abstract public class AbstractPod extends AbstractConnection {
         File marker = tempDir(runContext).resolve(s).toFile();
         marker.createNewFile();
 
-        podResource
-            .inContainer(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
-            .file("/kestra/" + s)
-            .upload(marker.toPath());
+        withRetries(
+            logger,
+            "uploadMarker",
+            () -> podResource
+                .inContainer(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
+                .file("/kestra/" + s)
+                .upload(marker.toPath())
+        );
 
         logger.debug(s + " marker uploaded");
+    }
+
+    protected static Boolean withRetries(Logger logger, String where, RetryUtils.CheckedSupplier<Boolean> call) throws IOException {
+        Boolean upload = new RetryUtils().<Boolean, IOException>of().run(
+            object -> !object,
+            () -> {
+                var bool = call.get();
+
+                logger.debug("Failed to call '{}'", where);
+
+                return bool;
+            }
+        );
+
+        if (!upload) {
+            throw new IOException("Failed to call '" + where + "'");
+        }
+
+        return upload;
     }
 
     protected void handleFiles(RunContext runContext, ObjectMeta metadata, PodSpec spec) throws IOException, IllegalVariableEvaluationException, URISyntaxException {
