@@ -40,7 +40,7 @@ abstract public class AbstractPod extends AbstractConnection {
         description = "List of keys that will generate temporary files.\n" +
             "Within the command, you can use the special variable named `outputFiles.key` to retrieve it." 
     )
-    @PluginProperty(dynamic = false)
+    @PluginProperty
     protected List<String> outputFiles;
 
     @Schema(
@@ -62,6 +62,7 @@ abstract public class AbstractPod extends AbstractConnection {
         title = "The configuration for file sidecar that handle download/upload."
     )
     @PluginProperty
+    @Builder.Default
     protected SideCar fileSidecar = SideCar.builder().build();
 
     @Builder.Default
