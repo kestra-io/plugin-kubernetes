@@ -3,7 +3,6 @@ package io.kestra.plugin.kubernetes;
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.ListOptions;
 import io.fabric8.kubernetes.api.model.ListOptionsBuilder;
-import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
@@ -16,11 +15,9 @@ import io.kestra.core.utils.Slugify;
 import io.kestra.plugin.kubernetes.models.Connection;
 import io.kestra.plugin.kubernetes.services.ClientService;
 
-import java.io.IOException;
-import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.Map;
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 
 @SuperBuilder
 @ToString
