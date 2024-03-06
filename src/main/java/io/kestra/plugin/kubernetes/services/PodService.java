@@ -37,10 +37,8 @@ abstract public class PodService {
                     j.getStatus()
                         .getConditions()
                         .stream()
-                        .filter(podCondition -> podCondition.getStatus().equalsIgnoreCase("True"))
                         .anyMatch(podCondition -> podCondition.getType().equals("ContainersReady") ||
-                            (podCondition.getReason() != null && podCondition.getReason()
-                                .equals("PodCompleted"))
+                                (podCondition.getReason() != null && podCondition.getReason().equals("PodCompleted"))
                         ),
                 waitUntilRunning.toSeconds(),
                 TimeUnit.SECONDS
@@ -78,7 +76,9 @@ abstract public class PodService {
             logger,
             pod,
             waitRunning,
-            j -> j == null || j.getStatus() == null || (!j.getStatus().getPhase().equals("Running") && !j.getStatus().getPhase().equals("Pending"))
+            j -> j == null ||
+                j.getStatus() == null ||
+                j.getStatus().getContainerStatuses().stream().allMatch(containerStatus -> containerStatus.getState().getTerminated() != null)
         );
     }
 
