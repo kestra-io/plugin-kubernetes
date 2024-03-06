@@ -65,7 +65,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     )
     @PluginProperty(dynamic = true)
     @NotNull
-    private String namespace;
+    @Builder.Default
+    private String namespace = "default";
 
     @Schema(
         title = "Full YAML metadata for the pod."
@@ -177,14 +178,6 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     }
 
     private Pod createPod(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException, URISyntaxException {
-        if (this.outputFiles != null) {
-            generatedOutputFiles = PluginUtilsService.createOutputFiles(
-                tempDir(runContext),
-                this.outputFiles,
-                additionalVars
-            );
-        }
-
         ObjectMeta metadata = InstanceService.fromMap(
             ObjectMeta.class,
             runContext,
@@ -192,16 +185,6 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             this.metadata,
             metadata(runContext)
         );
-
-        PodSpec spec = InstanceService.fromMap(
-            PodSpec.class,
-            runContext,
-            additionalVars,
-            this.spec
-        );
-
-
-        this.handleFiles(runContext, metadata, spec);
 
         if (this.resume) {
             PodResource resumePod = client.pods()
@@ -215,6 +198,24 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 runContext.logger().debug("Unable to resume pods, start a new one");
             }
         }
+
+        if (this.outputFiles != null) {
+            generatedOutputFiles = PluginUtilsService.createOutputFiles(
+                tempDir(runContext),
+                this.outputFiles,
+                additionalVars
+            );
+        }
+
+        PodSpec spec = InstanceService.fromMap(
+            PodSpec.class,
+            runContext,
+            additionalVars,
+            this.spec
+        );
+
+
+        this.handleFiles(runContext, spec);
 
         return client.pods()
             .inNamespace(namespace)
