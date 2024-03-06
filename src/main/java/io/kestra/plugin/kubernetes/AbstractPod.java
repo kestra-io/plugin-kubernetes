@@ -1,7 +1,6 @@
 package io.kestra.plugin.kubernetes;
 
 import io.fabric8.kubernetes.api.model.*;
-import io.fabric8.kubernetes.client.dsl.CopyOrReadable;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -19,10 +18,9 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 
-import static io.kestra.core.utils.Rethrow.throwBiConsumer;
+import static io.kestra.core.utils.Rethrow.throwConsumer;
 
 @SuperBuilder
 @ToString
@@ -36,16 +34,15 @@ abstract public class AbstractPod extends AbstractConnection {
     protected static final String OUTPUTFILES_FINALIZERS = "kestra.io/output-files";
 
     @Schema(
-        title = "Output file list that will be uploaded to the internal storage",
-        description = "List of keys that will generate temporary files.\n" +
-            "Within the command, you can use the special variable named `outputFiles.key` to retrieve it." 
+        title = "The files from the container filesystem to send to Kestra's internal storage.",
+        description = "Only files created inside the `kestra/working-dir` directory of the container can be retrieved. You can use the special variable `{{workingDir}}` in this property to refer to it"
     )
     @PluginProperty
     protected List<String> outputFiles;
 
     @Schema(
         title = "The files to create on the local filesystem. It can be a map or a JSON object.",
-        description = "The files will be available inside the `/kestra/working-dir` directory on the pod."
+        description = "The files will be available inside the `kestra/working-dir` directory of the container. You can use the special variable `{{workingDir}}` in your command to refer to it."
     )
     @PluginProperty(
         additionalProperties = String.class,
@@ -55,24 +52,15 @@ abstract public class AbstractPod extends AbstractConnection {
 
 
     @Schema(
-        title = "The configuration for file sidecar that handle download/upload."
+        title = "The configuration of the file sidecar container that handle download and upload of files."
     )
     @PluginProperty
     @Builder.Default
     protected SideCar fileSidecar = SideCar.builder().build();
 
-    @Builder.Default
-    @Getter(AccessLevel.NONE)
-    protected transient Map<String, Object> additionalVars = new HashMap<>();
-
-    @Getter(AccessLevel.NONE)
-    protected transient Map<String, String> generatedOutputFiles;
-
     @SuppressWarnings("ResultOfMethodCallIgnored")
     protected void init(RunContext runContext) {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
-
-        additionalVars.put("workingDir", "/kestra/working-dir");
         tempDir(runContext).toFile().mkdir();
     }
 
@@ -93,7 +81,7 @@ abstract public class AbstractPod extends AbstractConnection {
         this.uploadMarker(runContext, podResource, logger, false);
     }
 
-    protected Map<String, URI> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger) throws Exception {
+    protected Map<String, URI> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {
         withRetries(
             logger,
             "downloadOutputFiles",
@@ -108,16 +96,10 @@ abstract public class AbstractPod extends AbstractConnection {
         // upload output files
         Map<String, URI> uploaded = new HashMap<>();
 
-        generatedOutputFiles.
-            forEach(throwBiConsumer((k, v) -> {
-                File file = Paths
-                    .get(
-                        tempDir(runContext).toAbsolutePath().toString(),
-                        runContext.render(v, additionalVars)
-                    )
-                    .toFile();
-
-                uploaded.put(k, runContext.putTempFile(file));
+        outputFiles.
+            forEach(throwConsumer(f -> {
+                File file = runContext.resolve(Path.of("working-dir/kestra/working-dir/" + runContext.render(f, additionalVars))).toFile();
+                uploaded.put(f, runContext.putTempFile(file));
             }));
 
         return uploaded;
@@ -163,7 +145,7 @@ abstract public class AbstractPod extends AbstractConnection {
         return upload;
     }
 
-    protected void handleFiles(RunContext runContext, PodSpec spec) throws IOException, IllegalVariableEvaluationException, URISyntaxException {
+    protected void handleFiles(RunContext runContext, PodSpec spec, Map<String, Object> additionalVars) throws IOException, IllegalVariableEvaluationException, URISyntaxException {
         VolumeMount volumeMount = new VolumeMountBuilder()
             .withMountPath("/kestra")
             .withName(FILES_VOLUME_NAME)
@@ -238,7 +220,7 @@ abstract public class AbstractPod extends AbstractConnection {
     @Jacksonized
     public static class SideCar {
         @Schema(
-            title = "The image name used for file sidecar."
+            title = "The image used for the file sidecar container."
         )
         @PluginProperty(dynamic = true)
         @Builder.Default
