@@ -44,12 +44,8 @@ abstract public class AbstractPod extends AbstractConnection {
     protected List<String> outputFiles;
 
     @Schema(
-        title = "Input files are extra files provided by the user that make it easier to organize code.",
-        description = "You can provide a map of key-value pairs with key being the file name and value being the file's content." +
-            "Those files will be uploaded to the pod's working directory and will be available for the command to use within the execution context." +
-            "In a Python script, those files will be written to a temporary working directory from which the flow is executed. " + 
-            "In Bash scripts, you can reach files using a `workingDir` variable " +
-            "e.g. `source {{workingDir}}/myfile.sh`. "
+        title = "The files to create on the local filesystem. It can be a map or a JSON object.",
+        description = "The files will be available inside the `/kestra/working-dir` directory on the pod."
     )
     @PluginProperty(
         additionalProperties = String.class,
@@ -73,14 +69,14 @@ abstract public class AbstractPod extends AbstractConnection {
     protected transient Map<String, String> generatedOutputFiles;
 
     @SuppressWarnings("ResultOfMethodCallIgnored")
-    protected void init(RunContext runContext) throws IOException {
+    protected void init(RunContext runContext) {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
 
         additionalVars.put("workingDir", "/kestra/working-dir");
         tempDir(runContext).toFile().mkdir();
     }
 
-    protected Path tempDir(RunContext runContext) throws IOException {
+    protected Path tempDir(RunContext runContext) {
         return runContext.tempDir().resolve("working-dir");
     }
 
@@ -152,7 +148,9 @@ abstract public class AbstractPod extends AbstractConnection {
             () -> {
                 var bool = call.get();
 
-                logger.debug("Failed to call '{}'", where);
+                if (!bool) {
+                    logger.debug("Failed to call '{}'", where);
+                }
 
                 return bool;
             }
@@ -165,7 +163,7 @@ abstract public class AbstractPod extends AbstractConnection {
         return upload;
     }
 
-    protected void handleFiles(RunContext runContext, ObjectMeta metadata, PodSpec spec) throws IOException, IllegalVariableEvaluationException, URISyntaxException {
+    protected void handleFiles(RunContext runContext, PodSpec spec) throws IOException, IllegalVariableEvaluationException, URISyntaxException {
         VolumeMount volumeMount = new VolumeMountBuilder()
             .withMountPath("/kestra")
             .withName(FILES_VOLUME_NAME)
@@ -199,15 +197,15 @@ abstract public class AbstractPod extends AbstractConnection {
                     volumeMounts.add(volumeMount);
                     container.setVolumeMounts(volumeMounts);
                 });
-        }
 
-        spec.getVolumes()
-            .add(new VolumeBuilder()
-                .withName(FILES_VOLUME_NAME)
-                .withNewEmptyDir()
-                .endEmptyDir()
-                .build()
-            );
+            spec.getVolumes()
+                .add(new VolumeBuilder()
+                    .withName(FILES_VOLUME_NAME)
+                    .withNewEmptyDir()
+                    .endEmptyDir()
+                    .build()
+                );
+        }
     }
 
     private Container filesContainer(RunContext runContext, VolumeMount volumeMount, boolean finished) throws IllegalVariableEvaluationException {
