@@ -7,6 +7,7 @@ import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.flows.State;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
@@ -27,6 +28,9 @@ import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+
 import jakarta.validation.constraints.NotNull;
 
 @SuperBuilder
@@ -195,12 +199,22 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                     podWatch.close();
                     podLogService.close();
 
+                    PodStatus podStatus = PodStatus.from(ended.getStatus());
                     Output.OutputBuilder output = Output.builder()
                         .metadata(Metadata.from(ended.getMetadata()))
-                        .status(PodStatus.from(ended.getStatus()))
+                        .status(podStatus)
                         .vars(podLogService.getOutputStream().getOutputs());
 
-                    if (this.outputFiles != null) {
+                    if (isFailed(podStatus)) {
+                        podStatus.getConditions().stream()
+                            .filter(podCondition -> Objects.equals(podCondition.getReason(), "PodFailed"))
+                            .forEach(podCondition -> logger.error(podCondition.getMessage()));
+
+                        podStatus.getContainerStatuses().stream()
+                            .filter(containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun"))
+                            .forEach(containerStatus -> logger.error(containerStatus.getState().getTerminated().getMessage()));
+                    }
+                    else if (this.outputFiles != null) {
                         output.outputFiles(
                             this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars)
                         );
@@ -292,5 +306,22 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             title = "The output variables extracted from the logs of the commands"
         )
         private final Map<String, Object> vars;
+
+        @Override
+        public Optional<State.Type> finalState() {
+            return status != null ? stateFromStatus(status) : io.kestra.core.models.tasks.Output.super.finalState();
+        }
+
+        private Optional<State.Type> stateFromStatus(PodStatus status) {
+            if (isFailed(status)) {
+                return Optional.of(State.Type.FAILED);
+            }
+            return Optional.empty();
+        }
+    }
+    
+    private static boolean isFailed(PodStatus podStatus) {
+        return podStatus.getConditions().stream().anyMatch(podCondition -> Objects.equals(podCondition.getReason(), "PodFailed")) ||
+            podStatus.getContainerStatuses().stream().anyMatch(containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun"));
     }
 }

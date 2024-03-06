@@ -6,6 +6,7 @@ import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.flows.State;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.runners.RunContext;
@@ -35,7 +36,6 @@ import java.util.concurrent.Executors;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @MicronautTest
 @Slf4j
@@ -120,11 +120,8 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
         RunContext runContextFinal = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
-        IllegalStateException exception = assertThrows(
-            IllegalStateException.class,
-            () -> task.run(runContextFinal)
-        );
-        assertThat(exception.getMessage(),  containsString("'Failed', exitcode '1'"));
+        var output =  task.run(runContextFinal);
+        assertThat(output.finalState().orElse(null),  is(State.Type.FAILED));
     }
 
     @Test
@@ -154,11 +151,8 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
         RunContext runContextFinal = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
-        IllegalStateException exception = assertThrows(
-            IllegalStateException.class,
-            () -> task.run(runContextFinal)
-        );
-        assertThat(exception.getMessage(),  containsString("'Failed', exitcode '1'"));
+        var output =  task.run(runContextFinal);
+        assertThat(output.finalState().orElse(null),  is(State.Type.FAILED));
     }
 
     @Test
