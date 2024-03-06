@@ -9,7 +9,6 @@ import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.tasks.PluginUtilsService;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.PodStatus;
@@ -26,6 +25,7 @@ import org.slf4j.Logger;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import jakarta.validation.constraints.NotNull;
 
@@ -40,6 +40,7 @@ import jakarta.validation.constraints.NotNull;
 @Plugin(
     examples = {
         @Example(
+            title = "Launch a Pod",
             code = {
                 "namespace: default",
                 "metadata:",
@@ -55,6 +56,37 @@ import jakarta.validation.constraints.NotNull;
                 "      - 'for i in {1..10}; do echo $i; sleep 0.1; done'",
                 "  restartPolicy: Never"
             }
+        ),
+        @Example(
+            title = "Launch a Pod with input files and gather its output files.",
+            full = true,
+            code = {
+                """
+                    id: kubernetes
+                    namespace: myteam
+                                        
+                    inputs:
+                      - id: file
+                        type: FILE
+                                        
+                    tasks:
+                      - id: kubernetes
+                        type: io.kestra.plugin.kubernetes.PodCreate
+                        spec:
+                          containers:
+                          - name: unittest
+                            image: centos
+                            command:
+                              - cp
+                              - "{{workingDir}}/data.txt"
+                              - "{{workingDir}}/out.txt"
+                          restartPolicy: Never
+                        waitUntilRunning: PT3M
+                        inputFiles:
+                          data.txt: "{{inputs.file}}"
+                        outputFiles:
+                          - out.txt"""
+            }
         )
     }
 )
@@ -69,13 +101,13 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private String namespace = "default";
 
     @Schema(
-        title = "Full YAML metadata for the pod."
+        title = "The YAML metadata of the pod."
     )
     @PluginProperty(dynamic = true)
     private Map<String, Object> metadata;
 
     @Schema(
-        title = "Full YAML spec for the pod."
+        title = "The YAML spec of the pod."
     )
     @PluginProperty(dynamic = true)
     @NotNull
@@ -100,14 +132,14 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private final Duration waitRunning = Duration.ofHours(1);
 
     @Schema(
-        title = "Whether the pod should be deleted upon completion"
+        title = "Whether the pod should be deleted upon completion."
     )
     @NotNull
     @Builder.Default
     private final Boolean delete = true;
 
     @Schema(
-        title = "Whether to reconnect to the current pod if it exists"
+        title = "Whether to reconnect to the current pod if it already exists."
     )
     @NotNull
     @Builder.Default
@@ -116,13 +148,20 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     @Override
     public PodCreate.Output run(RunContext runContext) throws Exception {
         super.init(runContext);
+        Map<String, Object> additionalVars = new HashMap<>();
+        additionalVars.put("workingDir", "/kestra/working-dir");
+        if (this.outputFiles != null) {
+            Map<String, Object> outputFileVariables = new HashMap<>();
+            this.outputFiles.forEach(file -> outputFileVariables.put(file, "/kestra/working-dir/" + file));
+            additionalVars.put("outputFiles", outputFileVariables);
+        }
 
         try (KubernetesClient client = this.client(runContext)) {
             String namespace = runContext.render(this.namespace);
             Logger logger = runContext.logger();
 
             // create the job
-            Pod pod = createPod(runContext, client, namespace);
+            Pod pod = createPod(runContext, client, namespace, additionalVars);
             PodLogService podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class));
 
             try {
@@ -163,7 +202,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                     if (this.outputFiles != null) {
                         output.outputFiles(
-                            this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger)
+                            this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars)
                         );
                     }
 
@@ -177,7 +216,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         }
     }
 
-    private Pod createPod(RunContext runContext, KubernetesClient client, String namespace) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException, URISyntaxException {
+    private Pod createPod(RunContext runContext, KubernetesClient client, String namespace, Map<String, Object> additionalVars) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException, URISyntaxException {
         ObjectMeta metadata = InstanceService.fromMap(
             ObjectMeta.class,
             runContext,
@@ -199,14 +238,6 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             }
         }
 
-        if (this.outputFiles != null) {
-            generatedOutputFiles = PluginUtilsService.createOutputFiles(
-                tempDir(runContext),
-                this.outputFiles,
-                additionalVars
-            );
-        }
-
         PodSpec spec = InstanceService.fromMap(
             PodSpec.class,
             runContext,
@@ -215,7 +246,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         );
 
 
-        this.handleFiles(runContext, spec);
+        this.handleFiles(runContext, spec, additionalVars);
 
         return client.pods()
             .inNamespace(namespace)
@@ -242,23 +273,23 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "The full pod metadata"
+            title = "The pod metadata."
         )
         private final Metadata metadata;
 
         @Schema(
-            title = "The full pod status"
+            title = "The pod status."
         )
         private final PodStatus status;
 
         @Schema(
-            title = "The output files uri in Kestra internal storage"
+            title = "The output files URI in Kestra's internal storage"
         )
         @PluginProperty(additionalProperties = URI.class)
         private final Map<String, URI> outputFiles;
 
         @Schema(
-            title = "The value extracted from the output of the commands"
+            title = "The output variables extracted from the logs of the commands"
         )
         private final Map<String, Object> vars;
     }
