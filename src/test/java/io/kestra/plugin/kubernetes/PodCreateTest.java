@@ -1,6 +1,5 @@
 package io.kestra.plugin.kubernetes;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.CharStreams;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -12,7 +11,6 @@ import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.runners.WorkerTask;
-import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.Await;
 import io.kestra.core.utils.TestsUtils;
@@ -42,8 +40,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @MicronautTest
 @Slf4j
 class PodCreateTest {
-    private static final ObjectMapper mapper = JacksonMapper.ofYaml();
-
     @Inject
     private RunContextFactory runContextFactory;
 
