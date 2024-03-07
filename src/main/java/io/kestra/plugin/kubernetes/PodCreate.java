@@ -10,6 +10,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.State;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.tasks.PluginUtilsService;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.PodStatus;
@@ -171,9 +172,18 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             try {
                 try (Watch podWatch = PodService.podRef(client, pod).watch(listOptions(), new PodWatcher(logger))) {
                     // wait for init container
-                    if (this.inputFiles != null || this.outputFiles != null) {
+                    if (this.inputFiles != null) {
+                        Map<String, String> finalInputFiles = PluginUtilsService.transformInputFiles(runContext, this.inputFiles);
+
+                        PluginUtilsService.createInputFiles(
+                            runContext,
+                            tempDir(runContext),
+                            finalInputFiles,
+                            additionalVars
+                        );
+
                         pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, this.waitUntilRunning);
-                        this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger);
+                        this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger, finalInputFiles.keySet());
                     }
 
                     // wait for pods ready
