@@ -92,15 +92,7 @@ abstract public class AbstractConnection extends Task {
         Map<String, String> execution = (Map<String, String>) runContext.getVariables().get("execution");
         Map<String, String> taskrun = (Map<String, String>) runContext.getVariables().get("taskrun");
 
-        String name = Slugify.of(String.join(
-            "-",
-            taskrun.get("id"),
-            flow.get("id"),
-            task.get("id")
-        ));
-
         return ImmutableMap.of(
-            "name", normalizedValue(name),
             "labels", ImmutableMap.of(
                 "flow.kestra.io/id", normalizedValue(flow.get("id")),
                 "flow.kestra.io/namespace", normalizedValue(flow.get("namespace")),
@@ -109,5 +101,20 @@ abstract public class AbstractConnection extends Task {
                 "taskrun.kestra.io/id", normalizedValue(taskrun.get("id"))
             )
         );
+    }
+
+    protected String podName(RunContext runContext) {
+        Map<String, String> flow = (Map<String, String>) runContext.getVariables().get("flow");
+        Map<String, String> task = (Map<String, String>) runContext.getVariables().get("task");
+        Map<String, String> taskrun = (Map<String, String>) runContext.getVariables().get("taskrun");
+
+        String name = Slugify.of(String.join(
+            "-",
+            taskrun.get("id"),
+            flow.get("id"),
+            task.get("id")
+        ));
+
+        return normalizedValue(name);
     }
 }

@@ -14,6 +14,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.runners.WorkerTask;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.Await;
+import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.TestsUtils;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
@@ -238,6 +239,7 @@ class PodCreateTest {
                 "    - 'ls -lh && bash main.sh {{ outputFiles.xml }}'",
                 "restartPolicy: Never"
             ))
+            .metadata(Map.of("name", "custom-name-" + IdUtils.create().toLowerCase()))
             .resume(true)
             .build();
 

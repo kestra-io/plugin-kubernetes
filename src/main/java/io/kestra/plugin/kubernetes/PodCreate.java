@@ -239,6 +239,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             metadata(runContext)
         );
 
+        if (metadata.getName() == null) {
+            metadata.setName(podName(runContext));
+        }
+
         if (this.resume) {
             PodResource resumePod = client.pods()
                 .inNamespace(namespace)
