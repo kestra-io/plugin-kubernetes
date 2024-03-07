@@ -5,7 +5,6 @@ import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.tasks.PluginUtilsService;
 import io.kestra.core.utils.RetryUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
@@ -14,6 +13,7 @@ import lombok.extern.jackson.Jacksonized;
 import org.slf4j.Logger;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -68,14 +68,20 @@ abstract public class AbstractPod extends AbstractConnection {
         return runContext.tempDir().resolve("working-dir");
     }
 
-    protected void uploadInputFiles(RunContext runContext, PodResource podResource, Logger logger) throws IOException {
-        withRetries(
-            logger,
-            "uploadInputFiles",
-            () -> podResource
-                .inContainer(INIT_FILES_CONTAINER_NAME)
-                .dir("/kestra/working-dir")
-                .upload(tempDir(runContext))
+    protected void uploadInputFiles(RunContext runContext, PodResource podResource, Logger logger, Set<String> inputFiles) throws IOException {
+        inputFiles.forEach(
+            throwConsumer(file -> withRetries(
+                logger,
+                "uploadInputFiles",
+                () -> {
+                    try (var fileInputStream = new FileInputStream(tempDir(runContext).resolve(file).toFile())) {
+                        return podResource
+                            .inContainer(INIT_FILES_CONTAINER_NAME)
+                            .file("/kestra/working-dir/" + file)
+                            .upload(fileInputStream);
+                    }
+                }
+            ))
         );
 
         this.uploadMarker(runContext, podResource, logger, false);
@@ -158,15 +164,6 @@ abstract public class AbstractPod extends AbstractConnection {
         }
 
         if (this.inputFiles != null) {
-            Map<String, String> finalInputFiles = PluginUtilsService.transformInputFiles(runContext, this.inputFiles);
-
-            PluginUtilsService.createInputFiles(
-                runContext,
-                tempDir(runContext),
-                finalInputFiles,
-                additionalVars
-            );
-
             spec
                 .getInitContainers()
                 .add(filesContainer(runContext, volumeMount, false));
