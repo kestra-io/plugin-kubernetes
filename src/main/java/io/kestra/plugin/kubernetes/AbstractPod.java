@@ -6,6 +6,8 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.RetryUtils;
+import io.kestra.plugin.kubernetes.runner.SideCar;
+import io.kestra.plugin.kubernetes.services.PodService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -21,6 +23,7 @@ import java.nio.file.Path;
 import java.util.*;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
+import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
 
 @SuperBuilder
 @ToString
@@ -61,11 +64,7 @@ abstract public class AbstractPod extends AbstractConnection {
     @SuppressWarnings("ResultOfMethodCallIgnored")
     protected void init(RunContext runContext) {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
-        tempDir(runContext).toFile().mkdir();
-    }
-
-    protected Path tempDir(RunContext runContext) {
-        return runContext.tempDir().resolve("working-dir");
+        PodService.tempDir(runContext).toFile().mkdir();
     }
 
     protected void uploadInputFiles(RunContext runContext, PodResource podResource, Logger logger, Set<String> inputFiles) throws IOException {
@@ -74,7 +73,7 @@ abstract public class AbstractPod extends AbstractConnection {
                 logger,
                 "uploadInputFiles",
                 () -> {
-                    try (var fileInputStream = new FileInputStream(tempDir(runContext).resolve(file).toFile())) {
+                    try (var fileInputStream = new FileInputStream(PodService.tempDir(runContext).resolve(file).toFile())) {
                         return podResource
                             .inContainer(INIT_FILES_CONTAINER_NAME)
                             .withReadyWaitTimeout(0)
@@ -85,7 +84,7 @@ abstract public class AbstractPod extends AbstractConnection {
             ))
         );
 
-        this.uploadMarker(runContext, podResource, logger, false);
+        PodService.uploadMarker(runContext, podResource, logger, "ready", INIT_FILES_CONTAINER_NAME);
     }
 
     protected Map<String, URI> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {
@@ -95,10 +94,10 @@ abstract public class AbstractPod extends AbstractConnection {
             () -> podResource
                 .inContainer(SIDECAR_FILES_CONTAINER_NAME)
                 .dir("/kestra/working-dir/")
-                .copy(tempDir(runContext))
+                .copy(PodService.tempDir(runContext))
         );
 
-        this.uploadMarker(runContext, podResource, logger, true);
+        PodService.uploadMarker(runContext, podResource, logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
 
         // upload output files
         Map<String, URI> uploaded = new HashMap<>();
@@ -112,48 +111,7 @@ abstract public class AbstractPod extends AbstractConnection {
         return uploaded;
     }
 
-    @SuppressWarnings("ResultOfMethodCallIgnored")
-    protected void uploadMarker(RunContext runContext, PodResource podResource, Logger logger, boolean finished) throws IOException {
-        String s = finished ? "ended" : "ready";
-
-        File marker = tempDir(runContext).resolve(s).toFile();
-        marker.createNewFile();
-
-        withRetries(
-            logger,
-            "uploadMarker",
-            () -> podResource
-                .inContainer(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
-                .withReadyWaitTimeout(0)
-                .file("/kestra/" + s)
-                .upload(marker.toPath())
-        );
-
-        logger.debug(s + " marker uploaded");
-    }
-
-    protected static Boolean withRetries(Logger logger, String where, RetryUtils.CheckedSupplier<Boolean> call) throws IOException {
-        Boolean upload = new RetryUtils().<Boolean, IOException>of().run(
-            object -> !object,
-            () -> {
-                var bool = call.get();
-
-                if (!bool) {
-                    logger.debug("Failed to call '{}'", where);
-                }
-
-                return bool;
-            }
-        );
-
-        if (!upload) {
-            throw new IOException("Failed to call '" + where + "'");
-        }
-
-        return upload;
-    }
-
-    protected void handleFiles(RunContext runContext, PodSpec spec, Map<String, Object> additionalVars) throws IOException, IllegalVariableEvaluationException, URISyntaxException {
+    protected void handleFiles(RunContext runContext, PodSpec spec) throws IllegalVariableEvaluationException {
         VolumeMount volumeMount = new VolumeMountBuilder()
             .withMountPath("/kestra")
             .withName(FILES_VOLUME_NAME)
@@ -212,17 +170,5 @@ abstract public class AbstractPod extends AbstractConnection {
         }
 
         return containerBuilder.build();
-    }
-
-    @Getter
-    @Builder
-    @Jacksonized
-    public static class SideCar {
-        @Schema(
-            title = "The image used for the file sidecar container."
-        )
-        @PluginProperty(dynamic = true)
-        @Builder.Default
-        private String image = "busybox";
     }
 }

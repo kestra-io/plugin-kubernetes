@@ -87,8 +87,8 @@ class PodCreateTest {
 
         Thread.sleep(500);
 
-        assertThat(runOutput.getMetadata().getName(), containsString(((Map<String, String>) runContext.getVariables().get("taskrun")).get("id").toLowerCase()));
-        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(12L));
+        assertThat(runOutput.getMetadata().getName(), containsString("iokestrapluginkubernetespodcreatetest-run-podcreate"));
+        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(13L));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("10")).count(), is(1L));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().contains("is deleted")).count(), is(1L));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("error")).count(), is(1L));
