@@ -1,5 +1,6 @@
 package io.kestra.plugin.kubernetes;
 
+import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
@@ -27,12 +28,12 @@ import org.slf4j.Logger;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 import jakarta.validation.constraints.NotNull;
+
+import static io.kestra.plugin.kubernetes.services.PodService.normalizedValue;
+import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
 
 @SuperBuilder
 @ToString
@@ -119,26 +120,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private Map<String, Object> spec;
 
     @Schema(
-        title = "The maximum duration to wait until the pod is created.",
-        description = "This timeout is the maximum time that Kubernetes scheduler can take to\n" +
-            "* schedule the pod\n" +
-            "* pull the pod image\n" +
-            "* and start the pod."
-    )
-    @NotNull
-    @Builder.Default
-    private final Duration waitUntilRunning = Duration.ofMinutes(10);
-
-    @Schema(
-        title = "The maximum duration to wait for the pod completion."
-    )
-    @NotNull
-    @Builder.Default
-    private final Duration waitRunning = Duration.ofHours(1);
-
-    @Schema(
         title = "Whether the pod should be deleted upon completion."
     )
+    @PluginProperty
     @NotNull
     @Builder.Default
     private final Boolean delete = true;
@@ -146,6 +130,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     @Schema(
         title = "Whether to reconnect to the current pod if it already exists."
     )
+    @PluginProperty
     @NotNull
     @Builder.Default
     private final Boolean resume = true;
@@ -161,23 +146,44 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             additionalVars.put("outputFiles", outputFileVariables);
         }
 
-        try (KubernetesClient client = this.client(runContext)) {
-            String namespace = runContext.render(this.namespace);
-            Logger logger = runContext.logger();
+        String namespace = runContext.render(this.namespace);
+        Logger logger = runContext.logger();
 
-            // create the job
-            Pod pod = createPod(runContext, client, namespace, additionalVars);
-            PodLogService podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class));
+        try (KubernetesClient client = this.client(runContext);
+             PodLogService podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
+            Pod pod = null;
 
-            try {
-                try (Watch podWatch = PodService.podRef(client, pod).watch(listOptions(), new PodWatcher(logger))) {
+            if (this.resume) {
+                // try to locate an existing pod for this taskrun and attempt
+                Map<String, String> taskrun = (Map<String, String>) runContext.getVariables().get("taskrun");
+                String taskrunId = normalizedValue(taskrun.get("id"));
+                String attempt =  normalizedValue(String.valueOf(taskrun.get("attemptsCount")));
+                String labelSelector = "kestra.io/taskrun-id=" + taskrunId + "," + "kestra.io/taskrun-attempt=" + attempt;
+                var existingPods = client.pods().inNamespace(namespace).list(new ListOptionsBuilder().withLabelSelector(labelSelector).build());
+                if (existingPods.getItems().size() == 1) {
+                    pod = existingPods.getItems().get(0);
+                    logger.info("Pod '{}' is resumed from an already running pod ", pod.getMetadata().getName());
+
+                } else if (!existingPods.getItems().isEmpty()) {
+                    logger.warn("More than one pod exist for the label selector {}, no pods will be resumed.", labelSelector);
+                }
+            }
+
+            if (pod == null) {
+                pod = createPod(runContext, client, namespace, additionalVars);
+                logger.info("Pod '{}' is created ", pod.getMetadata().getName());
+            }
+
+            try (Watch podWatch = PodService.podRef(client, pod).watch(listOptions(), new PodWatcher(logger))) {
+                // in case of resuming an already running pod, the status will be running
+                if (!"Running".equals(pod.getStatus().getPhase())) {
                     // wait for init container
                     if (this.inputFiles != null) {
                         Map<String, String> finalInputFiles = PluginUtilsService.transformInputFiles(runContext, this.inputFiles);
 
                         PluginUtilsService.createInputFiles(
                             runContext,
-                            tempDir(runContext),
+                            PodService.tempDir(runContext),
                             finalInputFiles,
                             additionalVars
                         );
@@ -188,54 +194,50 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                     // wait for pods ready
                     pod = PodService.waitForPodReady(client, pod, this.waitUntilRunning);
-
-                    if (pod.getStatus() != null && pod.getStatus().getPhase().equals("Failed")) {
-                        throw PodService.failedMessage(pod);
-                    }
-
-                    // watch log
-                    podLogService.watch(client, pod, logger, runContext);
-
-                    // wait until completion of the pods
-                    Pod ended;
-                    if (this.outputFiles != null) {
-                        ended = PodService.waitForCompletionExcept(client, logger, pod, this.waitRunning, SIDECAR_FILES_CONTAINER_NAME);
-                    } else {
-                        ended = PodService.waitForCompletion(client, logger, pod, this.waitRunning);
-                    }
-
-                    PodService.handleEnd(ended);
-
-                    podWatch.close();
-                    podLogService.close();
-
-                    PodStatus podStatus = PodStatus.from(ended.getStatus());
-                    Output.OutputBuilder output = Output.builder()
-                        .metadata(Metadata.from(ended.getMetadata()))
-                        .status(podStatus)
-                        .vars(podLogService.getOutputStream().getOutputs());
-
-                    if (isFailed(podStatus)) {
-                        podStatus.getConditions().stream()
-                            .filter(podCondition -> Objects.equals(podCondition.getReason(), "PodFailed"))
-                            .forEach(podCondition -> logger.error(podCondition.getMessage()));
-
-                        podStatus.getContainerStatuses().stream()
-                            .filter(containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun"))
-                            .forEach(containerStatus -> logger.error(containerStatus.getState().getTerminated().getMessage()));
-                    }
-                    else if (this.outputFiles != null) {
-                        output.outputFiles(
-                            this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars)
-                        );
-                    }
-
-                    return output
-                        .build();
                 }
+
+                if (pod.getStatus() != null && pod.getStatus().getPhase().equals("Failed")) {
+                    throw PodService.failedMessage(pod);
+                }
+
+                // watch log
+                podLogService.watch(client, pod, logger, runContext);
+
+                // wait until completion of the pods
+                Pod ended;
+                if (this.outputFiles != null) {
+                    ended = PodService.waitForCompletionExcept(client, logger, pod, this.waitRunning, SIDECAR_FILES_CONTAINER_NAME);
+                } else {
+                    ended = waitForCompletion(client, logger, pod, this.waitRunning);
+                }
+
+                handleEnd(ended);
+
+                PodStatus podStatus = PodStatus.from(ended.getStatus());
+                Output.OutputBuilder output = Output.builder()
+                    .metadata(Metadata.from(ended.getMetadata()))
+                    .status(podStatus)
+                    .vars(podLogService.getOutputStream().getOutputs());
+
+                if (isFailed(podStatus)) {
+                    podStatus.getConditions().stream()
+                        .filter(podCondition -> Objects.equals(podCondition.getReason(), "PodFailed"))
+                        .forEach(podCondition -> logger.error(podCondition.getMessage()));
+
+                    podStatus.getContainerStatuses().stream()
+                        .filter(containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun"))
+                        .forEach(containerStatus -> logger.error(containerStatus.getState().getTerminated().getMessage()));
+                }
+                else if (this.outputFiles != null) {
+                    output.outputFiles(
+                        this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars)
+                    );
+                }
+
+                return output
+                    .build();
             } finally {
                 delete(client, logger, pod);
-                podLogService.close();
             }
         }
     }
@@ -246,24 +248,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             runContext,
             additionalVars,
             this.metadata,
-            metadata(runContext)
+            ImmutableMap.of("labels", PodService.labels(runContext))
         );
 
         if (metadata.getName() == null) {
-            metadata.setName(podName(runContext));
-        }
-
-        if (this.resume) {
-            PodResource resumePod = client.pods()
-                .inNamespace(namespace)
-                .withName(metadata.getName());
-
-            if (resumePod.get() != null) {
-                runContext.logger().info("Find a resumable pods with status '{}', resume it", resumePod.get().getStatus().getPhase());
-                return resumePod.get();
-            } else {
-                runContext.logger().debug("Unable to resume pods, start a new one");
-            }
+            metadata.setName(PodService.podName(runContext));
         }
 
         PodSpec spec = InstanceService.fromMap(
@@ -274,7 +263,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         );
 
 
-        this.handleFiles(runContext, spec, additionalVars);
+        this.handleFiles(runContext, spec);
 
         return client.pods()
             .inNamespace(namespace)
@@ -294,6 +283,15 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             } catch (Throwable e) {
                 logger.warn("Unable to delete pod {}", pod.getFullResourceName(), e);
             }
+        }
+    }
+
+    private void handleEnd(Pod ended) throws InterruptedException {
+        // let some time to gather the logs before delete
+        Thread.sleep(1000);
+
+        if (ended.getStatus() != null && ended.getStatus().getPhase().equals("Failed")) {
+            throw PodService.failedMessage(ended);
         }
     }
 

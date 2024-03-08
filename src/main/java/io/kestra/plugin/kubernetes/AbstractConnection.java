@@ -1,22 +1,18 @@
 package io.kestra.plugin.kubernetes;
 
-import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.ListOptions;
 import io.fabric8.kubernetes.api.model.ListOptionsBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.apache.commons.lang3.StringUtils;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.utils.Slugify;
 import io.kestra.plugin.kubernetes.models.Connection;
 import io.kestra.plugin.kubernetes.services.ClientService;
 
 import java.time.Duration;
-import java.util.Map;
 import jakarta.validation.constraints.NotNull;
 
 @SuperBuilder
@@ -71,50 +67,5 @@ abstract public class AbstractConnection extends Task {
         }
 
         return client;
-    }
-
-    private static String normalizedValue(String name) {
-        if (name.length() > 63) {
-            name = name.substring(0, 63);
-        }
-
-        name = StringUtils.stripEnd(name, "-");
-        name = StringUtils.stripEnd(name, ".");
-        name = StringUtils.stripEnd(name, "_");
-
-        return name;
-    }
-
-    @SuppressWarnings("unchecked")
-    protected Map<String, Object> metadata(RunContext runContext) {
-        Map<String, String> flow = (Map<String, String>) runContext.getVariables().get("flow");
-        Map<String, String> task = (Map<String, String>) runContext.getVariables().get("task");
-        Map<String, String> execution = (Map<String, String>) runContext.getVariables().get("execution");
-        Map<String, String> taskrun = (Map<String, String>) runContext.getVariables().get("taskrun");
-
-        return ImmutableMap.of(
-            "labels", ImmutableMap.of(
-                "flow.kestra.io/id", normalizedValue(flow.get("id")),
-                "flow.kestra.io/namespace", normalizedValue(flow.get("namespace")),
-                "task.kestra.io/id", normalizedValue(task.get("id")),
-                "execution.kestra.io/id", normalizedValue(execution.get("id")),
-                "taskrun.kestra.io/id", normalizedValue(taskrun.get("id"))
-            )
-        );
-    }
-
-    protected String podName(RunContext runContext) {
-        Map<String, String> flow = (Map<String, String>) runContext.getVariables().get("flow");
-        Map<String, String> task = (Map<String, String>) runContext.getVariables().get("task");
-        Map<String, String> taskrun = (Map<String, String>) runContext.getVariables().get("taskrun");
-
-        String name = Slugify.of(String.join(
-            "-",
-            taskrun.get("id"),
-            flow.get("id"),
-            task.get("id")
-        ));
-
-        return normalizedValue(name);
     }
 }
