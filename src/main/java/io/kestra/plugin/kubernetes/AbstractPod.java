@@ -77,6 +77,7 @@ abstract public class AbstractPod extends AbstractConnection {
                     try (var fileInputStream = new FileInputStream(tempDir(runContext).resolve(file).toFile())) {
                         return podResource
                             .inContainer(INIT_FILES_CONTAINER_NAME)
+                            .withReadyWaitTimeout(0)
                             .file("/kestra/working-dir/" + file)
                             .upload(fileInputStream);
                     }
@@ -123,6 +124,7 @@ abstract public class AbstractPod extends AbstractConnection {
             "uploadMarker",
             () -> podResource
                 .inContainer(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
+                .withReadyWaitTimeout(0)
                 .file("/kestra/" + s)
                 .upload(marker.toPath())
         );
