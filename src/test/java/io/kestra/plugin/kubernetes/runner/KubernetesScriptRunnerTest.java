@@ -13,14 +13,8 @@ class KubernetesScriptRunnerTest extends AbstractScriptRunnerTest {
     protected void inputAndOutputFiles() {
     }
 
-    @Test
-    @Disabled("Test issue")
-    @Override
-    protected void fail() {
-    }
-
     @Override
     protected ScriptRunner scriptRunner() {
-        return KubernetesScriptRunner.builder().delete(false).build();
+        return KubernetesScriptRunner.builder().build();
     }
 }

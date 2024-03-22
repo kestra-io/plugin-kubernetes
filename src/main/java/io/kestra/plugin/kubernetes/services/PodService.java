@@ -20,11 +20,14 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 abstract public class PodService {
+    private static final List<String> COMPLETED_PHASES = List.of("Succeeded", "Failed", "Unknown"); // see https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase
+
     public static KubernetesClient client(RunContext runContext, Connection connection) throws IllegalVariableEvaluationException {
         return connection != null ? ClientService.of(connection.toConfig(runContext)) : ClientService.of();
     }
@@ -32,8 +35,8 @@ abstract public class PodService {
     public static Pod waitForInitContainerRunning(KubernetesClient client, Pod pod, String container, Duration waitUntilRunning) {
         return PodService.podRef(client, pod)
             .waitUntilCondition(
-                j -> j == null ||
-                    j.getStatus() == null ||
+                j -> j != null &&
+                    j.getStatus() != null &&
                     j.getStatus()
                         .getInitContainerStatuses()
                         .stream()
@@ -47,15 +50,16 @@ abstract public class PodService {
     public static Pod waitForPodReady(KubernetesClient client, Pod pod, Duration waitUntilRunning) {
         return PodService.podRef(client, pod)
             .waitUntilCondition(
-                j -> j == null ||
-                    j.getStatus() == null ||
+                j -> j != null &&
+                    j.getStatus() != null && (
                     j.getStatus().getPhase().equals("Failed") ||
                     j.getStatus()
                         .getConditions()
                         .stream()
                         .anyMatch(podCondition -> podCondition.getType().equals("ContainersReady") ||
                                 (podCondition.getReason() != null && podCondition.getReason().equals("PodCompleted"))
-                        ),
+                        )
+                ),
                 waitUntilRunning.toSeconds(),
                 TimeUnit.SECONDS
             );
@@ -67,8 +71,8 @@ abstract public class PodService {
             logger,
             pod,
             waitRunning,
-            j -> j == null ||
-                j.getStatus() == null ||
+            j -> j != null &&
+                j.getStatus() != null &&
                 j.getStatus()
                     .getContainerStatuses()
                     .stream()
@@ -83,9 +87,9 @@ abstract public class PodService {
             logger,
             pod,
             waitRunning,
-            j -> j == null ||
-                j.getStatus() == null ||
-                j.getStatus().getContainerStatuses().stream().allMatch(containerStatus -> containerStatus.getState().getTerminated() != null)
+            j -> j != null &&
+                j.getStatus() != null &&
+                COMPLETED_PHASES.contains(j.getStatus().getPhase())
         );
     }
 

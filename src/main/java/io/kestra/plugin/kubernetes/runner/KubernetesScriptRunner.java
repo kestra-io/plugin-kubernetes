@@ -211,7 +211,6 @@ public class KubernetesScriptRunner extends ScriptRunner {
                 // TODO make it configurable
                 Thread.sleep(1000);
 
-                pod = PodService.podRef(client, pod).get();
                 // handle exception
                 if (pod.getStatus() == null) {
                     runContext.logger().error("Pod terminated without any status, failing the task.");
