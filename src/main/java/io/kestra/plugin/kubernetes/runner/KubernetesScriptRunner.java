@@ -11,6 +11,7 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.ListUtils;
 import io.kestra.core.utils.MapUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
+import io.kestra.plugin.kubernetes.models.Connection;
 import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.watchers.PodWatcher;
@@ -53,6 +54,18 @@ public class KubernetesScriptRunner extends ScriptRunner {
     private static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
     private static final String MAIN_CONTAINER_NAME = "main";
     private static final String WORKING_DIR = "/kestra/working-dir";
+
+    @Schema(
+        title = "The connection parameters to the Kubernetes cluster",
+        description = "If no connection is defined, we try to load the connection from the current context in the following order: \n" +
+            "1. System properties\n" +
+            "2. Environment variables\n" +
+            "3. Kube config file\n" +
+            "4. Service account token and a mounted CA certificate.\n" +
+            "\n" +
+            "You can pass a full configuration with all options if needed."
+    )
+    private Connection connection;
 
     @NotNull
     @PluginProperty
@@ -137,7 +150,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
         }
 
         AbstractLogConsumer defaultLogConsumer = commands.getLogConsumer();
-        try (var client = new KubernetesClientBuilder().build();
+        try (var client = PodService.client(runContext, this.getConnection());
              var podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
             Pod pod = null;
             PodResource resource = null;

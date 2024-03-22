@@ -4,7 +4,6 @@ import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
-import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -27,7 +26,6 @@ import org.slf4j.Logger;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.time.Duration;
 import java.util.*;
 
 import jakarta.validation.constraints.NotNull;
@@ -149,7 +147,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         String namespace = runContext.render(this.namespace);
         Logger logger = runContext.logger();
 
-        try (KubernetesClient client = this.client(runContext);
+        try (KubernetesClient client = PodService.client(runContext, this.getConnection());
              PodLogService podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
             Pod pod = null;
 

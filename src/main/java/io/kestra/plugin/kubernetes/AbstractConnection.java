@@ -56,16 +56,4 @@ abstract public class AbstractConnection extends Task {
             .withTimeoutSeconds(this.waitRunning.toSeconds())
             .build();
     }
-
-    protected KubernetesClient client(RunContext runContext) throws IllegalVariableEvaluationException {
-        KubernetesClient client;
-
-        if (this.connection != null) {
-            client = ClientService.of(this.connection.toConfig(runContext));
-        } else {
-            client = ClientService.of();
-        }
-
-        return client;
-    }
 }
