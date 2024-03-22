@@ -5,10 +5,12 @@ import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.PodResource;
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.script.ScriptException;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.RetryUtils;
 import io.kestra.core.utils.Slugify;
+import io.kestra.plugin.kubernetes.models.Connection;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -23,6 +25,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 abstract public class PodService {
+    public static KubernetesClient client(RunContext runContext, Connection connection) throws IllegalVariableEvaluationException {
+        return connection != null ? ClientService.of(connection.toConfig(runContext)) : ClientService.of();
+    }
+
     public static Pod waitForInitContainerRunning(KubernetesClient client, Pod pod, String container, Duration waitUntilRunning) {
         return PodService.podRef(client, pod)
             .waitUntilCondition(
