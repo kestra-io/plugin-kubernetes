@@ -6,7 +6,6 @@ import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
-import io.kestra.core.models.flows.State;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.runners.RunContext;
@@ -22,7 +21,6 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
-import org.junitpioneer.jupiter.RetryingTest;
 import org.slf4j.event.Level;
 
 import java.io.InputStream;
@@ -37,6 +35,7 @@ import java.util.concurrent.Executors;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @MicronautTest
 @Slf4j
@@ -121,8 +120,7 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
         RunContext runContextFinal = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
-        var output =  task.run(runContextFinal);
-        assertThat(output.finalState().orElse(null),  is(State.Type.FAILED));
+        assertThrows( IllegalStateException.class, () -> task.run(runContextFinal));
     }
 
     @Test
@@ -152,8 +150,7 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
         RunContext runContextFinal = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
-        var output =  task.run(runContextFinal);
-        assertThat(output.finalState().orElse(null),  is(State.Type.FAILED));
+        assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
     }
 
     @Test

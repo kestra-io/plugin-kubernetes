@@ -83,7 +83,6 @@ dependencies {
 
     testImplementation platform("io.micronaut.platform:micronaut-platform:$micronautVersion")
     testImplementation "io.micronaut.test:micronaut-test-junit5"
-    testImplementation 'org.mockito:mockito-junit-jupiter'
 
     testImplementation group: "io.kestra", name: "core", version: kestraVersion
     testImplementation group: "io.kestra", name: "core", version: kestraVersion, classifier: 'tests'
@@ -93,11 +92,11 @@ dependencies {
 
     // test
     testImplementation "org.junit.jupiter:junit-jupiter-engine"
+    testImplementation 'org.mockito:mockito-junit-jupiter'
     testImplementation "org.hamcrest:hamcrest:2.2"
     testImplementation "org.hamcrest:hamcrest-library:2.2"
 
     // plugins
-    testCompileOnly "org.junit.jupiter:junit-jupiter-migrationsupport"
     testImplementation "org.junit-pioneer:junit-pioneer:2.2.0"
 }
 
