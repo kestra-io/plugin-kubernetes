@@ -1,7 +1,6 @@
 package io.kestra.plugin.kubernetes.runner;
 
 import io.fabric8.kubernetes.api.model.*;
-import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Plugin;
@@ -11,7 +10,6 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.ListUtils;
 import io.kestra.core.utils.MapUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
-import io.kestra.plugin.kubernetes.models.Connection;
 import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.watchers.PodWatcher;
@@ -56,16 +54,9 @@ public class KubernetesScriptRunner extends ScriptRunner {
     private static final String WORKING_DIR = "/kestra/working-dir";
 
     @Schema(
-        title = "The connection parameters to the Kubernetes cluster",
-        description = "If no connection is defined, we try to load the connection from the current context in the following order: \n" +
-            "1. System properties\n" +
-            "2. Environment variables\n" +
-            "3. Kube config file\n" +
-            "4. Service account token and a mounted CA certificate.\n" +
-            "\n" +
-            "You can pass a full configuration with all options if needed."
+        title = "The configuration of the target Kubernetes cluster."
     )
-    private Connection connection;
+    private Config config;
 
     @NotNull
     @PluginProperty
@@ -150,7 +141,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
         }
 
         AbstractLogConsumer defaultLogConsumer = commands.getLogConsumer();
-        try (var client = PodService.client(runContext, this.getConnection());
+        try (var client = PodService.client(convert(runContext, config));
              var podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
             Pod pod = null;
             PodResource resource = null;
@@ -250,6 +241,29 @@ public class KubernetesScriptRunner extends ScriptRunner {
                 }
             }
         }
+    }
+
+    private io.fabric8.kubernetes.client.Config convert(RunContext runContext, Config config) throws IllegalVariableEvaluationException {
+        if (config == null) {
+            return null;
+        }
+
+        var builder =  new io.fabric8.kubernetes.client.ConfigBuilder()
+            .withMasterUrl(runContext.render(config.getMasterUrl()))
+            .withUsername(runContext.render(config.getUsername()))
+            .withPassword(runContext.render(config.getPassword()))
+            .withNamespace(runContext.render(config.getNamespace()))
+            .withCaCertData(runContext.render(config.getCaCert()))
+            .withClientCertData(runContext.render(config.getClientCert()))
+            .withClientKeyData(runContext.render(config.getClientKey()))
+            .withClientKeyAlgo(runContext.render(config.getClientKeyAlgo()))
+            .withOauthToken(runContext.render(config.getOAuthToken()));
+
+        if (Boolean.TRUE.equals(config.getTrustCerts())) {
+            builder.withTrustCerts(true);
+        }
+
+        return builder.build();
     }
 
     private Container createContainer(RunContext runContext, ScriptCommands commands, Map<String, Object> additionalVars) throws IllegalVariableEvaluationException, IOException {
