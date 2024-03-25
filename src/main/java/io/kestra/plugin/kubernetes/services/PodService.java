@@ -2,11 +2,11 @@ package io.kestra.plugin.kubernetes.services;
 
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.models.script.ScriptException;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.RetryUtils;
 import io.kestra.core.utils.Slugify;
@@ -29,7 +29,11 @@ abstract public class PodService {
     private static final List<String> COMPLETED_PHASES = List.of("Succeeded", "Failed", "Unknown"); // see https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase
 
     public static KubernetesClient client(RunContext runContext, Connection connection) throws IllegalVariableEvaluationException {
-        return connection != null ? ClientService.of(connection.toConfig(runContext)) : ClientService.of();
+        return connection != null ? client(connection.toConfig(runContext)) : client(null);
+    }
+
+    public static KubernetesClient client(Config config) {
+        return config != null ? ClientService.of(config) : ClientService.of();
     }
 
     public static Pod waitForInitContainerRunning(KubernetesClient client, Pod pod, String container, Duration waitUntilRunning) {
