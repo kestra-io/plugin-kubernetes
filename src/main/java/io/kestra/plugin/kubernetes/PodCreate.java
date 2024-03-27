@@ -8,6 +8,8 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.State;
+import io.kestra.core.models.script.AbstractLogConsumer;
+import io.kestra.core.models.script.DefaultLogConsumer;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.tasks.PluginUtilsService;
@@ -199,7 +201,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 }
 
                 // watch log
-                podLogService.watch(client, pod, logger, runContext);
+                AbstractLogConsumer logConsumer = new DefaultLogConsumer(runContext);
+                podLogService.watch(client, pod, logConsumer, runContext);
 
                 // wait until completion of the pods
                 Pod ended;
@@ -215,7 +218,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 Output.OutputBuilder output = Output.builder()
                     .metadata(Metadata.from(ended.getMetadata()))
                     .status(podStatus)
-                    .vars(podLogService.getOutputStream().getOutputs());
+                    .vars(logConsumer.getOutputs());
 
                 if (isFailed(podStatus)) {
                     podStatus.getConditions().stream()
