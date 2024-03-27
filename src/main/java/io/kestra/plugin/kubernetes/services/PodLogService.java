@@ -4,6 +4,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.LogWatch;
 import io.fabric8.kubernetes.client.dsl.PodResource;
+import io.kestra.core.models.script.AbstractLogConsumer;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.Await;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
@@ -33,9 +34,9 @@ public class PodLogService implements AutoCloseable {
         this.threadFactoryBuilder = threadFactoryBuilder;
     }
 
-    public final void watch(KubernetesClient client, Pod pod, Logger logger, RunContext runContext) {
+    public final void watch(KubernetesClient client, Pod pod, AbstractLogConsumer logConsumer, RunContext runContext) {
         scheduledExecutor = Executors.newSingleThreadScheduledExecutor(threadFactoryBuilder.build("k8s-log"));
-        outputStream = new LoggingOutputStream(logger, Level.INFO, null, runContext);
+        outputStream = new LoggingOutputStream(logConsumer);
         AtomicBoolean started = new AtomicBoolean(false);
 
         ScheduledFuture<?> scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
@@ -46,7 +47,7 @@ public class PodLogService implements AutoCloseable {
                     if (!started.get()) {
                         started.set(true);
                     } else {
-                        logger.trace("No log for since '{}', reconnecting", lastTimestamp == null ? "uknown" : lastTimestamp.toString());
+                        runContext.logger().trace("No log since '{}', reconnecting", lastTimestamp == null ? "unknown" : lastTimestamp.toString());
                     }
 
                     if (podLogs != null) {

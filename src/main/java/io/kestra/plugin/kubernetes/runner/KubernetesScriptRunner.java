@@ -188,7 +188,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
                 }
 
                 // watch log
-                podLogService.watch(client, pod, logger, runContext);
+                podLogService.watch(client, pod, defaultLogConsumer, runContext);
 
                 // wait for terminated
                 if (!ListUtils.isEmpty(filesToDownload)) {
