@@ -10,6 +10,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.State;
 import io.kestra.core.models.script.AbstractLogConsumer;
 import io.kestra.core.models.script.DefaultLogConsumer;
+import io.kestra.core.models.script.ScriptService;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.tasks.PluginUtilsService;
@@ -32,7 +33,6 @@ import java.util.*;
 
 import jakarta.validation.constraints.NotNull;
 
-import static io.kestra.plugin.kubernetes.services.PodService.normalizedValue;
 import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
 
 @SuperBuilder
@@ -156,8 +156,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             if (this.resume) {
                 // try to locate an existing pod for this taskrun and attempt
                 Map<String, String> taskrun = (Map<String, String>) runContext.getVariables().get("taskrun");
-                String taskrunId = normalizedValue(taskrun.get("id"));
-                String attempt =  normalizedValue(String.valueOf(taskrun.get("attemptsCount")));
+                String taskrunId = ScriptService.normalize(taskrun.get("id"));
+                String attempt =  ScriptService.normalize(String.valueOf(taskrun.get("attemptsCount")));
                 String labelSelector = "kestra.io/taskrun-id=" + taskrunId + "," + "kestra.io/taskrun-attempt=" + attempt;
                 var existingPods = client.pods().inNamespace(namespace).list(new ListOptionsBuilder().withLabelSelector(labelSelector).build());
                 if (existingPods.getItems().size() == 1) {
@@ -249,11 +249,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             runContext,
             additionalVars,
             this.metadata,
-            ImmutableMap.of("labels", PodService.labels(runContext))
+            ImmutableMap.of("labels", ScriptService.labels(runContext, "kestra.io/"))
         );
 
         if (metadata.getName() == null) {
-            metadata.setName(PodService.podName(runContext));
+            metadata.setName(ScriptService.jobName(runContext));
         }
 
         PodSpec spec = InstanceService.fromMap(
