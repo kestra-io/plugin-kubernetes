@@ -148,56 +148,6 @@ abstract public class PodService {
             .withName(pod.getMetadata().getName());
     }
 
-    @SuppressWarnings("unchecked")
-    public static Map<String, String> labels(RunContext runContext) {
-        Map<String, String> flow = (Map<String, String>) runContext.getVariables().get("flow");
-        Map<String, String> task = (Map<String, String>) runContext.getVariables().get("task");
-        Map<String, String> execution = (Map<String, String>) runContext.getVariables().get("execution");
-        Map<String, String> taskrun = (Map<String, String>) runContext.getVariables().get("taskrun");
-
-        return ImmutableMap.of(
-            "kestra.io/namespace", normalizedValue(flow.get("namespace")),
-            "kestra.io/flow-id", normalizedValue(flow.get("id")),
-            "kestra.io/task-id", normalizedValue(task.get("id")),
-            "kestra.io/execution-id", normalizedValue(execution.get("id")),
-            "kestra.io/taskrun-id", normalizedValue(taskrun.get("id")),
-            "kestra.io/taskrun-attempt", normalizedValue(String.valueOf(taskrun.get("attemptsCount")))
-        );
-    }
-
-    @SuppressWarnings("unchecked")
-    public static String podName(RunContext runContext) {
-        Map<String, String> flow = (Map<String, String>) runContext.getVariables().get("flow");
-        Map<String, String> task = (Map<String, String>) runContext.getVariables().get("task");
-
-        String name = Slugify.of(String.join(
-            "-",
-            flow.get("namespace"),
-            flow.get("id"),
-            task.get("id")
-        ));
-        String normalized = normalizedValue(name);
-        if (normalized.length() > 58) {
-            normalized = normalized.substring(0, 57);
-        }
-
-        // we add a suffix of 5 chars, this should be enough as it's the standard k8s way
-        String suffix = RandomStringUtils.randomAlphanumeric(5).toLowerCase();
-        return normalized + "-" + suffix;
-    }
-
-    public static String normalizedValue(String name) {
-        if (name.length() > 63) {
-            name = name.substring(0, 63);
-        }
-
-        name = StringUtils.stripEnd(name, "-");
-        name = StringUtils.stripEnd(name, ".");
-        name = StringUtils.stripEnd(name, "_");
-
-        return name;
-    }
-
     public static Boolean withRetries(Logger logger, String where, RetryUtils.CheckedSupplier<Boolean> call) throws IOException {
         Boolean upload = new RetryUtils().<Boolean, IOException>of().run(
             object -> !object,

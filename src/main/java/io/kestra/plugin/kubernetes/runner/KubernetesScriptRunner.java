@@ -27,10 +27,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
-import static io.kestra.plugin.kubernetes.services.PodService.normalizedValue;
 import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
 
 @Introspected
@@ -136,7 +136,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
         additionalVars.put("workingDir", WORKING_DIR);
         if (!ListUtils.isEmpty(filesToDownload)) {
             Map<String, Object> outputFileVariables = new HashMap<>();
-            filesToDownload.forEach(file -> outputFileVariables.put(file, "/kestra/working-dir/" + file));
+            filesToDownload.forEach(file -> outputFileVariables.put(file, WORKING_DIR + "/" + file));
             additionalVars.put("outputFiles", outputFileVariables);
         }
 
@@ -149,8 +149,8 @@ public class KubernetesScriptRunner extends ScriptRunner {
             if (this.resume) {
                 // try to locate an existing pod for this taskrun and attempt
                 Map<String, String> taskrun = (Map<String, String>) runContext.getVariables().get("taskrun");
-                String taskrunId = normalizedValue(taskrun.get("id"));
-                String attempt =  normalizedValue(String.valueOf(taskrun.get("attemptsCount")));
+                String taskrunId = ScriptService.normalize(taskrun.get("id"));
+                String attempt =  ScriptService.normalize(String.valueOf(taskrun.get("attemptsCount")));
                 String labelSelector = "kestra.io/taskrun-id=" + taskrunId + "," + "kestra.io/taskrun-attempt=" + attempt;
                 var existingPods = client.pods().inNamespace(namespace).list(new ListOptionsBuilder().withLabelSelector(labelSelector).build());
                 if (existingPods.getItems().size() == 1) {
@@ -270,7 +270,8 @@ public class KubernetesScriptRunner extends ScriptRunner {
         List<String> command = ScriptService.uploadInputFiles(runContext, runContext.render(commands.getCommands(), additionalVars));
         List<EnvVar> env = MapUtils.emptyOnNull(commands.getEnv()).entrySet().stream()
             .map(entry -> new EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
-            .toList();
+            .collect(Collectors.toList());
+        env.add(new EnvVarBuilder().withName("WORKING_DIR").withValue(WORKING_DIR).build());
 
         var builder = new ContainerBuilder()
             .withName(MAIN_CONTAINER_NAME)
@@ -348,9 +349,9 @@ public class KubernetesScriptRunner extends ScriptRunner {
         }
 
         Map<String, String> allLabels = this.labels == null ? new HashMap<>() : runContext.renderMap(this.labels);
-        allLabels.putAll(PodService.labels(runContext));
+        allLabels.putAll(ScriptService.labels(runContext, "kestra.io/"));
         var metadata = new ObjectMetaBuilder()
-            .withName(PodService.podName(runContext))
+            .withName(ScriptService.jobName(runContext))
             .withLabels(allLabels)
             .build();
 
