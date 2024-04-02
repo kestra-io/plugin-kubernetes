@@ -56,6 +56,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
     @Schema(
         title = "The configuration of the target Kubernetes cluster."
     )
+    @PluginProperty
     private Config config;
 
     @NotNull
@@ -123,6 +124,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
     @Builder.Default
     protected SideCar fileSidecar = SideCar.builder().build();
 
+
     @Override
     public RunnerResult run(RunContext runContext, ScriptCommands commands, List<String> filesToUpload, List<String> filesToDownload) throws Exception {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
@@ -139,6 +141,14 @@ public class KubernetesScriptRunner extends ScriptRunner {
             filesToDownload.forEach(file -> outputFileVariables.put(file, WORKING_DIR + "/" + file));
             additionalVars.put("outputFiles", outputFileVariables);
         }
+
+        List<String> allFilesToUpload = new ArrayList<>(ListUtils.emptyOnNull(filesToUpload));
+        List<String> command = ScriptService.uploadInputFiles(
+            runContext,
+            runContext.render(commands.getCommands(), additionalVars),
+            (ignored, localFilePath) -> allFilesToUpload.add(localFilePath),
+            true
+        );
 
         AbstractLogConsumer defaultLogConsumer = commands.getLogConsumer();
         try (var client = PodService.client(convert(runContext, config));
@@ -164,8 +174,8 @@ public class KubernetesScriptRunner extends ScriptRunner {
             }
 
             if (pod == null) {
-                Container container = createContainer(runContext, commands, additionalVars);
-                pod = createPod(runContext, container, filesToUpload, filesToDownload);
+                Container container = createContainer(runContext, commands, command);
+                pod = createPod(runContext, container, allFilesToUpload, filesToDownload);
                 resource = client.pods().inNamespace(namespace).resource(pod);
                 pod = resource.create();
                 logger.info("Pod '{}' is created ", pod.getMetadata().getName());
@@ -175,9 +185,9 @@ public class KubernetesScriptRunner extends ScriptRunner {
                 // in case of resuming an already running pod, the status will be running
                 if (!"Running".equals(pod.getStatus().getPhase())) {
                     // wait for init container
-                    if (!ListUtils.isEmpty(filesToUpload)) {
+                    if (!ListUtils.isEmpty(allFilesToUpload)) {
                         pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, this.waitUntilRunning);
-                        this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger, filesToUpload);
+                        this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger, allFilesToUpload);
                     }
 
                     // wait for pod ready
@@ -266,8 +276,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
         return builder.build();
     }
 
-    private Container createContainer(RunContext runContext, ScriptCommands commands, Map<String, Object> additionalVars) throws IllegalVariableEvaluationException, IOException {
-        List<String> command = ScriptService.uploadInputFiles(runContext, runContext.render(commands.getCommands(), additionalVars));
+    private Container createContainer(RunContext runContext, ScriptCommands commands, List<String> command) throws IllegalVariableEvaluationException {
         List<EnvVar> env = MapUtils.emptyOnNull(commands.getEnv()).entrySet().stream()
             .map(entry -> new EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
             .collect(Collectors.toList());
