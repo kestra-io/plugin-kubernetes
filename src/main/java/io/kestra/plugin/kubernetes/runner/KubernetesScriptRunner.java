@@ -8,7 +8,6 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.script.*;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.ListUtils;
-import io.kestra.core.utils.MapUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
@@ -94,36 +93,43 @@ public class KubernetesScriptRunner extends ScriptRunner {
     )
     @NotNull
     @Builder.Default
-    private final Duration waitUntilRunning = Duration.ofMinutes(10);
+    private Duration waitUntilRunning = Duration.ofMinutes(10);
 
     @Schema(
         title = "The maximum duration to wait for the pod completion."
     )
     @NotNull
     @Builder.Default
-    private final Duration waitUntilCompletion = Duration.ofHours(1);
+    private Duration waitUntilCompletion = Duration.ofHours(1);
 
     @Schema(
         title = "Whether the pod should be deleted upon completion."
     )
     @NotNull
     @Builder.Default
-    private final Boolean delete = true;
+    private Boolean delete = true;
 
     @Schema(
         title = "Whether to reconnect to the current pod if it already exists."
     )
     @NotNull
     @Builder.Default
-    private final Boolean resume = true;
+    private Boolean resume = true;
 
     @Schema(
         title = "The configuration of the file sidecar container that handle download and upload of files."
     )
     @PluginProperty
     @Builder.Default
-    protected SideCar fileSidecar = SideCar.builder().build();
+    private SideCar fileSidecar = SideCar.builder().build();
 
+    @Schema(
+        title = "The additional duration to wait for logs to arrive after pod completion.",
+        description = "As logs are not retrieved in real time, we cannot guarantee that we have fetched all logs when the pod complete, therefor we wait for a fixed amount of time to fetch late logs."
+    )
+    @NotNull
+    @Builder.Default
+    private Duration waitForLogs = Duration.ofSeconds(1);
 
     @Override
     public RunnerResult run(RunContext runContext, ScriptCommands scriptCommands, List<String> filesToUpload, List<String> filesToDownload) throws Exception {
@@ -212,9 +218,8 @@ public class KubernetesScriptRunner extends ScriptRunner {
                     pod = PodService.waitForCompletion(client, logger, pod, this.waitUntilCompletion);
                 }
 
-                // wait for logs to arrives
-                // TODO make it configurable
-                Thread.sleep(1000);
+                // wait for logs to arrive
+                Thread.sleep(waitForLogs.toMillis());
 
                 // handle exception
                 if (pod.getStatus() == null) {
