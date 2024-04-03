@@ -126,7 +126,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
 
 
     @Override
-    public RunnerResult run(RunContext runContext, ScriptCommands commands, List<String> filesToUpload, List<String> filesToDownload) throws Exception {
+    public RunnerResult run(RunContext runContext, ScriptCommands scriptCommands, List<String> filesToUpload, List<String> filesToDownload) throws Exception {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
 
         if(!PodService.tempDir(runContext).toFile().mkdir()) {
@@ -134,23 +134,27 @@ public class KubernetesScriptRunner extends ScriptRunner {
         }
         String namespace = runContext.render(this.namespace);
         Logger logger = runContext.logger();
-        Map<String, Object> additionalVars = new HashMap<>(commands.getAdditionalVars());
-        additionalVars.put("workingDir", WORKING_DIR);
+
+        Map<String, Object> additionalVars = scriptCommands.getAdditionalVars();
+        additionalVars.put(ScriptService.VAR_WORKING_DIR, WORKING_DIR);
+        // TODO outputDir
+//        additionalVars.put(ScriptService.VAR_OUTPUT_DIR, scriptCommands.getOutputDirectory().toString());
         if (!ListUtils.isEmpty(filesToDownload)) {
             Map<String, Object> outputFileVariables = new HashMap<>();
             filesToDownload.forEach(file -> outputFileVariables.put(file, WORKING_DIR + "/" + file));
+            // TODO this is not handled by the other script runner do we keep it?
             additionalVars.put("outputFiles", outputFileVariables);
         }
 
         List<String> allFilesToUpload = new ArrayList<>(ListUtils.emptyOnNull(filesToUpload));
         List<String> command = ScriptService.uploadInputFiles(
             runContext,
-            runContext.render(commands.getCommands(), additionalVars),
+            runContext.render(scriptCommands.getCommands(), additionalVars),
             (ignored, localFilePath) -> allFilesToUpload.add(localFilePath),
             true
         );
 
-        AbstractLogConsumer defaultLogConsumer = commands.getLogConsumer();
+        AbstractLogConsumer defaultLogConsumer = scriptCommands.getLogConsumer();
         try (var client = PodService.client(convert(runContext, config));
              var podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
             Pod pod = null;
@@ -174,7 +178,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
             }
 
             if (pod == null) {
-                Container container = createContainer(runContext, commands, command);
+                Container container = createContainer(runContext, scriptCommands, command, additionalVars);
                 pod = createPod(runContext, container, allFilesToUpload, filesToDownload);
                 resource = client.pods().inNamespace(namespace).resource(pod);
                 pod = resource.create();
@@ -203,7 +207,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
                 // wait for terminated
                 if (!ListUtils.isEmpty(filesToDownload)) {
                     pod = PodService.waitForCompletionExcept(client, logger, pod, this.waitUntilCompletion, SIDECAR_FILES_CONTAINER_NAME);
-                    this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, commands.getOutputDirectory());
+                    this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, scriptCommands.getOutputDirectory());
                 } else {
                     pod = PodService.waitForCompletion(client, logger, pod, this.waitUntilCompletion);
                 }
@@ -276,15 +280,18 @@ public class KubernetesScriptRunner extends ScriptRunner {
         return builder.build();
     }
 
-    private Container createContainer(RunContext runContext, ScriptCommands commands, List<String> command) throws IllegalVariableEvaluationException {
-        List<EnvVar> env = MapUtils.emptyOnNull(commands.getEnv()).entrySet().stream()
+    private Container createContainer(RunContext runContext, ScriptCommands scriptCommands, List<String> command, Map<String, Object> additionalVars) throws IllegalVariableEvaluationException {
+        Map<String, String> environment = new HashMap<>(runContext.renderMap(scriptCommands.getEnv(), additionalVars));
+        environment.put(ScriptService.ENV_WORKING_DIR, WORKING_DIR);
+        // TODO outputDir
+//        environment.put(ScriptService.ENV_OUTPUT_DIR, scriptCommands.getOutputDirectory().toString());
+        List<EnvVar> env = environment.entrySet().stream()
             .map(entry -> new EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
             .collect(Collectors.toList());
-        env.add(new EnvVarBuilder().withName("WORKING_DIR").withValue(WORKING_DIR).build());
 
         var builder = new ContainerBuilder()
             .withName(MAIN_CONTAINER_NAME)
-            .withImage(runContext.render(commands.getContainerImage(), commands.getAdditionalVars()))
+            .withImage(runContext.render(scriptCommands.getContainerImage(), additionalVars))
             .withImagePullPolicy(this.pullPolicy)
             .withEnv(env)
             .withCommand(command);
