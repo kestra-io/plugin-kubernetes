@@ -8,7 +8,6 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.script.*;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.ListUtils;
-import io.kestra.core.utils.MapUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
@@ -94,39 +93,46 @@ public class KubernetesScriptRunner extends ScriptRunner {
     )
     @NotNull
     @Builder.Default
-    private final Duration waitUntilRunning = Duration.ofMinutes(10);
+    private Duration waitUntilRunning = Duration.ofMinutes(10);
 
     @Schema(
         title = "The maximum duration to wait for the pod completion."
     )
     @NotNull
     @Builder.Default
-    private final Duration waitUntilCompletion = Duration.ofHours(1);
+    private Duration waitUntilCompletion = Duration.ofHours(1);
 
     @Schema(
         title = "Whether the pod should be deleted upon completion."
     )
     @NotNull
     @Builder.Default
-    private final Boolean delete = true;
+    private Boolean delete = true;
 
     @Schema(
         title = "Whether to reconnect to the current pod if it already exists."
     )
     @NotNull
     @Builder.Default
-    private final Boolean resume = true;
+    private Boolean resume = true;
 
     @Schema(
         title = "The configuration of the file sidecar container that handle download and upload of files."
     )
     @PluginProperty
     @Builder.Default
-    protected SideCar fileSidecar = SideCar.builder().build();
+    private SideCar fileSidecar = SideCar.builder().build();
 
+    @Schema(
+        title = "The additional duration to wait for logs to arrive after pod completion.",
+        description = "As logs are not retrieved in real time, we cannot guarantee that we have fetched all logs when the pod complete, therefore we wait for a fixed amount of time to fetch late logs."
+    )
+    @NotNull
+    @Builder.Default
+    private Duration waitForLogs = Duration.ofSeconds(1);
 
     @Override
-    public RunnerResult run(RunContext runContext, ScriptCommands commands, List<String> filesToUpload, List<String> filesToDownload) throws Exception {
+    public RunnerResult run(RunContext runContext, ScriptCommands scriptCommands, List<String> filesToUpload, List<String> filesToDownload) throws Exception {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
 
         if(!PodService.tempDir(runContext).toFile().mkdir()) {
@@ -134,23 +140,27 @@ public class KubernetesScriptRunner extends ScriptRunner {
         }
         String namespace = runContext.render(this.namespace);
         Logger logger = runContext.logger();
-        Map<String, Object> additionalVars = new HashMap<>(commands.getAdditionalVars());
-        additionalVars.put("workingDir", WORKING_DIR);
+
+        Map<String, Object> additionalVars = scriptCommands.getAdditionalVars();
+        additionalVars.put(ScriptService.VAR_WORKING_DIR, WORKING_DIR);
+        // TODO outputDir
+//        additionalVars.put(ScriptService.VAR_OUTPUT_DIR, scriptCommands.getOutputDirectory().toString());
         if (!ListUtils.isEmpty(filesToDownload)) {
             Map<String, Object> outputFileVariables = new HashMap<>();
             filesToDownload.forEach(file -> outputFileVariables.put(file, WORKING_DIR + "/" + file));
+            // TODO this is not handled by the other script runner do we keep it?
             additionalVars.put("outputFiles", outputFileVariables);
         }
 
         List<String> allFilesToUpload = new ArrayList<>(ListUtils.emptyOnNull(filesToUpload));
         List<String> command = ScriptService.uploadInputFiles(
             runContext,
-            runContext.render(commands.getCommands(), additionalVars),
+            runContext.render(scriptCommands.getCommands(), additionalVars),
             (ignored, localFilePath) -> allFilesToUpload.add(localFilePath),
             true
         );
 
-        AbstractLogConsumer defaultLogConsumer = commands.getLogConsumer();
+        AbstractLogConsumer defaultLogConsumer = scriptCommands.getLogConsumer();
         try (var client = PodService.client(convert(runContext, config));
              var podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
             Pod pod = null;
@@ -174,7 +184,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
             }
 
             if (pod == null) {
-                Container container = createContainer(runContext, commands, command);
+                Container container = createContainer(runContext, scriptCommands, command, additionalVars);
                 pod = createPod(runContext, container, allFilesToUpload, filesToDownload);
                 resource = client.pods().inNamespace(namespace).resource(pod);
                 pod = resource.create();
@@ -203,14 +213,13 @@ public class KubernetesScriptRunner extends ScriptRunner {
                 // wait for terminated
                 if (!ListUtils.isEmpty(filesToDownload)) {
                     pod = PodService.waitForCompletionExcept(client, logger, pod, this.waitUntilCompletion, SIDECAR_FILES_CONTAINER_NAME);
-                    this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, commands.getOutputDirectory());
+                    this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, scriptCommands.getOutputDirectory());
                 } else {
                     pod = PodService.waitForCompletion(client, logger, pod, this.waitUntilCompletion);
                 }
 
-                // wait for logs to arrives
-                // TODO make it configurable
-                Thread.sleep(1000);
+                // wait for logs to arrive
+                Thread.sleep(waitForLogs.toMillis());
 
                 // handle exception
                 if (pod.getStatus() == null) {
@@ -276,15 +285,18 @@ public class KubernetesScriptRunner extends ScriptRunner {
         return builder.build();
     }
 
-    private Container createContainer(RunContext runContext, ScriptCommands commands, List<String> command) throws IllegalVariableEvaluationException {
-        List<EnvVar> env = MapUtils.emptyOnNull(commands.getEnv()).entrySet().stream()
+    private Container createContainer(RunContext runContext, ScriptCommands scriptCommands, List<String> command, Map<String, Object> additionalVars) throws IllegalVariableEvaluationException {
+        Map<String, String> environment = new HashMap<>(runContext.renderMap(scriptCommands.getEnv(), additionalVars));
+        environment.put(ScriptService.ENV_WORKING_DIR, WORKING_DIR);
+        // TODO outputDir
+//        environment.put(ScriptService.ENV_OUTPUT_DIR, scriptCommands.getOutputDirectory().toString());
+        List<EnvVar> env = environment.entrySet().stream()
             .map(entry -> new EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
             .collect(Collectors.toList());
-        env.add(new EnvVarBuilder().withName("WORKING_DIR").withValue(WORKING_DIR).build());
 
         var builder = new ContainerBuilder()
             .withName(MAIN_CONTAINER_NAME)
-            .withImage(runContext.render(commands.getContainerImage(), commands.getAdditionalVars()))
+            .withImage(runContext.render(scriptCommands.getContainerImage(), additionalVars))
             .withImagePullPolicy(this.pullPolicy)
             .withEnv(env)
             .withCommand(command);
