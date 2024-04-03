@@ -125,7 +125,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
 
     @Schema(
         title = "The additional duration to wait for logs to arrive after pod completion.",
-        description = "As logs are not retrieved in real time, we cannot guarantee that we have fetched all logs when the pod complete, therefor we wait for a fixed amount of time to fetch late logs."
+        description = "As logs are not retrieved in real time, we cannot guarantee that we have fetched all logs when the pod complete, therefore we wait for a fixed amount of time to fetch late logs."
     )
     @NotNull
     @Builder.Default
