@@ -209,19 +209,18 @@ public class KubernetesScriptRunner extends ScriptRunner implements RemoteRunner
                     throw new ScriptException(-1, defaultLogConsumer.getStdOutCount(), defaultLogConsumer.getStdErrCount());
                 }
 
-                if (pod.getStatus().getPhase().equals("Failed")) {
-                    if (pod.getStatus().getContainerStatuses() == null) {
-                        runContext.logger().error("Pod terminated without any container statuses, failing the task.");
-                        throw new ScriptException(-1, defaultLogConsumer.getStdOutCount(), defaultLogConsumer.getStdErrCount());
-                    }
-
-                    throw pod.getStatus().getContainerStatuses().stream()
-                        .filter(containerStatus -> containerStatus.getState() != null && containerStatus.getState().getTerminated() != null)
-                        .map(containerStatus -> containerStatus.getState().getTerminated())
-                        .findFirst()
-                        .map(containerStateTerminated -> new ScriptException(containerStateTerminated.getMessage(), containerStateTerminated.getExitCode(), defaultLogConsumer.getStdOutCount(), defaultLogConsumer.getStdErrCount()))
-                        .orElse(new ScriptException(-1, defaultLogConsumer.getStdOutCount(), defaultLogConsumer.getStdErrCount()));
+                if (pod.getStatus().getContainerStatuses() == null) {
+                    runContext.logger().error("Pod terminated without any container statuses, failing the task.");
+                    throw new ScriptException(-1, defaultLogConsumer.getStdOutCount(), defaultLogConsumer.getStdErrCount());
                 }
+
+                pod.getStatus().getContainerStatuses().stream()
+                    .filter(containerStatus -> containerStatus.getState() != null && containerStatus.getState().getTerminated() != null && containerStatus.getState().getTerminated().getExitCode() != 0)
+                    .map(containerStatus -> containerStatus.getState().getTerminated())
+                    .findFirst()
+                    .ifPresent(throwConsumer(containerStateTerminated -> {
+                        throw new ScriptException(containerStateTerminated.getMessage(), containerStateTerminated.getExitCode(), defaultLogConsumer.getStdOutCount(), defaultLogConsumer.getStdErrCount());
+                    }));
 
                 podWatch.close();
                 podLogService.close();
