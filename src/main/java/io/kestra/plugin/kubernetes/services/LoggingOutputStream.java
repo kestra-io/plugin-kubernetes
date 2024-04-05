@@ -1,6 +1,6 @@
 package io.kestra.plugin.kubernetes.services;
 
-import io.kestra.core.models.script.AbstractLogConsumer;
+import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
 import lombok.Getter;
 
 import java.io.ByteArrayOutputStream;
