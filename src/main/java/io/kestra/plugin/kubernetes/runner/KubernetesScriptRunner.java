@@ -1,13 +1,15 @@
 package io.kestra.plugin.kubernetes.runner;
 
 import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.client.dsl.ContainerResource;
+import io.fabric8.kubernetes.client.dsl.CopyOrReadable;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.script.*;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.utils.ListUtils;
+import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
@@ -19,7 +21,6 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.slf4j.Logger;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,12 +46,12 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
         This script runner is container-based so the `containerImage` property must be set to be able to use it.
         When the Kestra Worker that runs this script is terminated, the pod will still runs until completion, then after restarting, the Worker will resume processing on the existing pod unless `resume` is set to false."""
 )
-public class KubernetesScriptRunner extends ScriptRunner {
+public class KubernetesScriptRunner extends ScriptRunner implements RemoteRunnerInterface {
     private static final String INIT_FILES_CONTAINER_NAME = "init-files";
     private static final String FILES_VOLUME_NAME = "kestra-files";
     private static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
     private static final String MAIN_CONTAINER_NAME = "main";
-    private static final String WORKING_DIR = "/kestra/working-dir";
+    private static final Path WORKING_DIR = Path.of("/kestra/working-dir");
 
     @Schema(
         title = "The configuration of the target Kubernetes cluster."
@@ -141,25 +142,6 @@ public class KubernetesScriptRunner extends ScriptRunner {
         String namespace = runContext.render(this.namespace);
         Logger logger = runContext.logger();
 
-        Map<String, Object> additionalVars = scriptCommands.getAdditionalVars();
-        additionalVars.put(ScriptService.VAR_WORKING_DIR, WORKING_DIR);
-        // TODO outputDir
-//        additionalVars.put(ScriptService.VAR_OUTPUT_DIR, scriptCommands.getOutputDirectory().toString());
-        if (!ListUtils.isEmpty(filesToDownload)) {
-            Map<String, Object> outputFileVariables = new HashMap<>();
-            filesToDownload.forEach(file -> outputFileVariables.put(file, WORKING_DIR + "/" + file));
-            // TODO this is not handled by the other script runner do we keep it?
-            additionalVars.put("outputFiles", outputFileVariables);
-        }
-
-        List<String> allFilesToUpload = new ArrayList<>(ListUtils.emptyOnNull(filesToUpload));
-        List<String> command = ScriptService.uploadInputFiles(
-            runContext,
-            runContext.render(scriptCommands.getCommands(), additionalVars),
-            (ignored, localFilePath) -> allFilesToUpload.add(localFilePath),
-            true
-        );
-
         AbstractLogConsumer defaultLogConsumer = scriptCommands.getLogConsumer();
         try (var client = PodService.client(convert(runContext, config));
              var podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
@@ -183,9 +165,15 @@ public class KubernetesScriptRunner extends ScriptRunner {
                 }
             }
 
+            List<String> filesToUploadWithOutputDir = new ArrayList<>(filesToUpload);
+            Map<String, Object> additionalVars = this.additionalVars(runContext, scriptCommands);
+            Path outputDirPath = (Path) additionalVars.get(ScriptService.VAR_OUTPUT_DIR);
+            Path outputDirName = WORKING_DIR.relativize(outputDirPath);
+            runContext.resolve(outputDirName).toFile().mkdir();
+            filesToUploadWithOutputDir.add(outputDirName.toString());
             if (pod == null) {
-                Container container = createContainer(runContext, scriptCommands, command, additionalVars);
-                pod = createPod(runContext, container, allFilesToUpload, filesToDownload);
+                Container container = createContainer(runContext, scriptCommands);
+                pod = createPod(runContext, container);
                 resource = client.pods().inNamespace(namespace).resource(pod);
                 pod = resource.create();
                 logger.info("Pod '{}' is created ", pod.getMetadata().getName());
@@ -195,10 +183,8 @@ public class KubernetesScriptRunner extends ScriptRunner {
                 // in case of resuming an already running pod, the status will be running
                 if (!"Running".equals(pod.getStatus().getPhase())) {
                     // wait for init container
-                    if (!ListUtils.isEmpty(allFilesToUpload)) {
-                        pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, this.waitUntilRunning);
-                        this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger, allFilesToUpload);
-                    }
+                    pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, this.waitUntilRunning);
+                    this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger, filesToUploadWithOutputDir);
 
                     // wait for pod ready
                     pod = PodService.waitForPodReady(client, pod, this.waitUntilRunning);
@@ -211,12 +197,8 @@ public class KubernetesScriptRunner extends ScriptRunner {
                 podLogService.watch(client, pod, defaultLogConsumer, runContext);
 
                 // wait for terminated
-                if (!ListUtils.isEmpty(filesToDownload)) {
-                    pod = PodService.waitForCompletionExcept(client, logger, pod, this.waitUntilCompletion, SIDECAR_FILES_CONTAINER_NAME);
-                    this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, scriptCommands.getOutputDirectory());
-                } else {
-                    pod = PodService.waitForCompletion(client, logger, pod, this.waitUntilCompletion);
-                }
+                pod = PodService.waitForCompletionExcept(client, logger, pod, this.waitUntilCompletion, SIDECAR_FILES_CONTAINER_NAME);
+                this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, scriptCommands, outputDirPath);
 
                 // wait for logs to arrive
                 Thread.sleep(waitForLogs.toMillis());
@@ -233,12 +215,11 @@ public class KubernetesScriptRunner extends ScriptRunner {
                         throw new ScriptException(-1, defaultLogConsumer.getStdOutCount(), defaultLogConsumer.getStdErrCount());
                     }
 
-                    // TODO we should be able to send a proper message thanks to the ScriptException
                     throw pod.getStatus().getContainerStatuses().stream()
                         .filter(containerStatus -> containerStatus.getState() != null && containerStatus.getState().getTerminated() != null)
                         .map(containerStatus -> containerStatus.getState().getTerminated())
                         .findFirst()
-                        .map(containerStateTerminated -> new ScriptException(containerStateTerminated.getExitCode(), defaultLogConsumer.getStdOutCount(), defaultLogConsumer.getStdErrCount()))
+                        .map(containerStateTerminated -> new ScriptException(containerStateTerminated.getMessage(), containerStateTerminated.getExitCode(), defaultLogConsumer.getStdOutCount(), defaultLogConsumer.getStdErrCount()))
                         .orElse(new ScriptException(-1, defaultLogConsumer.getStdOutCount(), defaultLogConsumer.getStdErrCount()));
                 }
 
@@ -285,21 +266,17 @@ public class KubernetesScriptRunner extends ScriptRunner {
         return builder.build();
     }
 
-    private Container createContainer(RunContext runContext, ScriptCommands scriptCommands, List<String> command, Map<String, Object> additionalVars) throws IllegalVariableEvaluationException {
-        Map<String, String> environment = new HashMap<>(runContext.renderMap(scriptCommands.getEnv(), additionalVars));
-        environment.put(ScriptService.ENV_WORKING_DIR, WORKING_DIR);
-        // TODO outputDir
-//        environment.put(ScriptService.ENV_OUTPUT_DIR, scriptCommands.getOutputDirectory().toString());
-        List<EnvVar> env = environment.entrySet().stream()
+    private Container createContainer(RunContext runContext, ScriptCommands scriptCommands) throws IllegalVariableEvaluationException {
+        List<EnvVar> env = this.env(runContext, scriptCommands).entrySet().stream()
             .map(entry -> new EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
             .collect(Collectors.toList());
 
         var builder = new ContainerBuilder()
             .withName(MAIN_CONTAINER_NAME)
-            .withImage(runContext.render(scriptCommands.getContainerImage(), additionalVars))
+            .withImage(runContext.render(scriptCommands.getContainerImage(), this.additionalVars(runContext, scriptCommands)))
             .withImagePullPolicy(this.pullPolicy)
             .withEnv(env)
-            .withCommand(command);
+            .withCommand(scriptCommands.getCommands());
 
         if (this.resources != null) {
             builder.withResources(
@@ -328,7 +305,7 @@ public class KubernetesScriptRunner extends ScriptRunner {
         return quantities;
     }
 
-    private Pod createPod(RunContext runContext, Container mainContainer, List<String> filesToUpload, List<String> filesToDownload) throws IllegalVariableEvaluationException {
+    private Pod createPod(RunContext runContext, Container mainContainer) throws IllegalVariableEvaluationException {
         VolumeMount volumeMount = new VolumeMountBuilder()
             .withMountPath("/kestra")
             .withName(FILES_VOLUME_NAME)
@@ -339,35 +316,27 @@ public class KubernetesScriptRunner extends ScriptRunner {
             .withRestartPolicy("Never")
             .build();
 
-        if (!ListUtils.isEmpty(filesToDownload)) {
-            spec
-                .getContainers()
-                .add(filesContainer(runContext, volumeMount, true));
-        }
+        spec.getContainers()
+            .add(filesContainer(runContext, volumeMount, true));
 
-        if (!ListUtils.isEmpty(filesToUpload)) {
-            spec
-                .getInitContainers()
-                .add(filesContainer(runContext, volumeMount, false));
-        }
+        spec.getInitContainers()
+            .add(filesContainer(runContext, volumeMount, false));
 
-        if (!ListUtils.isEmpty(filesToDownload) || !ListUtils.isEmpty(filesToUpload)) {
-            spec.getContainers()
-                .forEach(container -> {
-                    List<VolumeMount> volumeMounts = container.getVolumeMounts();
-                    volumeMounts.add(volumeMount);
-                    container.setVolumeMounts(volumeMounts);
-                    container.setWorkingDir(WORKING_DIR);
-                });
+        spec.getContainers()
+            .forEach(container -> {
+                List<VolumeMount> volumeMounts = container.getVolumeMounts();
+                volumeMounts.add(volumeMount);
+                container.setVolumeMounts(volumeMounts);
+                container.setWorkingDir(WORKING_DIR.toString());
+            });
 
-            spec.getVolumes()
-                .add(new VolumeBuilder()
-                    .withName(FILES_VOLUME_NAME)
-                    .withNewEmptyDir()
-                    .endEmptyDir()
-                    .build()
-                );
-        }
+        spec.getVolumes()
+            .add(new VolumeBuilder()
+                .withName(FILES_VOLUME_NAME)
+                .withNewEmptyDir()
+                .endEmptyDir()
+                .build()
+            );
 
         Map<String, String> allLabels = this.labels == null ? new HashMap<>() : runContext.renderMap(this.labels);
         allLabels.putAll(ScriptService.labels(runContext, "kestra.io/"));
@@ -388,13 +357,19 @@ public class KubernetesScriptRunner extends ScriptRunner {
                 logger,
                 "uploadInputFiles",
                 () -> {
-                    try (var fileInputStream = new FileInputStream(runContext.resolve(Path.of(file)).toFile())) {
-                        return podResource
-                            .inContainer(INIT_FILES_CONTAINER_NAME)
-                            .withReadyWaitTimeout(0)
-                            .file("/kestra/working-dir/" + file)
-                            .upload(fileInputStream);
+                    Path filePath = runContext.resolve(Path.of(file));
+                    ContainerResource containerResource = podResource
+                        .inContainer(INIT_FILES_CONTAINER_NAME)
+                        .withReadyWaitTimeout(0);
+
+                    String containerFilePath = WORKING_DIR.resolve(file.startsWith("/") ? file.substring(1) : file).toString();
+                    CopyOrReadable toUpload;
+                    if (filePath.toFile().isDirectory()) {
+                        toUpload = containerResource.dir(containerFilePath);
+                    } else {
+                        toUpload = containerResource.file(containerFilePath);
                     }
+                    return toUpload.upload(filePath);
                 }
             ))
         );
@@ -402,22 +377,29 @@ public class KubernetesScriptRunner extends ScriptRunner {
         PodService.uploadMarker(runContext, podResource, logger, "ready", INIT_FILES_CONTAINER_NAME);
     }
 
-    protected void downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Path outputDirectory) throws Exception {
+    protected void downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, ScriptCommands scriptCommands, Path containerOutputDir) throws Exception {
+        Path workingDirectory = scriptCommands.getWorkingDirectory();
         withRetries(
             logger,
             "downloadOutputFiles",
             () -> podResource
                 .inContainer(SIDECAR_FILES_CONTAINER_NAME)
-                .dir("/kestra/working-dir/")
-                .copy(outputDirectory)
+                .dir(WORKING_DIR.toString())
+                .copy(workingDirectory)
         );
 
         // kubernetes copy by keeping the target repository which we don't want, so we move the files
-        try(Stream<Path> files = Files.list(outputDirectory.resolve("kestra/working-dir/"))) {
+        String containerWorkingDirAsRelativePath = WORKING_DIR.toString().substring(1);
+        try(Stream<Path> files = Files.list(workingDirectory.resolve(containerWorkingDirAsRelativePath))) {
             files.forEach(throwConsumer(outputFile -> {
-                    Files.move(outputFile, outputDirectory.resolve(outputDirectory.resolve("kestra/working-dir/").relativize(outputFile)), StandardCopyOption.REPLACE_EXISTING);
+                Path relativePathFromContainerWDir = workingDirectory.resolve(containerWorkingDirAsRelativePath).relativize(outputFile);
+                // If the file was in the container outputDir, we forward it to the script commands' outputDir
+                if (outputFile.equals(workingDirectory.resolve(containerOutputDir.toString().substring(1)))) {
+                    Files.move(outputFile, scriptCommands.getOutputDirectory(), StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    Files.move(outputFile, workingDirectory.resolve(relativePathFromContainerWDir), StandardCopyOption.REPLACE_EXISTING);
                 }
-            ));
+            }));
         }
 
         PodService.uploadMarker(runContext, podResource, logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
@@ -446,6 +428,14 @@ public class KubernetesScriptRunner extends ScriptRunner {
         }
 
         return containerBuilder.build();
+    }
+
+    @Override
+    protected Map<String, Object> runnerAdditionalVars(RunContext runContext, ScriptCommands scriptCommands) {
+        return Map.of(
+            ScriptService.VAR_WORKING_DIR, WORKING_DIR,
+            ScriptService.VAR_OUTPUT_DIR, WORKING_DIR.resolve(IdUtils.create())
+        );
     }
 
     @Getter
