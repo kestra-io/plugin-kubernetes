@@ -48,7 +48,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
         To access the task's working directory, use the `{{workingDir}}` Pebble expression or the `WORKING_DIR` environment variable. Input files and namespace files will be available in this directory.
 
         To generate output files you can either use the `outputFiles` task's property and create a file with the same name in the task's working directory, or create any file in the output directory which can be accessed by the `{{outputDir}}` Pebble expression or the `OUTPUT_DIR` environment variables.
-         
+        
         Note that when the Kestra Worker running this task is terminated, the pod will still runs until completion, then after restarting, the Worker will resume processing on the existing pod unless `resume` is set to false."""
 )
 @Plugin(
@@ -58,11 +58,10 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
             code = """
                 id: new-shell
                 namespace: myteam
-                                
+                
                 tasks:
                   - id: shell
                     type: io.kestra.plugin.scripts.shell.Commands
-                    containerImage: centos
                     taskRunner:
                       type: io.kestra.plugin.kubernetes.runner.KubernetesTaskRunner
                     commands:
@@ -74,11 +73,11 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
             code = """
                 id: new-shell-with-file
                 namespace: myteam
-                                
+                
                 inputs:
                   - id: file
                     type: FILE
-                                
+                
                 tasks:
                   - id: shell
                     type: io.kestra.plugin.scripts.shell.Commands
