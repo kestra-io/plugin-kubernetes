@@ -11,6 +11,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.runners.*;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.IdUtils;
+import io.kestra.core.utils.ListUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
@@ -215,11 +216,15 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
             }
 
             List<String> filesToUploadWithOutputDir = new ArrayList<>(filesToUpload);
+
             Map<String, Object> additionalVars = this.additionalVars(runContext, taskCommands);
             Path outputDirPath = (Path) additionalVars.get(ScriptService.VAR_OUTPUT_DIR);
-            Path outputDirName = WORKING_DIR.relativize(outputDirPath);
-            runContext.resolve(outputDirName).toFile().mkdir();
-            filesToUploadWithOutputDir.add(outputDirName.toString());
+            boolean outputDirectoryEnabled = taskCommands.outputDirectoryEnabled();
+            if (outputDirectoryEnabled) {
+                Path outputDirName = WORKING_DIR.relativize(outputDirPath);
+                runContext.resolve(outputDirName).toFile().mkdir();
+                filesToUploadWithOutputDir.add(outputDirName.toString());
+            }
             if (pod == null) {
                 Container container = createContainer(runContext, taskCommands);
                 pod = createPod(runContext, container);
@@ -231,9 +236,11 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
             try (var podWatch = resource.watch(new PodWatcher(logger))) {
                 // in case of resuming an already running pod, the status will be running
                 if (!"Running".equals(pod.getStatus().getPhase())) {
-                    // wait for init container
-                    pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, this.waitUntilRunning);
-                    this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger, filesToUploadWithOutputDir);
+                    if (!ListUtils.isEmpty(filesToUploadWithOutputDir)) {
+                        // wait for init container
+                        pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, this.waitUntilRunning);
+                        this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger, filesToUploadWithOutputDir);
+                    }
 
                     // wait for pod ready
                     pod = PodService.waitForPodReady(client, pod, this.waitUntilRunning);
@@ -246,8 +253,12 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
                 podLogService.watch(client, pod, defaultLogConsumer, runContext);
 
                 // wait for terminated
-                pod = PodService.waitForCompletionExcept(client, logger, pod, this.waitUntilCompletion, SIDECAR_FILES_CONTAINER_NAME);
-                this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, taskCommands, outputDirPath);
+                if (!ListUtils.isEmpty(filesToDownload) || outputDirectoryEnabled) {
+                    pod = PodService.waitForCompletionExcept(client, logger, pod, this.waitUntilCompletion, SIDECAR_FILES_CONTAINER_NAME);
+                    this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, taskCommands, outputDirPath);
+                } else {
+                    pod = PodService.waitForCompletion(client, logger, pod, this.waitUntilCompletion);
+                }
 
                 // wait for logs to arrive
                 Thread.sleep(waitForLogs.toMillis());
@@ -480,10 +491,14 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
 
     @Override
     protected Map<String, Object> runnerAdditionalVars(RunContext runContext, TaskCommands taskCommands) {
-        return Map.of(
-            ScriptService.VAR_WORKING_DIR, WORKING_DIR,
-            ScriptService.VAR_OUTPUT_DIR, WORKING_DIR.resolve(IdUtils.create())
-        );
+        Map<String, Object> vars = new HashMap<>();
+        vars.put(ScriptService.VAR_WORKING_DIR, WORKING_DIR);
+
+        if (taskCommands.outputDirectoryEnabled()) {
+            vars.put(ScriptService.VAR_OUTPUT_DIR, WORKING_DIR.resolve(IdUtils.create()));
+        }
+
+        return vars;
     }
 
     @Getter
