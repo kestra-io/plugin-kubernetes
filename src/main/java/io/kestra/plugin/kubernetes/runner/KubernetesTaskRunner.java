@@ -227,7 +227,7 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
             }
             if (pod == null) {
                 Container container = createContainer(runContext, taskCommands);
-                pod = createPod(runContext, container);
+                pod = createPod(runContext, container, !ListUtils.isEmpty(filesToUploadWithOutputDir), !ListUtils.isEmpty(filesToDownload) || outputDirectoryEnabled);
                 resource = client.pods().inNamespace(namespace).resource(pod);
                 pod = resource.create();
                 logger.info("Pod '{}' is created ", pod.getMetadata().getName());
@@ -365,7 +365,7 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
         return quantities;
     }
 
-    private Pod createPod(RunContext runContext, Container mainContainer) throws IllegalVariableEvaluationException {
+    private Pod createPod(RunContext runContext, Container mainContainer, boolean initContainer, boolean sidecarContainer) throws IllegalVariableEvaluationException {
         VolumeMount volumeMount = new VolumeMountBuilder()
             .withMountPath("/kestra")
             .withName(FILES_VOLUME_NAME)
@@ -376,27 +376,33 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
             .withRestartPolicy("Never")
             .build();
 
-        spec.getContainers()
-            .add(filesContainer(runContext, volumeMount, true));
+        if (sidecarContainer) {
+            spec.getContainers()
+                .add(filesContainer(runContext, volumeMount, true));
+        }
 
-        spec.getInitContainers()
-            .add(filesContainer(runContext, volumeMount, false));
+        if (initContainer) {
+            spec.getInitContainers()
+                .add(filesContainer(runContext, volumeMount, false));
+        }
 
-        spec.getContainers()
-            .forEach(container -> {
-                List<VolumeMount> volumeMounts = container.getVolumeMounts();
-                volumeMounts.add(volumeMount);
-                container.setVolumeMounts(volumeMounts);
-                container.setWorkingDir(WORKING_DIR.toString());
-            });
+        if (initContainer || sidecarContainer) {
+            spec.getContainers()
+                .forEach(container -> {
+                    List<VolumeMount> volumeMounts = container.getVolumeMounts();
+                    volumeMounts.add(volumeMount);
+                    container.setVolumeMounts(volumeMounts);
+                    container.setWorkingDir(WORKING_DIR.toString());
+                });
 
-        spec.getVolumes()
-            .add(new VolumeBuilder()
-                .withName(FILES_VOLUME_NAME)
-                .withNewEmptyDir()
-                .endEmptyDir()
-                .build()
-            );
+            spec.getVolumes()
+                .add(new VolumeBuilder()
+                    .withName(FILES_VOLUME_NAME)
+                    .withNewEmptyDir()
+                    .endEmptyDir()
+                    .build()
+                );
+        }
 
         Map<String, String> allLabels = this.labels == null ? new HashMap<>() : runContext.renderMap(this.labels);
         allLabels.putAll(ScriptService.labels(runContext, "kestra.io/"));
