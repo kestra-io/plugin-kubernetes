@@ -147,7 +147,7 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
     private Duration waitUntilRunning = Duration.ofMinutes(10);
 
     @Schema(
-        title = "The maximum duration to wait for the pod completion."
+        title = "The maximum duration to wait for the pod completion unless the task `timeout` property is set which will take precedence over this property."
     )
     @NotNull
     @Builder.Default
@@ -253,11 +253,12 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
                 podLogService.watch(client, pod, defaultLogConsumer, runContext);
 
                 // wait for terminated
+                Duration waitDuration = Optional.ofNullable(taskCommands.getTimeout()).orElse(this.waitUntilCompletion);
                 if (!ListUtils.isEmpty(filesToDownload) || outputDirectoryEnabled) {
-                    pod = PodService.waitForCompletionExcept(client, logger, pod, this.waitUntilCompletion, SIDECAR_FILES_CONTAINER_NAME);
+                    pod = PodService.waitForCompletionExcept(client, logger, pod, waitDuration, SIDECAR_FILES_CONTAINER_NAME);
                     this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, taskCommands, outputDirPath);
                 } else {
-                    pod = PodService.waitForCompletion(client, logger, pod, this.waitUntilCompletion);
+                    pod = PodService.waitForCompletion(client, logger, pod, waitDuration);
                 }
 
                 // wait for logs to arrive
