@@ -144,6 +144,7 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
     )
     @NotNull
     @Builder.Default
+    @PluginProperty
     private Duration waitUntilRunning = Duration.ofMinutes(10);
 
     @Schema(
@@ -151,6 +152,7 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
     )
     @NotNull
     @Builder.Default
+    @PluginProperty
     private Duration waitUntilCompletion = Duration.ofHours(1);
 
     @Schema(
@@ -158,6 +160,7 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
     )
     @NotNull
     @Builder.Default
+    @PluginProperty
     private Boolean delete = true;
 
     @Schema(
@@ -165,6 +168,7 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
     )
     @NotNull
     @Builder.Default
+    @PluginProperty
     private Boolean resume = true;
 
     @Schema(
@@ -180,6 +184,7 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
     )
     @NotNull
     @Builder.Default
+    @PluginProperty
     private Duration waitForLogs = Duration.ofSeconds(1);
 
     @Override
