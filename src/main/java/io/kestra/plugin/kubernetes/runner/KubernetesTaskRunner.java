@@ -463,7 +463,7 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
             files.forEach(throwConsumer(outputFile -> {
                 Path relativePathFromContainerWDir = workingDirectory.resolve(containerWorkingDirAsRelativePath).relativize(outputFile);
                 // If the file was in the container outputDir, we forward it to the task commands' outputDir
-                if (outputFile.equals(workingDirectory.resolve(containerOutputDir.toString().substring(1)))) {
+                if (containerOutputDir != null && outputFile.equals(workingDirectory.resolve(containerOutputDir.toString().substring(1)))) {
                     Files.move(outputFile, taskCommands.getOutputDirectory(), StandardCopyOption.REPLACE_EXISTING);
                 } else {
                     Files.move(outputFile, workingDirectory.resolve(relativePathFromContainerWDir), StandardCopyOption.REPLACE_EXISTING);
