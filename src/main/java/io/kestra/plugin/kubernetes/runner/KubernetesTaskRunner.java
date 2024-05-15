@@ -1,6 +1,7 @@
 package io.kestra.plugin.kubernetes.runner;
 
 import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.ContainerResource;
 import io.fabric8.kubernetes.client.dsl.CopyOrReadable;
 import io.fabric8.kubernetes.client.dsl.PodResource;
@@ -196,7 +197,8 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
         Logger logger = runContext.logger();
 
         AbstractLogConsumer defaultLogConsumer = taskCommands.getLogConsumer();
-        try (var client = PodService.client(convert(runContext, config));
+        final io.fabric8.kubernetes.client.Config clientConfig = convert(runContext, config);
+        try (var client = PodService.client(clientConfig);
              var podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
             Pod pod = null;
             PodResource resource = null;
@@ -233,7 +235,10 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
                 pod = createPod(runContext, container, !ListUtils.isEmpty(filesToUploadWithOutputDir), !ListUtils.isEmpty(filesToDownload) || outputDirectoryEnabled);
                 resource = client.pods().inNamespace(namespace).resource(pod);
                 pod = resource.create();
-                logger.info("Pod '{}' is created ", pod.getMetadata().getName());
+
+                final String podName = pod.getMetadata().getName();
+                onKill(() -> safelyKillPod(runContext, clientConfig, namespace, podName));
+                logger.info("Pod '{}' is created ", podName);
             }
 
             try (var podWatch = resource.watch(new PodWatcher(logger))) {
@@ -303,6 +308,23 @@ public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInte
                     }
                 }
             }
+        }
+    }
+
+    private void safelyKillPod(final RunContext runContext,
+                               final io.fabric8.kubernetes.client.Config clientConfig,
+                               final String namespace,
+                               final String podName) {
+        // Use a dedicated KubernetesClient, as the one used in the run method may be closed in the meantime.
+        try (KubernetesClient client = PodService.client(clientConfig)) {
+            client.pods()
+                .inNamespace(namespace)
+                .withName(podName)
+                .withGracePeriod(0L) // delete immediately
+                .delete();
+            runContext.logger().info("Pod '{}' in namespace '{}' is deleted.", podName, namespace);
+        } catch (Throwable e) {
+            runContext.logger().warn("Failed to delete pod '{}' in namespace '{}'.", podName, namespace, e);
         }
     }
 
