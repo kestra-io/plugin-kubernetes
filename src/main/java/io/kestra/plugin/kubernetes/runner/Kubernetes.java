@@ -95,7 +95,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
     },
     beta = true // all task runners are beta for now, but this one is stable as it was the one used before
 )
-public class KubernetesTaskRunner extends TaskRunner implements RemoteRunnerInterface {
+public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
     private static final String INIT_FILES_CONTAINER_NAME = "init-files";
     private static final String FILES_VOLUME_NAME = "kestra-files";
     private static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
