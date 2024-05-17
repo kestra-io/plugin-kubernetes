@@ -125,8 +125,20 @@ public class Connection {
     @Schema(
         title = "Oauth token provider"
     )
-    @PluginProperty(dynamic = false)
+    @PluginProperty
     private final OAuthTokenProvider oauthTokenProvider;
+
+    @Schema(
+        title = "Username"
+    )
+    @PluginProperty(dynamic = true)
+    private String username;
+
+    @Schema(
+        title = "Password"
+    )
+    @PluginProperty(dynamic = true)
+    private String password;
 
     public Config toConfig(RunContext runContext) throws IllegalVariableEvaluationException {
         ConfigBuilder builder = new ConfigBuilder(Config.empty());
@@ -205,6 +217,14 @@ public class Connection {
 
         if (keyStorePassphrase != null) {
             builder.withKeyStorePassphrase(runContext.render(keyStorePassphrase));
+        }
+
+        if (username != null) {
+            builder.withUsername(runContext.render(username));
+        }
+
+        if (password != null) {
+            builder.withPassword(runContext.render(password));
         }
 
         return builder.build();
