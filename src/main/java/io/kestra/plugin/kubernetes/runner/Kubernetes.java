@@ -14,6 +14,7 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.ListUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
+import io.kestra.plugin.kubernetes.models.Connection;
 import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.watchers.PodWatcher;
@@ -106,7 +107,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
         title = "The configuration of the target Kubernetes cluster."
     )
     @PluginProperty
-    private Config config;
+    private Connection config;
 
     @NotNull
     @PluginProperty
@@ -197,8 +198,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
         Logger logger = runContext.logger();
 
         AbstractLogConsumer defaultLogConsumer = taskCommands.getLogConsumer();
-        final io.fabric8.kubernetes.client.Config clientConfig = convert(runContext, config);
-        try (var client = PodService.client(clientConfig);
+        try (var client = PodService.client(runContext, config);
              var podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
             Pod pod = null;
             PodResource resource = null;
@@ -237,7 +237,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
                 pod = resource.create();
 
                 final String podName = pod.getMetadata().getName();
-                onKill(() -> safelyKillPod(runContext, clientConfig, namespace, podName));
+                onKill(() -> safelyKillPod(runContext, config, namespace, podName));
                 logger.info("Pod '{}' is created ", podName);
             }
 
@@ -312,11 +312,11 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
     }
 
     private void safelyKillPod(final RunContext runContext,
-                               final io.fabric8.kubernetes.client.Config clientConfig,
+                               final Connection connection,
                                final String namespace,
                                final String podName) {
         // Use a dedicated KubernetesClient, as the one used in the run method may be closed in the meantime.
-        try (KubernetesClient client = PodService.client(clientConfig)) {
+        try (KubernetesClient client = PodService.client(runContext, connection)) {
             client.pods()
                 .inNamespace(namespace)
                 .withName(podName)
@@ -326,29 +326,6 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
         } catch (Throwable e) {
             runContext.logger().warn("Failed to delete pod '{}' in namespace '{}'.", podName, namespace, e);
         }
-    }
-
-    private io.fabric8.kubernetes.client.Config convert(RunContext runContext, Config config) throws IllegalVariableEvaluationException {
-        if (config == null) {
-            return null;
-        }
-
-        var builder =  new io.fabric8.kubernetes.client.ConfigBuilder()
-            .withMasterUrl(runContext.render(config.getMasterUrl()))
-            .withUsername(runContext.render(config.getUsername()))
-            .withPassword(runContext.render(config.getPassword()))
-            .withNamespace(runContext.render(config.getNamespace()))
-            .withCaCertData(runContext.render(config.getCaCert()))
-            .withClientCertData(runContext.render(config.getClientCert()))
-            .withClientKeyData(runContext.render(config.getClientKey()))
-            .withClientKeyAlgo(runContext.render(config.getClientKeyAlgo()))
-            .withOauthToken(runContext.render(config.getOAuthToken()));
-
-        if (Boolean.TRUE.equals(config.getTrustCerts())) {
-            builder.withTrustCerts(true);
-        }
-
-        return builder.build();
     }
 
     private Container createContainer(RunContext runContext, TaskCommands taskCommands) throws IllegalVariableEvaluationException {
