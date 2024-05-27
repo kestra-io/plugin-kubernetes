@@ -47,7 +47,7 @@ dependencies {
 
     // plugins
     api 'io.fabric8:kubernetes-client:6.12.1'
-    api group: 'org.apache.commons', name: 'commons-compress', version: '1.26.1'
+    api group: 'org.apache.commons', name: 'commons-compress', version: '1.26.2'
 }
 
 
