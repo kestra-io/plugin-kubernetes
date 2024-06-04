@@ -179,7 +179,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 if (!"Running".equals(pod.getStatus().getPhase())) {
                     // wait for init container
                     if (this.inputFiles != null) {
-                        Map<String, String> finalInputFiles = PluginUtilsService.transformInputFiles(runContext, this.inputFiles);
+                        Map<String, String> finalInputFiles = PluginUtilsService.transformInputFiles(runContext, additionalVars, this.inputFiles);
 
                         PluginUtilsService.createInputFiles(
                             runContext,
