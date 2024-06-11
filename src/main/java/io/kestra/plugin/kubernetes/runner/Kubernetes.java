@@ -93,8 +93,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
                     - cp {{workingDir}}/data.txt {{workingDir}}/out.txt""",
             full = true
         )
-    },
-    beta = true // all task runners are beta for now, but this one is stable as it was the one used before
+    }
 )
 public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
     private static final String INIT_FILES_CONTAINER_NAME = "init-files";
