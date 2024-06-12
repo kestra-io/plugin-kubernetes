@@ -8,14 +8,15 @@ import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.runners.RunContextInitializer;
 import io.kestra.core.runners.WorkerTask;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.Await;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.TestsUtils;
-import io.micronaut.context.ApplicationContext;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -44,16 +45,15 @@ class PodCreateTest {
     private RunContextFactory runContextFactory;
 
     @Inject
-    private ApplicationContext applicationContext;
-
-    @Inject
     @Named(QueueFactoryInterface.WORKERTASKLOG_NAMED)
     private QueueInterface<LogEntry> workerTaskLogQueue;
 
     @Inject
     private StorageInterface storageInterface;
 
-    @SuppressWarnings("unchecked")
+    @Inject
+    private RunContextInitializer runContextInitializer;
+
     @Test
     void run() throws Exception {
         List<LogEntry> logs = new ArrayList<>();
@@ -80,7 +80,7 @@ class PodCreateTest {
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
-        runContext = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
+        runContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         PodCreate.Output runOutput = task.run(runContext);
 
@@ -118,7 +118,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
-        RunContext runContextFinal = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
+        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         assertThrows( IllegalStateException.class, () -> task.run(runContextFinal));
     }
@@ -148,7 +148,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
-        RunContext runContextFinal = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
+        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
     }
@@ -180,7 +180,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
 
-        runContext = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
+        runContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         RunContext finalRunContext = runContext;
 
@@ -245,7 +245,7 @@ class PodCreateTest {
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
-        runContext = runContext.forWorker(applicationContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
+        runContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         PodCreate.Output run = task.run(runContext);
 

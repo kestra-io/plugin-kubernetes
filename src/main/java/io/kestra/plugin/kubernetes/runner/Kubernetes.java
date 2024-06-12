@@ -10,6 +10,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.runners.*;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.ListUtils;
@@ -198,7 +199,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
 
         AbstractLogConsumer defaultLogConsumer = taskCommands.getLogConsumer();
         try (var client = PodService.client(runContext, config);
-             var podLogService = new PodLogService(runContext.getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
+             var podLogService = new PodLogService(((DefaultRunContext)runContext).getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
             Pod pod = null;
             PodResource resource = null;
 
