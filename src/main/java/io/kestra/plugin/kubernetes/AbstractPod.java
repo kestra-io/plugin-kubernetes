@@ -5,20 +5,17 @@ import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.utils.RetryUtils;
 import io.kestra.plugin.kubernetes.runner.SideCar;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import lombok.extern.jackson.Jacksonized;
 import org.slf4j.Logger;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -105,7 +102,7 @@ abstract public class AbstractPod extends AbstractConnection {
         outputFiles.
             forEach(throwConsumer(f -> {
                 File file = runContext.resolve(Path.of("working-dir/kestra/working-dir/" + runContext.render(f, additionalVars))).toFile();
-                uploaded.put(f, runContext.putTempFile(file));
+                uploaded.put(f, runContext.storage().putFile(file));
             }));
 
         return uploaded;
