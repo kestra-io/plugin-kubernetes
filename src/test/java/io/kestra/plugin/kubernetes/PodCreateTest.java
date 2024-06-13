@@ -18,17 +18,16 @@ import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.Await;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.TestsUtils;
-import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.slf4j.event.Level;
+import reactor.core.publisher.Flux;
 
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -57,8 +56,7 @@ class PodCreateTest {
 
     @Test
     void run() throws Exception {
-        List<LogEntry> logs = new ArrayList<>();
-        workerTaskLogQueue.receive(l -> logs.add(l.getLeft()));
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -88,6 +86,8 @@ class PodCreateTest {
         Thread.sleep(500);
 
         assertThat(runOutput.getMetadata().getName(), containsString("iokestrapluginkubernetespodcreatetest-run-podcreate"));
+
+        List<LogEntry> logs = receive.collectList().block();
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(13L));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("10")).count(), is(1L));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().contains("is deleted")).count(), is(1L));
@@ -96,9 +96,6 @@ class PodCreateTest {
 
     @Test
     void failed() throws Exception {
-        List<LogEntry> logs = new ArrayList<>();
-        workerTaskLogQueue.receive(l -> logs.add(l.getLeft()));
-
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
@@ -126,9 +123,6 @@ class PodCreateTest {
 
     @Test
     void failedAfterStartup() throws Exception {
-        List<LogEntry> logs = new ArrayList<>();
-        workerTaskLogQueue.receive(l -> logs.add(l.getLeft()));
-
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
@@ -156,8 +150,7 @@ class PodCreateTest {
 
     @Test
     void resume() throws Exception {
-        List<LogEntry> logs = new ArrayList<>();
-        workerTaskLogQueue.receive(l -> logs.add(l.getLeft()));
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -187,7 +180,7 @@ class PodCreateTest {
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
 
-        workerTaskLogQueue.receive(logEntry -> {
+        Flux<LogEntry> shutdownReceive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
             if (logEntry.getLeft().getMessage().equals("1")) {
                 executorService.shutdownNow();
             }
@@ -202,10 +195,11 @@ class PodCreateTest {
         });
 
         Await.until(executorService::isShutdown, Duration.ofMillis(100), Duration.ofMinutes(1));
+        shutdownReceive.blockLast();
 
         task.run(finalRunContext);
 
-        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("10")).count(), greaterThan(0L));
+        assertThat(receive.toStream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("10")).count(), greaterThan(0L));
     }
 
     @Test
