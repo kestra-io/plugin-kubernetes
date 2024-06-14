@@ -65,7 +65,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
                   - id: shell
                     type: io.kestra.plugin.scripts.shell.Commands
                     taskRunner:
-                      type: io.kestra.plugin.kubernetes.runner.KubernetesTaskRunner
+                      type: io.kestra.plugin.kubernetes.runner.Kubernetes
                     commands:
                     - echo "Hello World\"""",
             full = true
@@ -89,7 +89,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
                       - out.txt
                     containerImage: centos
                     taskRunner:
-                      type: io.kestra.plugin.kubernetes.runner.KubernetesTaskRunner
+                      type: io.kestra.plugin.kubernetes.runner.Kubernetes
                     commands:
                     - cp {{workingDir}}/data.txt {{workingDir}}/out.txt""",
             full = true
