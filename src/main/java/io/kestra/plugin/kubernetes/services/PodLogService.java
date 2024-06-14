@@ -79,7 +79,7 @@ public class PodLogService implements AutoCloseable {
         );
 
         // look at exception on the main thread
-        thread = new Thread(
+        thread = Thread.ofVirtual().name("k8s-listener").start(
             () -> {
                 try {
                     Await.until(scheduledFuture::isDone);
@@ -96,10 +96,8 @@ public class PodLogService implements AutoCloseable {
                 } catch (ExecutionException | InterruptedException e) {
                     log.error(this.getClass().getName() + " exception", e);
                 }
-            },
-            "k8s-listener"
+            }
         );
-        thread.start();
     }
 
     @Override
