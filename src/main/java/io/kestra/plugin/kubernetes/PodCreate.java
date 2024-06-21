@@ -70,7 +70,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
             code = {
                 """
                     id: kubernetes
-                    namespace: myteam
+                    namespace: company.team
                                         
                     inputs:
                       - id: file
