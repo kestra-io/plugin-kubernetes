@@ -184,7 +184,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                         PluginUtilsService.createInputFiles(
                             runContext,
-                            PodService.tempDir(runContext),
+                            PodService.workingDir().path(runContext),
                             finalInputFiles,
                             additionalVars
                         );

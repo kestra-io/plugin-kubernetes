@@ -187,6 +187,6 @@ abstract public class PodService {
     }
 
     public static Path tempDir(RunContext runContext) {
-        return runContext.tempDir().resolve("working-dir");
+        return runContext.workingDir().path().resolve("working-dir");
     }
 }

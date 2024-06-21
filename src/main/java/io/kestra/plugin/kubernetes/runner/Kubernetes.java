@@ -191,7 +191,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
     public RunnerResult run(RunContext runContext, TaskCommands taskCommands, List<String> filesToUpload, List<String> filesToDownload) throws Exception {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
 
-        if(!PodService.tempDir(runContext).toFile().mkdir()) {
+        if(!PodService.workingDir().path(runContext).toFile().mkdir()) {
             throw new IOException("Unable to create the temp directory");
         }
         String namespace = runContext.render(this.namespace);
@@ -227,7 +227,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
             boolean outputDirectoryEnabled = taskCommands.outputDirectoryEnabled();
             if (outputDirectoryEnabled) {
                 Path outputDirName = WORKING_DIR.relativize(outputDirPath);
-                runContext.resolve(outputDirName).toFile().mkdir();
+                runContext.workingDir().resolve(outputDirName).toFile().mkdir();
                 filesToUploadWithOutputDir.add(outputDirName.toString());
             }
             if (pod == null) {
@@ -425,7 +425,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
                 logger,
                 "uploadInputFiles",
                 () -> {
-                    Path filePath = runContext.resolve(Path.of(file));
+                    Path filePath = runContext.workingDir().resolve(Path.of(file));
                     ContainerResource containerResource = podResource
                         .inContainer(INIT_FILES_CONTAINER_NAME)
                         .withReadyWaitTimeout(0);
