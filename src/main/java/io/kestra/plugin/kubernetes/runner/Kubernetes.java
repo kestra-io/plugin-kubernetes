@@ -191,7 +191,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
     public RunnerResult run(RunContext runContext, TaskCommands taskCommands, List<String> filesToUpload, List<String> filesToDownload) throws Exception {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
 
-        if(!PodService.workingDir().path(runContext).toFile().mkdir()) {
+        if(!PodService.tempDir(runContext).toFile().mkdir()) {
             throw new IOException("Unable to create the temp directory");
         }
         String namespace = runContext.render(this.namespace);

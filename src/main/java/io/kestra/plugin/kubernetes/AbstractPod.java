@@ -61,7 +61,7 @@ abstract public class AbstractPod extends AbstractConnection {
     @SuppressWarnings("ResultOfMethodCallIgnored")
     protected void init(RunContext runContext) {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
-        PodService.workingDir().path(runContext).toFile().mkdir();
+        PodService.tempDir(runContext).toFile().mkdir();
     }
 
     protected void uploadInputFiles(RunContext runContext, PodResource podResource, Logger logger, Set<String> inputFiles) throws IOException {
@@ -70,7 +70,7 @@ abstract public class AbstractPod extends AbstractConnection {
                 logger,
                 "uploadInputFiles",
                 () -> {
-                    try (var fileInputStream = new FileInputStream(PodService.workingDir().path(runContext).resolve(file).toFile())) {
+                    try (var fileInputStream = new FileInputStream(PodService.tempDir(runContext).resolve(file).toFile())) {
                         return podResource
                             .inContainer(INIT_FILES_CONTAINER_NAME)
                             .withReadyWaitTimeout(0)
@@ -91,7 +91,7 @@ abstract public class AbstractPod extends AbstractConnection {
             () -> podResource
                 .inContainer(SIDECAR_FILES_CONTAINER_NAME)
                 .dir("/kestra/working-dir/")
-                .copy(PodService.workingDir().path(runContext))
+                .copy(PodService.tempDir(runContext))
         );
 
         PodService.uploadMarker(runContext, podResource, logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
