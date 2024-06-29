@@ -59,7 +59,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
             title = "Execute a Shell command.",
             code = """
                 id: new-shell
-                namespace: myteam
+                namespace: company.team
                 
                 tasks:
                   - id: shell
@@ -67,14 +67,14 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
                     taskRunner:
                       type: io.kestra.plugin.kubernetes.runner.Kubernetes
                     commands:
-                    - echo "Hello World\"""",
+                      - echo "Hello World\"""",
             full = true
         ),
         @Example(
             title = "Pass input files to the task, execute a Shell command, then retrieve output files.",
             code = """
                 id: new-shell-with-file
-                namespace: myteam
+                namespace: company.team
                 
                 inputs:
                   - id: file
@@ -84,14 +84,14 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
                   - id: shell
                     type: io.kestra.plugin.scripts.shell.Commands
                     inputFiles:
-                      data.txt: "{{inputs.file}}"
+                      data.txt: "{{ inputs.file }}"
                     outputFiles:
                       - out.txt
                     containerImage: centos
                     taskRunner:
                       type: io.kestra.plugin.kubernetes.runner.Kubernetes
                     commands:
-                    - cp {{workingDir}}/data.txt {{workingDir}}/out.txt""",
+                      - cp {{ workingDir }}/data.txt {{ workingDir }}/out.txt""",
             full = true
         )
     }
