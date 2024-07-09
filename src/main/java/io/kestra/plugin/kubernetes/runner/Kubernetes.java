@@ -130,6 +130,13 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
     private Map<String, String> labels;
 
     @Schema(
+            title = "Node selector for pod scheduling",
+            description = "Kestra will assign the pod to the nodes you want (see https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes/)"
+    )
+    @PluginProperty(dynamic = true)
+    private Map<String, String> nodeSelector;
+
+    @Schema(
         title = "The pod custom resources"
     )
     @PluginProperty
@@ -404,6 +411,11 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
                     .endEmptyDir()
                     .build()
                 );
+        }
+
+        Map<String, String> allNodeSelector = this.nodeSelector == null ? new HashMap<>() : runContext.renderMap(this.nodeSelector);
+        if (!allNodeSelector.isEmpty()){
+            spec.setNodeSelector(allNodeSelector);
         }
 
         Map<String, String> allLabels = this.labels == null ? new HashMap<>() : runContext.renderMap(this.labels);
