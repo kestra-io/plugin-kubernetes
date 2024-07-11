@@ -195,7 +195,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
     private Duration waitForLogs = Duration.ofSeconds(1);
 
     @Override
-    public RunnerResult run(RunContext runContext, TaskCommands taskCommands, List<String> filesToUpload, List<String> filesToDownload) throws Exception {
+    public RunnerResult run(RunContext runContext, TaskCommands taskCommands, List<String> filesToDownload) throws Exception {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
 
         if(!PodService.tempDir(runContext).toFile().mkdir()) {
@@ -227,7 +227,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
                 }
             }
 
-            List<String> filesToUploadWithOutputDir = new ArrayList<>(filesToUpload);
+            List<Path> filesToUploadWithOutputDir = new ArrayList<>(taskCommands.relativeWorkingDirectoryFilesPaths());
 
             Map<String, Object> additionalVars = this.additionalVars(runContext, taskCommands);
             Path outputDirPath = (Path) additionalVars.get(ScriptService.VAR_OUTPUT_DIR);
@@ -235,7 +235,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
             if (outputDirectoryEnabled) {
                 Path outputDirName = WORKING_DIR.relativize(outputDirPath);
                 runContext.workingDir().resolve(outputDirName).toFile().mkdir();
-                filesToUploadWithOutputDir.add(outputDirName.toString());
+                filesToUploadWithOutputDir.add(outputDirName);
             }
             if (pod == null) {
                 Container container = createContainer(runContext, taskCommands);
@@ -431,18 +431,18 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
             .build();
     }
 
-    private void uploadInputFiles(RunContext runContext, PodResource podResource, Logger logger, List<String> inputFiles) throws IOException {
-        inputFiles.forEach(
-            throwConsumer(file -> withRetries(
+    private void uploadInputFiles(RunContext runContext, PodResource podResource, Logger logger, List<Path> inputFilesPaths) throws IOException {
+        inputFilesPaths.forEach(
+            throwConsumer(path -> withRetries(
                 logger,
                 "uploadInputFiles",
                 () -> {
-                    Path filePath = runContext.workingDir().resolve(Path.of(file));
+                    Path filePath = runContext.workingDir().resolve(path);
                     ContainerResource containerResource = podResource
                         .inContainer(INIT_FILES_CONTAINER_NAME)
                         .withReadyWaitTimeout(0);
 
-                    String containerFilePath = WORKING_DIR.resolve(file.startsWith("/") ? file.substring(1) : file).toString();
+                    String containerFilePath = WORKING_DIR.resolve(path).toString();
                     CopyOrReadable toUpload;
                     if (filePath.toFile().isDirectory()) {
                         toUpload = containerResource.dir(containerFilePath);
