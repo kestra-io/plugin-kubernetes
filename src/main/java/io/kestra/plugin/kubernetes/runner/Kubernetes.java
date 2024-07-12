@@ -488,19 +488,31 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
 
         // kubernetes copy by keeping the target repository which we don't want, so we move the files
         String containerWorkingDirAsRelativePath = WORKING_DIR.toString().substring(1);
-        try(Stream<Path> files = Files.list(workingDirectory.resolve(containerWorkingDirAsRelativePath))) {
-            files.forEach(throwConsumer(outputFile -> {
-                Path relativePathFromContainerWDir = workingDirectory.resolve(containerWorkingDirAsRelativePath).relativize(outputFile);
-                // If the file was in the container outputDir, we forward it to the task commands' outputDir
-                if (containerOutputDir != null && outputFile.equals(workingDirectory.resolve(containerOutputDir.toString().substring(1)))) {
-                    Files.move(outputFile, taskCommands.getOutputDirectory(), StandardCopyOption.REPLACE_EXISTING);
-                } else {
-                    Files.move(outputFile, workingDirectory.resolve(relativePathFromContainerWDir), StandardCopyOption.REPLACE_EXISTING);
-                }
-            }));
+        try (Stream<Path> files = Files.walk(workingDirectory.resolve(containerWorkingDirAsRelativePath))) {
+            files
+                .filter(path -> !Files.isDirectory(path) && Files.isReadable(path))
+                .forEach(throwConsumer(outputFile -> {
+                    // If the file was in the container outputDir, we forward it to the task commands' outputDir
+                    if (containerOutputDir != null && outputFile.startsWith(workingDirectory.resolve(containerOutputDir.toString().substring(1)))) {
+                        Path relativePathFromContainerWDir = workingDirectory.resolve(containerOutputDir.toString().substring(1)).relativize(outputFile);
+                        Path resolvedOutputFile = taskCommands.getOutputDirectory().resolve(relativePathFromContainerWDir);
+                        moveFile(outputFile, resolvedOutputFile);
+                    } else {
+                        Path relativePathFromContainerWDir = workingDirectory.resolve(containerWorkingDirAsRelativePath).relativize(outputFile);
+                        Path resolvedOutputFile = workingDirectory.resolve(relativePathFromContainerWDir);
+                        moveFile(outputFile, resolvedOutputFile);
+                    }
+                }));
         }
 
         PodService.uploadMarker(runContext, podResource, logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
+    }
+
+    private void moveFile(Path from, Path to) throws IOException {
+        if (Files.notExists(to.getParent())) {
+            Files.createDirectories(to.getParent());
+        }
+        Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
     }
 
     private Container filesContainer(RunContext runContext, VolumeMount volumeMount, boolean finished) throws IllegalVariableEvaluationException {
