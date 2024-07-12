@@ -51,7 +51,25 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
 
         To generate output files you can either use the `outputFiles` task's property and create a file with the same name in the task's working directory, or create any file in the output directory which can be accessed by the `{{outputDir}}` Pebble expression or the `OUTPUT_DIR` environment variables.
         
-        Note that when the Kestra Worker running this task is terminated, the pod will still runs until completion, then after restarting, the Worker will resume processing on the existing pod unless `resume` is set to false."""
+        Note that when the Kestra Worker running this task is terminated, the pod will still runs until completion, then after restarting, the Worker will resume processing on the existing pod unless `resume` is set to false.
+        
+        If your cluster is configure with [RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/), you need to configure the service account running your pod need to have the following authorizations: 
+        - pods: get, create, delete, watch, list
+        - pods/log: get, watch
+        As an example, here is a role that grant those authorizations:
+        ```yaml
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata:
+          name: task-runner
+        rules:
+        - apiGroups: [""]
+          resources: ["pods"]
+          verbs: ["get", "create", "delete", "watch", "list"]
+        - apiGroups: [""]
+          resources: ["pods/logs"]
+          verbs: ["get", "watch"]
+        ```"""
 )
 @Plugin(
     examples = {
