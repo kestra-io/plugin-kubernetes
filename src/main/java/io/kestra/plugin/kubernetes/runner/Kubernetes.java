@@ -141,6 +141,12 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
     private String namespace = "default";
 
     @Schema(
+        title = "The name of the service account."
+    )
+    @PluginProperty(dynamic = true)
+    private String serviceAccountName;
+
+    @Schema(
         title = "The pod custom labels",
         description = "Kestra will add default labels to the pod with execution and flow identifiers."
     )
@@ -401,6 +407,7 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
         var spec = new PodSpecBuilder()
             .withContainers(mainContainer)
             .withRestartPolicy("Never")
+            .withServiceAccountName(serviceAccountName)
             .build();
 
         if (sidecarContainer) {
