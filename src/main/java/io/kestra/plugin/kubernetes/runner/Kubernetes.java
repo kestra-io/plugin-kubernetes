@@ -463,11 +463,13 @@ public class Kubernetes extends TaskRunner implements RemoteRunnerInterface {
                 "uploadInputFiles",
                 () -> {
                     Path filePath = runContext.workingDir().resolve(path);
+
                     ContainerResource containerResource = podResource
                         .inContainer(INIT_FILES_CONTAINER_NAME)
                         .withReadyWaitTimeout(0);
 
                     String containerFilePath = WORKING_DIR.resolve(path).toString();
+                    logger.debug("Uploading input file {} to container {}.", filePath, containerFilePath);
                     CopyOrReadable toUpload;
                     if (filePath.toFile().isDirectory()) {
                         toUpload = containerResource.dir(containerFilePath);
