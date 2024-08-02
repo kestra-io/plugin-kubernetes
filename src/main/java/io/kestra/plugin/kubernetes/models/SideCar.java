@@ -1,4 +1,4 @@
-package io.kestra.plugin.kubernetes.runner;
+package io.kestra.plugin.kubernetes.models;
 
 import io.kestra.core.models.annotations.PluginProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
