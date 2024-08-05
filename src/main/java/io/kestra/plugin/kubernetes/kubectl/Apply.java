@@ -30,7 +30,7 @@ import java.util.List;
 @Plugin(
 	examples = {
 		@Example(
-			title = "Create or replace a Kubernetes deployment",
+			title = "Apply a Kubernetes resource, using YAML",
 			code = {
 				"id: create_or_replace_deployment",
 				"namespace: company.team",
@@ -45,7 +45,7 @@ import java.util.List;
 			}
 		),
 		@Example(
-			title = "Create or replace a Kubernetes deployment, using yaml",
+			title = "Apply a Kubernetes resource, using a namespace file",
 			code = {
 				"id: create_or_replace_deployment",
 				"namespace: company.team",
@@ -71,7 +71,7 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 	private String spec;
 
 	@Schema(
-		title = "The Kubernetes resource spec"
+		title = "The Kubernetes namespace"
 	)
 	@PluginProperty(dynamic = true)
 	private String namespace;
