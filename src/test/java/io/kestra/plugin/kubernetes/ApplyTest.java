@@ -25,7 +25,6 @@ class ApplyTest {
         Apply task = Apply.builder()
             .id(Apply.class.getSimpleName())
             .type(Apply.class.getName())
-            .connection(getConnection())
             .namespace("default")
             .spec(getSpec())
             .build();
@@ -61,10 +60,6 @@ class ApplyTest {
                        ports:
                        - containerPort: 80
                """;
-    }
-
-    private Connection getConnection() {
-        return Connection.builder().build();
     }
 
 }
