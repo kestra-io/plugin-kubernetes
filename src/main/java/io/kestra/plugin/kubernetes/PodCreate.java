@@ -29,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 
 import java.net.URI;
-import java.net.URISyntaxException;
+import java.time.Duration;
 import java.util.*;
 
 import jakarta.validation.constraints.NotNull;
@@ -136,6 +136,13 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     @Builder.Default
     private final Boolean resume = true;
 
+    @Schema(
+        title = "Additional time after the pod ends to wait for late logs."
+    )
+    @Builder.Default
+    @PluginProperty
+    private Duration waitForLogInterval = Duration.ofSeconds(2);
+
     @Override
     public PodCreate.Output run(RunContext runContext) throws Exception {
         super.init(runContext);
@@ -151,14 +158,14 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         Logger logger = runContext.logger();
 
         try (KubernetesClient client = PodService.client(runContext, this.getConnection());
-             PodLogService podLogService = new PodLogService(((DefaultRunContext)runContext).getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
+             PodLogService podLogService = new PodLogService(((DefaultRunContext) runContext).getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
             Pod pod = null;
 
             if (this.resume) {
                 // try to locate an existing pod for this taskrun and attempt
                 Map<String, String> taskrun = (Map<String, String>) runContext.getVariables().get("taskrun");
                 String taskrunId = ScriptService.normalize(taskrun.get("id"));
-                String attempt =  ScriptService.normalize(String.valueOf(taskrun.get("attemptsCount")));
+                String attempt = ScriptService.normalize(String.valueOf(taskrun.get("attemptsCount")));
                 String labelSelector = "kestra.io/taskrun-id=" + taskrunId + "," + "kestra.io/taskrun-attempt=" + attempt;
                 var existingPods = client.pods().inNamespace(namespace).list(new ListOptionsBuilder().withLabelSelector(labelSelector).build());
                 if (existingPods.getItems().size() == 1) {
@@ -175,7 +182,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 logger.info("Pod '{}' is created ", pod.getMetadata().getName());
             }
 
-            try (Watch podWatch = PodService.podRef(client, pod).watch(listOptions(), new PodWatcher(logger))) {
+            try (Watch ignored = PodService.podRef(client, pod).watch(listOptions(), new PodWatcher(logger))) {
                 // in case of resuming an already running pod, the status will be running
                 if (!"Running".equals(pod.getStatus().getPhase())) {
                     // wait for init container
@@ -229,8 +236,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                     podStatus.getContainerStatuses().stream()
                         .filter(containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun"))
                         .forEach(containerStatus -> logger.error(containerStatus.getState().getTerminated().getMessage()));
-                }
-                else if (this.outputFiles != null) {
+                } else if (this.outputFiles != null) {
                     output.outputFiles(
                         this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars)
                     );
@@ -244,7 +250,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         }
     }
 
-    private Pod createPod(RunContext runContext, KubernetesClient client, String namespace, Map<String, Object> additionalVars) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException, URISyntaxException {
+    private Pod createPod(RunContext runContext, KubernetesClient client, String namespace, Map<String, Object> additionalVars) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException {
         ObjectMeta metadata = InstanceService.fromMap(
             ObjectMeta.class,
             runContext,
@@ -290,7 +296,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
     private void handleEnd(Pod ended) throws InterruptedException {
         // let some time to gather the logs before delete
-        Thread.sleep(1000);
+        Thread.sleep(this.waitForLogInterval.toMillis());
 
         if (ended.getStatus() != null && ended.getStatus().getPhase().equals("Failed")) {
             throw PodService.failedMessage(ended);
@@ -333,7 +339,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             return Optional.empty();
         }
     }
-    
+
     private static boolean isFailed(PodStatus podStatus) {
         return podStatus.getConditions().stream().anyMatch(podCondition -> Objects.equals(podCondition.getReason(), "PodFailed")) ||
             podStatus.getContainerStatuses().stream().anyMatch(containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun"));
