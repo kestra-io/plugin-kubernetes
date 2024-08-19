@@ -12,12 +12,13 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.slf4j.Logger;
 
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
 import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
@@ -35,7 +36,8 @@ abstract public class AbstractPod extends AbstractConnection {
 
     @Schema(
         title = "The files from the container filesystem to send to Kestra's internal storage.",
-        description = "Only files created inside the `kestra/working-dir` directory of the container can be retrieved. You can use the special variable `{{workingDir}}` in this property to refer to it"
+        description = "Only files created inside the `kestra/working-dir` directory of the container can be retrieved.\n" +
+            "Must be a list of [glob](https://en.wikipedia.org/wiki/Glob_(programming)) expressions relative to the current working directory, some examples: `my-dir/**`, `my-dir/*/**` or `my-dir/my-file.txt`.."
     )
     @PluginProperty
     protected List<String> outputFiles;
@@ -84,7 +86,7 @@ abstract public class AbstractPod extends AbstractConnection {
         PodService.uploadMarker(runContext, podResource, logger, "ready", INIT_FILES_CONTAINER_NAME);
     }
 
-    protected Map<String, URI> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {
+    protected void downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {
         withRetries(
             logger,
             "downloadOutputFiles",
@@ -96,16 +98,24 @@ abstract public class AbstractPod extends AbstractConnection {
 
         PodService.uploadMarker(runContext, podResource, logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
 
-        // upload output files
-        Map<String, URI> uploaded = new HashMap<>();
+        // Download output files
+        // kubernetes copy by keeping the target repository which we don't want, so we move the files
+        try (Stream<Path> files = Files.walk(runContext.workingDir().resolve(Path.of("working-dir/kestra/working-dir/")))) {
+            files
+                .filter(path -> !Files.isDirectory(path) && Files.isReadable(path))
+                .forEach(throwConsumer(outputFile -> {
+                    Path relativePathFromContainerWDir = runContext.workingDir().resolve(Path.of("working-dir/kestra/working-dir/")).relativize(outputFile);
+                    Path resolvedOutputFile = runContext.workingDir().resolve(relativePathFromContainerWDir);
+                    moveFile(outputFile, resolvedOutputFile);
+                }));
+        }
+    }
 
-        outputFiles.
-            forEach(throwConsumer(f -> {
-                File file = runContext.workingDir().resolve(Path.of("working-dir/kestra/working-dir/" + runContext.render(f, additionalVars))).toFile();
-                uploaded.put(f, runContext.storage().putFile(file));
-            }));
-
-        return uploaded;
+    private void moveFile(Path from, Path to) throws IOException {
+        if (Files.notExists(to.getParent())) {
+            Files.createDirectories(to.getParent());
+        }
+        Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
     }
 
     protected void handleFiles(RunContext runContext, PodSpec spec) throws IllegalVariableEvaluationException {
