@@ -14,6 +14,7 @@ import io.kestra.core.models.tasks.runners.PluginUtilsService;
 import io.kestra.core.models.tasks.runners.ScriptService;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.DefaultRunContext;
+import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.models.Metadata;
@@ -237,9 +238,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         .filter(containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun"))
                         .forEach(containerStatus -> logger.error(containerStatus.getState().getTerminated().getMessage()));
                 } else if (this.outputFiles != null) {
-                    output.outputFiles(
-                        this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars)
-                    );
+                    this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars);
+                    output.outputFiles(FilesService.outputFiles(runContext, this.outputFiles));
                 }
 
                 return output
