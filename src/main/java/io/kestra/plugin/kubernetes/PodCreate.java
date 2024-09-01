@@ -49,21 +49,32 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
     examples = {
         @Example(
             title = "Launch a Pod",
-            code = {
-                "namespace: default",
-                "metadata:",
-                "  labels:",
-                "    my-label: my-value",
-                "spec:",
-                "  containers:",
-                "  - name: unittest",
-                "    image: debian:stable-slim",
-                "    command: ",
-                "      - 'bash' ",
-                "      - '-c'",
-                "      - 'for i in {1..10}; do echo $i; sleep 0.1; done'",
-                "  restartPolicy: Never"
-            }
+            full = true,
+            code = """
+                id: kubernetes_pod_create
+                namespace: company.team
+                                    
+                inputs:
+                  - id: file
+                    type: FILE
+                                    
+                tasks:
+                  - id: pod_create
+                    type: io.kestra.plugin.kubernetes.PodCreate
+                    namespace: default
+                    metadata:
+                      labels:
+                        my-label: my-value
+                    spec:
+                      containers:
+                      - name: unittest
+                        image: debian:stable-slim
+                        command:
+                          - 'bash'
+                          - '-c'
+                          - 'for i in {1..10}; do echo $i; sleep 0.1; done'
+                    restartPolicy: Never
+                """
         ),
         @Example(
             title = "Launch a Pod with input files and gather its output files.",
