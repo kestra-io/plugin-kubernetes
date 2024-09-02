@@ -54,10 +54,6 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
                 id: kubernetes_pod_create
                 namespace: company.team
                                     
-                inputs:
-                  - id: file
-                    type: FILE
-                                    
                 tasks:
                   - id: pod_create
                     type: io.kestra.plugin.kubernetes.PodCreate
