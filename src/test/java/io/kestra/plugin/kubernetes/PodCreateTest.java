@@ -75,10 +75,10 @@ class PodCreateTest {
             ))
             .build();
 
-        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of("command", "sleep"));
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep"));
 
         Flow flow = TestsUtils.mockFlow();
-        Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
         runContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         PodCreate.Output runOutput = task.run(runContext);
@@ -114,8 +114,8 @@ class PodCreateTest {
             .build();
 
         Flow flow = TestsUtils.mockFlow();
-        Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
-        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         assertThrows( IllegalStateException.class, () -> task.run(runContextFinal));
@@ -141,8 +141,8 @@ class PodCreateTest {
             .build();
 
         Flow flow = TestsUtils.mockFlow();
-        Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
-        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of());
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
@@ -170,9 +170,9 @@ class PodCreateTest {
             .resume(true)
             .build();
 
-        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of("command", "sleep"));
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep"));
         Flow flow = TestsUtils.mockFlow();
-        Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
 
         runContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
@@ -209,8 +209,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace("default")
             .outputFiles(Arrays.asList("xml", "csv"))
-            .waitUntilRunning(Duration.ofMinutes(3))
-            .inputFiles(ImmutableMap.of(
+            .inputFiles(Map.of(
                 "files/in/in.txt", "I'm here",
                 "main.sh", "sleep 1\n" +
                     "echo '::{\"outputs\": {\"extract\":\"'$(cat files/in/in.txt)'\"}}::'\n" +
@@ -235,11 +234,11 @@ class PodCreateTest {
             .resume(true)
             .build();
 
-        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, ImmutableMap.of("command", "sleep"));
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep"));
 
 
         Flow flow = TestsUtils.mockFlow();
-        Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
         runContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         PodCreate.Output run = task.run(runContext);
