@@ -245,14 +245,14 @@ class PodCreateTest {
 
         assertThat(run.getVars().get("extract"), is("I'm here"));
 
-        InputStream get = storageInterface.get(null, run.getOutputFiles().get("xml"));
+        InputStream get = storageInterface.get(null, null, run.getOutputFiles().get("xml"));
 
         assertThat(
             CharStreams.toString(new InputStreamReader(get)),
             is("1\n3\n")
         );
 
-        get = storageInterface.get(null, run.getOutputFiles().get("csv"));
+        get = storageInterface.get(null, null, run.getOutputFiles().get("csv"));
 
         assertThat(
             CharStreams.toString(new InputStreamReader(get)),
