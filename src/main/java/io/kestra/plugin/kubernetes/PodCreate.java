@@ -69,7 +69,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
                           - 'bash'
                           - '-c'
                           - 'for i in {1..10}; do echo $i; sleep 0.1; done'
-                    restartPolicy: Never
+                      restartPolicy: Never
                 """
         ),
         @Example(
