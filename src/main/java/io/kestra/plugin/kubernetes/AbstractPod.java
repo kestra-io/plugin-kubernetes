@@ -4,6 +4,7 @@ import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.models.SideCar;
 import io.kestra.plugin.kubernetes.services.PodService;
@@ -39,8 +40,7 @@ abstract public class AbstractPod extends AbstractConnection {
         description = "Only files created inside the `kestra/working-dir` directory of the container can be retrieved.\n" +
             "Must be a list of [glob](https://en.wikipedia.org/wiki/Glob_(programming)) expressions relative to the current working directory, some examples: `my-dir/**`, `my-dir/*/**` or `my-dir/my-file.txt`.."
     )
-    @PluginProperty
-    protected List<String> outputFiles;
+    protected Property<List<String>> outputFiles;
 
     @Schema(
         title = "The files to create on the local filesystem. It can be a map or a JSON object.",
@@ -159,7 +159,7 @@ abstract public class AbstractPod extends AbstractConnection {
 
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .withName(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
-            .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()) : "busybox")
+            .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
             .withCommand(Arrays.asList(
                 "sh",
                 "-c",

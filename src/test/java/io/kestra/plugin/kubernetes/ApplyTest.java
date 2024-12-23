@@ -1,6 +1,7 @@
 package io.kestra.plugin.kubernetes;
 
 import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.plugin.kubernetes.kubectl.Apply;
@@ -25,8 +26,8 @@ class ApplyTest {
         Apply task = Apply.builder()
             .id(Apply.class.getSimpleName())
             .type(Apply.class.getName())
-            .namespace("default")
-            .spec(getSpec())
+            .namespace(Property.of("default"))
+            .spec(Property.of(getSpec()))
             .build();
 
         Apply.Output runOutput = task.run(runContext);

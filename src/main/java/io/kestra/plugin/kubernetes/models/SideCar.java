@@ -1,6 +1,7 @@
 package io.kestra.plugin.kubernetes.models;
 
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,7 +14,6 @@ public class SideCar {
     @Schema(
         title = "The image used for the file sidecar container."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String image = "busybox";
+    private Property<String> image = Property.of("busybox");
 }

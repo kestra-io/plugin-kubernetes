@@ -2,7 +2,7 @@ package io.kestra.plugin.kubernetes;
 
 import io.fabric8.kubernetes.api.model.ListOptions;
 import io.fabric8.kubernetes.api.model.ListOptionsBuilder;
-import io.fabric8.kubernetes.client.KubernetesClient;
+import io.kestra.core.models.property.Property;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -10,7 +10,6 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.models.Connection;
-import io.kestra.plugin.kubernetes.services.ClientService;
 
 import java.time.Duration;
 import jakarta.validation.constraints.NotNull;
@@ -20,7 +19,7 @@ import jakarta.validation.constraints.NotNull;
 @EqualsAndHashCode
 @Getter
 @NoArgsConstructor
-abstract public class AbstractConnection extends Task {
+public abstract class AbstractConnection extends Task {
     @Schema(
         title = "The connection parameters to the Kubernetes cluster",
         description = "If no connection is defined, we try to load the connection from the current context in the following order: \n" +
@@ -42,18 +41,18 @@ abstract public class AbstractConnection extends Task {
     )
     @NotNull
     @Builder.Default
-    protected final Duration waitUntilRunning = Duration.ofMinutes(10);
+    protected final Property<Duration> waitUntilRunning = Property.of(Duration.ofMinutes(10));
 
     @Schema(
         title = "The maximum duration to wait for the job completion."
     )
     @NotNull
     @Builder.Default
-    protected final Duration waitRunning = Duration.ofHours(1);
+    protected final Property<Duration> waitRunning = Property.of(Duration.ofHours(1));
 
-    protected ListOptions listOptions() {
+    protected ListOptions listOptions(RunContext runContext) throws IllegalVariableEvaluationException {
         return new ListOptionsBuilder()
-            .withTimeoutSeconds(this.waitRunning.toSeconds())
+            .withTimeoutSeconds(runContext.render(this.waitRunning).as(Duration.class).orElseThrow().toSeconds())
             .build();
     }
 }
