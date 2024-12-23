@@ -3,7 +3,7 @@ package io.kestra.plugin.kubernetes.watchers;
 import io.fabric8.kubernetes.client.WatcherException;
 import org.slf4j.Logger;
 
-abstract public class AbstractWatch<T> implements io.fabric8.kubernetes.client.Watcher<T> {
+public abstract class AbstractWatch<T> implements io.fabric8.kubernetes.client.Watcher<T> {
     protected Logger logger;
 
     public AbstractWatch(Logger logger) {

@@ -8,6 +8,7 @@ import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.AbstractPod;
@@ -35,7 +36,7 @@ import java.util.List;
             code = """
                 id: create_or_replace_deployment
                 namespace: company.team
-                
+
                 tasks:
                   - id: apply
                     type: io.kestra.plugin.kubernetes.kubectl.Apply
@@ -53,7 +54,7 @@ import java.util.List;
             code = """
                 id: create_or_replace_deployment
                 namespace: company.team
-                
+
                 tasks:
                   - id: apply
                     type: io.kestra.plugin.kubernetes.kubectl.Apply
@@ -75,21 +76,19 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 	@Schema(
 		title = "The Kubernetes resource spec"
 	)
-	@PluginProperty(dynamic = true)
-	private String spec;
+	private Property<String> spec;
 
 	@Schema(
 		title = "The Kubernetes namespace"
 	)
-	@PluginProperty(dynamic = true)
-	private String namespace;
+	private Property<String> namespace;
 
 	@Override
 	public Apply.Output run(RunContext runContext) throws Exception {
-		String namespace = runContext.render(this.namespace);
+		String namespace = runContext.render(this.namespace).as(String.class).orElseThrow();
 
 		try (KubernetesClient client = PodService.client(runContext, this.getConnection())) {
-			List<HasMetadata> resources = parseSpec(runContext.render(this.spec));
+			List<HasMetadata> resources = parseSpec(runContext.render(this.spec).as(String.class).orElseThrow());
 			log.debug("Parsed resources: {}", resources);
 
 			List<Metadata> metadataList = new ArrayList<>();

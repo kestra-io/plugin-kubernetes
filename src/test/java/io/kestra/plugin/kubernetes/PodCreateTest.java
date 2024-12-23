@@ -7,6 +7,7 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.runners.DefaultRunContext;
@@ -61,7 +62,7 @@ class PodCreateTest {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
-            .namespace("default")
+            .namespace(Property.of("default"))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -99,7 +100,7 @@ class PodCreateTest {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
-            .namespace("default")
+            .namespace(Property.of("default"))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -126,7 +127,7 @@ class PodCreateTest {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
-            .namespace("default")
+            .namespace(Property.of("default"))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -155,7 +156,7 @@ class PodCreateTest {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
-            .namespace("default")
+            .namespace(Property.of("default"))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -167,7 +168,7 @@ class PodCreateTest {
                 "    - 'for i in {1..10}; do echo $i; {{ inputs.command }} 0.1; done'",
                 "restartPolicy: Never"
             ))
-            .resume(true)
+            .resume(Property.of(true))
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep"));
@@ -207,8 +208,8 @@ class PodCreateTest {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
-            .namespace("default")
-            .outputFiles(Arrays.asList("xml", "csv"))
+            .namespace(Property.of("default"))
+            .outputFiles(Property.of(Arrays.asList("xml", "csv")))
             .inputFiles(Map.of(
                 "files/in/in.txt", "I'm here",
                 "main.sh", "sleep 1\n" +
@@ -231,7 +232,7 @@ class PodCreateTest {
                 "restartPolicy: Never"
             ))
             .metadata(Map.of("name", "custom-name-" + IdUtils.create().toLowerCase()))
-            .resume(true)
+            .resume(Property.of(true))
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep"));

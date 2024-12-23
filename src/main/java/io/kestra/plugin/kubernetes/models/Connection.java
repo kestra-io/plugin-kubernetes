@@ -2,6 +2,7 @@ package io.kestra.plugin.kubernetes.models;
 
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
+import io.kestra.core.models.property.Property;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
@@ -15,112 +16,96 @@ public class Connection {
     @Schema(
         title = "Trust all certificates"
     )
-    private final Boolean trustCerts;
+    private final Property<Boolean> trustCerts;
 
     @Schema(
         title = "Disable hostname verification"
     )
-    private final Boolean disableHostnameVerification;
+    private final Property<Boolean> disableHostnameVerification;
 
     @Schema(
         title = "The url to the Kubernetes API"
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private final String masterUrl = "https://kubernetes.default.svc";
+    private final Property<String> masterUrl = Property.of("https://kubernetes.default.svc");
 
     @Schema(
         title = "The API version"
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private final String apiVersion = "v1";
+    private final Property<String> apiVersion = Property.of("v1");
 
     @Schema(
         title = "The namespace used"
     )
-    @PluginProperty(dynamic = true)
-    private final String namespace;
+    private final Property<String> namespace;
 
     @Schema(
         title = "CA certificate as file path"
     )
-    @PluginProperty(dynamic = true)
-    private final String caCertFile;
+    private final Property<String> caCertFile;
 
     @Schema(
         title = "CA certificate as data"
     )
-    @PluginProperty(dynamic = true)
-    private final String caCertData;
+    private final Property<String> caCertData;
 
     @Schema(
         title = "Client certificate as a file path"
     )
-    @PluginProperty(dynamic = true)
-    private final String clientCertFile;
+    private final Property<String> clientCertFile;
 
     @Schema(
         title = "Client certificate as data"
     )
-    @PluginProperty(dynamic = true)
-    private final String clientCertData;
+    private final Property<String> clientCertData;
 
     @Schema(
         title = "Client key as a file path"
     )
-    @PluginProperty(dynamic = true)
-    private final String clientKeyFile;
+    private final Property<String> clientKeyFile;
 
     @Schema(
         title = "Client key as data"
     )
-    @PluginProperty(dynamic = true)
-    private final String clientKeyData;
+    private final Property<String> clientKeyData;
 
     @Schema(
         title = "Client key encryption algorithm",
         description = "default is RSA"
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private final String clientKeyAlgo = "RSA";
+    private final Property<String> clientKeyAlgo = Property.of("RSA");
 
     @Schema(
         title = "Client key passphrase"
     )
-    @PluginProperty(dynamic = true)
-    private final String clientKeyPassphrase;
+    private final Property<String> clientKeyPassphrase;
 
     @Schema(
         title = "Truststore file"
     )
-    @PluginProperty(dynamic = true)
-    private final String trustStoreFile;
+    private final Property<String> trustStoreFile;
 
     @Schema(
         title = "Truststore passphrase"
     )
-    @PluginProperty(dynamic = true)
-    private final String trustStorePassphrase;
+    private final Property<String> trustStorePassphrase;
 
     @Schema(
         title = "Key store file"
     )
-    @PluginProperty(dynamic = true)
-    private final String keyStoreFile;
+    private final Property<String> keyStoreFile;
 
     @Schema(
         title = "Key store passphrase"
     )
-    @PluginProperty(dynamic = true)
-    private final String keyStorePassphrase;
+    private final Property<String> keyStorePassphrase;
 
     @Schema(
         title = "Oauth token"
     )
-    @PluginProperty(dynamic = true)
-    private final String oauthToken;
+    private final Property<String> oauthToken;
 
     @Schema(
         title = "Oauth token provider"
@@ -131,52 +116,50 @@ public class Connection {
     @Schema(
         title = "Username"
     )
-    @PluginProperty(dynamic = true)
-    private String username;
+    private Property<String> username;
 
     @Schema(
         title = "Password"
     )
-    @PluginProperty(dynamic = true)
-    private String password;
+    private Property<String> password;
 
     public Config toConfig(RunContext runContext) throws IllegalVariableEvaluationException {
         ConfigBuilder builder = new ConfigBuilder(Config.empty());
 
         if (trustCerts != null) {
-            builder.withTrustCerts(trustCerts);
+            builder.withTrustCerts(runContext.render(trustCerts).as(Boolean.class).orElseThrow());
         }
 
         if (disableHostnameVerification != null) {
-            builder.withDisableHostnameVerification(disableHostnameVerification);
+            builder.withDisableHostnameVerification(runContext.render(disableHostnameVerification).as(Boolean.class).orElseThrow());
         }
 
         if (masterUrl != null) {
-            builder.withMasterUrl(runContext.render(masterUrl));
+            builder.withMasterUrl(runContext.render(masterUrl).as(String.class).orElseThrow());
         }
 
         if (apiVersion != null) {
-            builder.withApiVersion(runContext.render(apiVersion));
+            builder.withApiVersion(runContext.render(apiVersion).as(String.class).orElseThrow());
         }
 
         if (namespace != null) {
-            builder.withNamespace(runContext.render(namespace));
+            builder.withNamespace(runContext.render(namespace).as(String.class).orElseThrow());
         }
 
         if (caCertFile != null) {
-            builder.withCaCertFile(runContext.render(caCertFile));
+            builder.withCaCertFile(runContext.render(caCertFile).as(String.class).orElseThrow());
         }
 
         if (caCertData != null) {
-            builder.withCaCertData(runContext.render(caCertData));
+            builder.withCaCertData(runContext.render(caCertData).as(String.class).orElseThrow());
         }
 
         if (clientCertFile != null) {
-            builder.withClientCertFile(runContext.render(clientCertFile));
+            builder.withClientCertFile(runContext.render(clientCertFile).as(String.class).orElseThrow());
         }
 
         if (oauthToken != null) {
-            builder.withOauthToken(runContext.render(oauthToken));
+            builder.withOauthToken(runContext.render(oauthToken).as(String.class).orElseThrow());
         }
 
         if (oauthTokenProvider != null) {
@@ -184,47 +167,47 @@ public class Connection {
         }
 
         if (clientCertData != null) {
-            builder.withClientCertData(runContext.render(clientCertData));
+            builder.withClientCertData(runContext.render(clientCertData).as(String.class).orElseThrow());
         }
 
         if (clientKeyFile != null) {
-            builder.withClientKeyFile(runContext.render(clientKeyFile));
+            builder.withClientKeyFile(runContext.render(clientKeyFile).as(String.class).orElseThrow());
         }
 
         if (clientKeyData != null) {
-            builder.withClientKeyData(runContext.render(clientKeyData));
+            builder.withClientKeyData(runContext.render(clientKeyData).as(String.class).orElseThrow());
         }
 
         if (clientKeyAlgo != null) {
-            builder.withClientKeyAlgo(runContext.render(clientKeyAlgo));
+            builder.withClientKeyAlgo(runContext.render(clientKeyAlgo).as(String.class).orElseThrow());
         }
 
         if (clientKeyPassphrase != null) {
-            builder.withClientKeyPassphrase(runContext.render(clientKeyPassphrase));
+            builder.withClientKeyPassphrase(runContext.render(clientKeyPassphrase).as(String.class).orElseThrow());
         }
 
         if (trustStoreFile != null) {
-            builder.withTrustStoreFile(runContext.render(trustStoreFile));
+            builder.withTrustStoreFile(runContext.render(trustStoreFile).as(String.class).orElseThrow());
         }
 
         if (trustStorePassphrase != null) {
-            builder.withTrustStorePassphrase(runContext.render(trustStorePassphrase));
+            builder.withTrustStorePassphrase(runContext.render(trustStorePassphrase).as(String.class).orElseThrow());
         }
 
         if (keyStoreFile != null) {
-            builder.withKeyStoreFile(runContext.render(keyStoreFile));
+            builder.withKeyStoreFile(runContext.render(keyStoreFile).as(String.class).orElseThrow());
         }
 
         if (keyStorePassphrase != null) {
-            builder.withKeyStorePassphrase(runContext.render(keyStorePassphrase));
+            builder.withKeyStorePassphrase(runContext.render(keyStorePassphrase).as(String.class).orElseThrow());
         }
 
         if (username != null) {
-            builder.withUsername(runContext.render(username));
+            builder.withUsername(runContext.render(username).as(String.class).orElseThrow());
         }
 
         if (password != null) {
-            builder.withPassword(runContext.render(password));
+            builder.withPassword(runContext.render(password).as(String.class).orElseThrow());
         }
 
         return builder.build();
