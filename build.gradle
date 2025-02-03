@@ -8,7 +8,7 @@ plugins {
     id 'ru.vyarus.github-info' version '2.0.0'
     id 'signing'
     id "io.github.gradle-nexus.publish-plugin" version "2.0.0"
-    id "com.github.ben-manes.versions" version "0.51.0"
+    id "com.github.ben-manes.versions" version "0.52.0"
     id 'net.researchgate.release' version '3.1.0'
 }
 
@@ -51,7 +51,7 @@ dependencies {
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
 
     // plugins
-    api 'io.fabric8:kubernetes-client:6.13.4'
+    api 'io.fabric8:kubernetes-client:7.1.0'
     api group: 'org.apache.commons', name: 'commons-compress'
 }
 
