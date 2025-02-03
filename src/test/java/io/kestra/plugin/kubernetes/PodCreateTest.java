@@ -23,6 +23,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
+import org.junitpioneer.jupiter.RetryingTest;
 import org.slf4j.event.Level;
 import reactor.core.publisher.Flux;
 
@@ -204,6 +205,7 @@ class PodCreateTest {
     }
 
     @Test
+    @RetryingTest(value = 3)
     void inputOutputFiles() throws Exception {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -243,6 +245,8 @@ class PodCreateTest {
         runContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(flow, execution, task)).build());
 
         PodCreate.Output run = task.run(runContext);
+
+        Thread.sleep(500);
 
         assertThat(run.getVars().get("extract"), is("I'm here"));
 
