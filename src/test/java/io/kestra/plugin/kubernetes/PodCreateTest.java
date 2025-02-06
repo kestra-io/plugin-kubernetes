@@ -204,7 +204,6 @@ class PodCreateTest {
         assertThat(receive.toStream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("10")).count(), greaterThan(0L));
     }
 
-    @Test
     @RetryingTest(value = 3)
     void inputOutputFiles() throws Exception {
         PodCreate task = PodCreate.builder()
