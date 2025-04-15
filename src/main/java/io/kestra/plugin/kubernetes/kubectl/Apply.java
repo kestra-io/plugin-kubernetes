@@ -67,7 +67,7 @@ import java.util.List;
     }
 )
 @Schema(
-	title = "Apply a Kubernetes resource"
+	title = "Apply a Kubernetes resource (e.g., a Kubernetes deployment)."
 )
 @Slf4j
 public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
