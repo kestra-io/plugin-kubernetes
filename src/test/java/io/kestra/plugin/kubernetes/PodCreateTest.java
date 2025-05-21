@@ -16,6 +16,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.runners.RunContextInitializer;
 import io.kestra.core.runners.WorkerTask;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.Await;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.TestsUtils;
@@ -249,14 +250,14 @@ class PodCreateTest {
 
         assertThat(run.getVars().get("extract"), is("I'm here"));
 
-        InputStream get = storageInterface.get(null, null, run.getOutputFiles().get("xml"));
+        InputStream get = storageInterface.get(TenantService.MAIN_TENANT, null, run.getOutputFiles().get("xml"));
 
         assertThat(
             CharStreams.toString(new InputStreamReader(get)),
             is("1\n3\n")
         );
 
-        get = storageInterface.get(null, null, run.getOutputFiles().get("csv"));
+        get = storageInterface.get(TenantService.MAIN_TENANT, null, run.getOutputFiles().get("csv"));
 
         assertThat(
             CharStreams.toString(new InputStreamReader(get)),
