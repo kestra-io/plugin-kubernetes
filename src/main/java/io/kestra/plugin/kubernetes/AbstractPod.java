@@ -2,6 +2,7 @@ package io.kestra.plugin.kubernetes;
 
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.dsl.PodResource;
+import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
@@ -152,6 +153,21 @@ abstract public class AbstractPod extends AbstractConnection {
                     .build()
                 );
         }
+    }
+
+    protected List<HasMetadata> parseSpec(String spec) {
+        var serialization = new KubernetesSerialization();
+        var resource = serialization.unmarshal(spec);
+
+        List<HasMetadata> resources = new ArrayList<>();
+        switch (resource) {
+            case List<?> parsed -> resources.addAll((List<? extends HasMetadata>) parsed);
+            case HasMetadata parsed -> resources.add(parsed);
+            case KubernetesResourceList<?> parsed -> resources.addAll(parsed.getItems());
+            case null, default -> throw new IllegalArgumentException("Unknown resource");
+        }
+
+        return resources;
     }
 
     private Container filesContainer(RunContext runContext, VolumeMount volumeMount, boolean finished) throws IllegalVariableEvaluationException {
