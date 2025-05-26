@@ -66,7 +66,7 @@ public class DeleteTest {
             .type(Get.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue(KubernetesKind.DEPLOYMENTS))
-            .resourcesNames(Property.ofValue(List.of("my-deployment")))
+            .resourceName(Property.ofValue("my-deployment"))
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build();
 

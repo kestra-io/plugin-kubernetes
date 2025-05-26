@@ -1,0 +1,43 @@
+id: all_kubectl
+namespace: sanitychecks.plugin-scripts.all_kubectl
+
+tasks:
+  - id: apply
+    type: io.kestra.plugin.kubernetes.kubectl.Apply
+    namespace: default
+    spec: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: my-deployment
+        labels:
+          app: myapp
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: myapp
+        template:
+          metadata:
+            labels:
+              app: myapp
+          spec:
+            containers:
+            - name: mycontainer
+              image: nginx:latest
+              ports:
+              - containerPort: 80
+
+  - id: get
+    type: io.kestra.plugin.kubernetes.kubectl.Get
+    namespace: default
+    resourceType: DEPLOYMENTS
+    resourceName: my-deployment
+    fetchType: FETCH_ONE
+
+  - id: delete
+    type: io.kestra.plugin.kubernetes.kubectl.Delete
+    namespace: default
+    resourceType: DEPLOYMENTS
+    resourcesNames:
+      - my-deployment
