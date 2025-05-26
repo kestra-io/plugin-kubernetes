@@ -8,7 +8,6 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Metadata;
@@ -41,7 +40,6 @@ import java.util.List;
                         type: io.kestra.plugin.kubernetes.kubectl.Get
                         namespace: default
                         resourceType: PODS
-                        fetchType: FETCH
                 """
         ),
         @Example(
@@ -56,14 +54,31 @@ import java.util.List;
                         type: io.kestra.plugin.kubernetes.kubectl.Get
                         namespace: default
                         resourceType: DEPLOYMENTS
-                        resourceName: my-deployment
-                        fetchType: FETCH_ONE
+                        resourcesNames:
+                            - my-deployment
+                """
+        ),
+        @Example(
+            title = "Get two deployment named my-deployment and my-deployment-2 from Kubernetes using YAML (<=> kubectl get deployment my-deployment).",
+            full = true,
+            code = """
+                    id: get_one_deployment
+                    namespace: company.team
+
+                    tasks:
+                      - id: get
+                        type: io.kestra.plugin.kubernetes.kubectl.Get
+                        namespace: default
+                        resourceType: DEPLOYMENTS
+                        resourcesNames:
+                            - my-deployment
+                            - my-deployment-2
                 """
         )
     }
 )
 @Schema(
-    title = "Get Kubernetes one or many resources of a kind."
+    title = "Get one or many Kubernetes resources of a kind."
 )
 @Slf4j
 public class Get extends AbstractPod implements RunnableTask<Get.Output> {
@@ -81,9 +96,9 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     private Property<KubernetesKind> resourceType;
 
     @Schema(
-        title = "The Kubernetes resource name"
+        title = "The Kubernetes resources names"
     )
-    private Property<String> resourceName;
+    private Property<List<String>> resourcesNames;
 
     @Schema(
         title = "The Kubernetes resource apiGroup"
@@ -95,18 +110,13 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     )
     private Property<String> apiVersion;
 
-    @NotNull
-    @Builder.Default
-    protected Property<FetchType> fetchType = Property.ofValue(FetchType.NONE);
-
     @Override
     public Output run(RunContext runContext) throws Exception {
         var renderedNamespace = runContext.render(this.namespace).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("Namespace must be provided and rendered."));
         var renderedKind = runContext.render(this.resourceType).as(KubernetesKind.class)
             .orElseThrow(() -> new IllegalArgumentException("Kind must be provided and rendered."));
-        var currentFetchType = runContext.render(this.fetchType).as(FetchType.class)
-            .orElse(FetchType.NONE);
+        var renderedResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
         var renderedApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("apps");
         var renderedApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
 
@@ -122,7 +132,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                 .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
                 .build();
 
-            if (currentFetchType == FetchType.FETCH) {
+            if (renderedResourcesNames.isEmpty()) {
                 runContext.logger().debug("Fetching all resources of kind '{}' in namespace '{}'", renderedKind, renderedNamespace);
                 var resources = client.genericKubernetesResources(resourceDefinitionContext)
                     .inNamespace(renderedNamespace)
@@ -136,28 +146,26 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                 }
                 runContext.logger().info("Fetched {} resource(s) of kind '{}' in namespace '{}'", metadataList.size(), renderedKind, renderedNamespace);
 
-            } else if (currentFetchType == FetchType.FETCH_ONE) {
-                var renderedResourceName = runContext.render(this.resourceName).as(String.class)
-                    .orElseThrow(() -> new IllegalArgumentException("Resource name must be provided for FETCH_ONE."));
+            } else {
+                renderedResourcesNames.forEach(name -> {
+                        runContext.logger().debug("Fetching resource of kind '{}' with name '{}' in namespace '{}'",
+                            renderedKind, name, renderedNamespace);
 
-                runContext.logger().debug("Fetching resource of kind '{}' with name '{}' in namespace '{}'",
-                    renderedKind, renderedResourceName, renderedNamespace);
+                        var resource = client.genericKubernetesResources(resourceDefinitionContext)
+                            .inNamespace(renderedNamespace)
+                            .withName(name)
+                            .get();
 
-                var resource = client.genericKubernetesResources(resourceDefinitionContext)
-                    .inNamespace(renderedNamespace)
-                    .withName(renderedResourceName)
-                    .get();
-
-                if (resource != null && resource.getMetadata() != null) {
-                    metadataList.add(Metadata.from(resource.getMetadata()));
-                    runContext.logger().info("Fetched resource of kind '{}' with name '{}' in namespace '{}'",
-                        renderedKind, renderedResourceName, renderedNamespace);
-                } else {
-                    runContext.logger().warn("Resource of kind '{}' with name '{}' not found in namespace '{}'",
-                        renderedKind, renderedResourceName, renderedNamespace);
-                }
-            } else if (currentFetchType == FetchType.NONE) {
-                runContext.logger().info("FetchType is NONE, no Kubernetes resources will be fetched.");
+                        if (resource != null && resource.getMetadata() != null) {
+                            metadataList.add(Metadata.from(resource.getMetadata()));
+                            runContext.logger().info("Fetched resource of kind '{}' with name '{}' in namespace '{}'",
+                                renderedKind, name, renderedNamespace);
+                        } else {
+                            runContext.logger().warn("Resource of kind '{}' with name '{}' not found in namespace '{}'",
+                                renderedKind, name, renderedNamespace);
+                        }
+                    }
+                );
             }
 
         } catch (KubernetesClientException e) {
@@ -178,7 +186,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     public static class Output implements io.kestra.core.models.tasks.Output {
 
         @Schema(
-            title = "The resource(s) metadata (will contains one element if fetchType is FETCH_ONE, else if fetchType is FETCH possibly more)."
+            title = "The resource(s) metadata."
         )
         private final List<Metadata> metadata;
     }
