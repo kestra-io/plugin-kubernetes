@@ -28,35 +28,35 @@ import java.util.List;
             title = "Apply a Kubernetes resource, using YAML.",
             full = true,
             code = """
-                    id: create_or_replace_deployment
-                    namespace: company.team
+                id: create_or_replace_deployment
+                namespace: company.team
 
-                    tasks:
-                      - id: apply
-                        type: io.kestra.plugin.kubernetes.kubectl.Apply
-                        namespace: default
-                        spec: |-
-                          apiVersion: apps/v1
-                          kind: Deployment
-                          metadata:
-                            name: mypod
-                """
+                tasks:
+                  - id: apply
+                    type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    namespace: default
+                    spec: |-
+                      apiVersion: apps/v1
+                      kind: Deployment
+                      metadata:
+                        name: mypod
+            """
         ),
         @Example(
             title = "Apply a Kubernetes resource, using a namespace file.",
             full = true,
             code = """
-                    id: create_or_replace_deployment
-                    namespace: company.team
+                id: create_or_replace_deployment
+                namespace: company.team
 
-                    tasks:
-                      - id: apply
-                        type: io.kestra.plugin.kubernetes.kubectl.Apply
-                        namespaceFiles:
-                          enabled: true
-                        namespace: default
-                        spec: "{{ read('deployment.yaml') }}"
-                """
+                tasks:
+                  - id: apply
+                    type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    namespaceFiles:
+                      enabled: true
+                    namespace: default
+                    spec: "{{ read('deployment.yaml') }}"
+            """
         )
     }
 )
