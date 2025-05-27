@@ -6,9 +6,12 @@ import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.executions.metrics.Counter;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.FileSerde;
 import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.services.PodService;
@@ -17,9 +20,19 @@ import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.net.URI;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+
+import static io.kestra.core.models.tasks.common.FetchType.NONE;
 
 @SuperBuilder
 @ToString
@@ -40,6 +53,7 @@ import java.util.List;
                         type: io.kestra.plugin.kubernetes.kubectl.Get
                         namespace: default
                         resourceType: PODS
+                        fetchType: FETCH
                 """
         ),
         @Example(
@@ -55,14 +69,15 @@ import java.util.List;
                         namespace: default
                         resourceType: DEPLOYMENTS
                         resourcesNames:
-                            - my-deployment
+                          - my-deployment
+                        fetchType: FETCH_ONE
                 """
         ),
         @Example(
-            title = "Get two deployment named my-deployment and my-deployment-2 from Kubernetes using YAML (<=> kubectl get deployment my-deployment).",
+            title = "Get two deployments named my-deployment and my-deployment-2 from Kubernetes using YAML (<=> kubectl get deployment my-deployment) and store them in the internal storage.",
             full = true,
             code = """
-                    id: get_one_deployment
+                    id: get_two_deployments
                     namespace: company.team
 
                     tasks:
@@ -71,9 +86,11 @@ import java.util.List;
                         namespace: default
                         resourceType: DEPLOYMENTS
                         resourcesNames:
-                            - my-deployment
-                            - my-deployment-2
+                          - my-deployment
+                          - my-deployment-2
+                        fetchType: STORE
                 """
+
         )
     }
 )
@@ -110,6 +127,10 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     )
     private Property<String> apiVersion;
 
+    @NotNull
+    @Builder.Default
+    protected Property<FetchType> fetchType = Property.ofValue(NONE);
+
     @Override
     public Output run(RunContext runContext) throws Exception {
         var renderedNamespace = runContext.render(this.namespace).as(String.class)
@@ -119,6 +140,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         var renderedResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
         var renderedApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("apps");
         var renderedApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
+        var renderedFetchType = runContext.render(this.fetchType).as(FetchType.class).orElse(NONE);
 
         List<Metadata> metadataList = new ArrayList<>();
 
@@ -176,9 +198,43 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
             throw e;
         }
 
-        return Output.builder()
-            .metadata(metadataList)
-            .build();
+        Output output;
+
+        int fetchedItemsCount = metadataList.size();
+        switch (renderedFetchType) {
+            case NONE:
+                output = Output.builder().build();
+                runContext.metric(Counter.of("store.fetchedItemsCount", 0));
+                runContext.metric(Counter.of("fetch.fetchedItemsCount", 0));
+                break;
+            case FETCH:
+                output = Output.builder()
+                    .metadataItems(metadataList)
+                    .size(fetchedItemsCount)
+                    .build();
+                runContext.metric(Counter.of("fetch.fetchedItemsCount", fetchedItemsCount));
+                break;
+            case FETCH_ONE:
+                output = Output.builder()
+                    .metadataItem(metadataList.isEmpty() ? null : metadataList.getFirst())
+                    .size(fetchedItemsCount)
+                    .build();
+                runContext.metric(Counter.of("fetch.fetchedItemsCount", fetchedItemsCount));
+                break;
+            case STORE:
+                var result = storeResult(metadataList, runContext);
+                int storedItemsCount = result.getValue().intValue();
+                output = Output.builder()
+                    .uri(result.getKey())
+                    .size(storedItemsCount)
+                    .build();
+                runContext.metric(Counter.of("store.fetchedItemsCount", storedItemsCount));
+                break;
+            default:
+                throw new IllegalStateException("Unexpected fetchType value: " + fetchType);
+        }
+
+        return output;
     }
 
     @Getter
@@ -186,8 +242,53 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     public static class Output implements io.kestra.core.models.tasks.Output {
 
         @Schema(
-            title = "The resource(s) metadata."
+            title = "The metadata for multiple resources.",
+            description = "Only available when `fetchType` is set to `FETCH`."
         )
-        private final List<Metadata> metadata;
+        private final List<Metadata> metadataItems;
+
+        @Schema(
+            title = "The metadata for a single resource.",
+            description = "Only available when `fetchType` is set to `FETCH_ONE`."
+        )
+        private final Metadata metadataItem;
+
+        @Schema(
+            title = "The output files URI in Kestra's internal storage.",
+            description = "Only available when `fetchType` is set to `STORE`."
+        )
+        private final URI uri;
+
+        @Schema(
+            title = "The count of the fetched or stored resources."
+        )
+        private Integer size;
+    }
+
+    private Map.Entry<URI, Long> storeResult(List<Metadata> metadata, RunContext runContext) throws IOException {
+        var tempFile = runContext.workingDir().createTempFile(".ion").toFile();
+
+        try (
+            var output = new BufferedWriter(new FileWriter(tempFile), FileSerde.BUFFER_SIZE)
+        ) {
+            var flowable = Flux
+                .create(
+                    s -> {
+                        metadata.forEach(s::next);
+                        s.complete();
+                    },
+                    FluxSink.OverflowStrategy.BUFFER
+                );
+
+            var count = FileSerde.writeAll(output, flowable);
+            var lineCount = count.block();
+
+            output.flush();
+
+            return new AbstractMap.SimpleEntry<>(
+                runContext.storage().putFile(tempFile),
+                lineCount
+            );
+        }
     }
 }

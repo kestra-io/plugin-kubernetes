@@ -32,7 +32,8 @@ tasks:
     type: io.kestra.plugin.kubernetes.kubectl.Get
     namespace: default
     resourceType: DEPLOYMENTS
-    resourceName: my-deployment
+    resourcesNames:
+      - my-deployment
     fetchType: FETCH_ONE
 
   - id: delete

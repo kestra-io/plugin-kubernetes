@@ -2,6 +2,7 @@ package io.kestra.plugin.kubernetes.kubectl;
 
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContextFactory;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
@@ -66,12 +67,13 @@ public class DeleteTest {
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue(KubernetesKind.DEPLOYMENTS))
             .resourcesNames(Property.ofValue(List.of("my-deployment")))
+            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build();
 
 
         // Then
         var getTaskOutput = getTask.run(runContext);
-        assertThat(getTaskOutput.getMetadata().size(), is(1));
+        assertThat(getTaskOutput.getMetadataItem().getName(), is("my-deployment"));
 
         // When
         var deleteTask = Delete.builder()
@@ -88,7 +90,7 @@ public class DeleteTest {
 
         // When
         getTaskOutput = getTask.run(runContext);
-        assertThat(getTaskOutput.getMetadata().size(), is(0));
+        assertThat(getTaskOutput.getSize(), is(0));
     }
 
     @Test
@@ -145,12 +147,13 @@ public class DeleteTest {
             .type(Get.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue(KubernetesKind.DEPLOYMENTS))
+            .fetchType(Property.ofValue(FetchType.FETCH))
             .build();
 
 
         // Then
         var getTaskOutput = getTask.run(runContext);
-        assertThat(getTaskOutput.getMetadata().size(), is(2));
+        assertThat(getTaskOutput.getMetadataItems().size(), is(2));
 
         // When
         var deleteTask = Delete.builder()
@@ -167,6 +170,6 @@ public class DeleteTest {
 
         // When
         getTaskOutput = getTask.run(runContext);
-        assertThat(getTaskOutput.getMetadata().size(), is(0));
+        assertThat(getTaskOutput.getMetadataItems().size(), is(0));
     }
 }

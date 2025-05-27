@@ -2,6 +2,7 @@ package io.kestra.plugin.kubernetes.kubectl;
 
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContextFactory;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
@@ -73,13 +74,13 @@ public class GetTest {
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue(KubernetesKind.DEPLOYMENTS))
             .resourcesNames(Property.ofValue(List.of(expectedDeploymentName)))
+            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build();
 
 
         // Then
         var output = getTask.run(runContext);
-        assertThat(output.getMetadata().size(), is(1));
-        assertThat(output.getMetadata().getFirst().getName(), is(expectedDeploymentName));
+        assertThat(output.getMetadataItem().getName(), is(expectedDeploymentName));
     }
 
     @Test
@@ -137,13 +138,14 @@ public class GetTest {
             .type(Get.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue(KubernetesKind.DEPLOYMENTS))
+            .fetchType(Property.ofValue(FetchType.FETCH))
             .build();
 
 
         // Then
         var output = getTask.run(runContext);
-        assertThat(output.getMetadata().size(), is(2));
-        assertThat(output.getMetadata().getFirst().getName(), is("my-deployment"));
-        assertThat(output.getMetadata().getLast().getName(), is("my-deployment-2"));
+        assertThat(output.getMetadataItems().size(), is(2));
+        assertThat(output.getMetadataItems().getFirst().getName(), is("my-deployment"));
+        assertThat(output.getMetadataItems().getLast().getName(), is("my-deployment-2"));
     }
 }
