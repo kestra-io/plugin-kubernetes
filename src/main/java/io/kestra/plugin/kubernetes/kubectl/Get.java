@@ -150,7 +150,6 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                 .withGroup(renderedApiGroup)
                 .withVersion(renderedApiVersion)
                 .withKind(renderedKind.name())
-                .withPlural(renderedKind.getPlural())
                 .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
                 .build();
 

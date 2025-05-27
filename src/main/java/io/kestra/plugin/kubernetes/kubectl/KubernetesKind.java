@@ -3,78 +3,68 @@ package io.kestra.plugin.kubernetes.kubectl;
 public enum KubernetesKind {
 
     // Workloads
-    PODS("pods"),
-    REPLICA_SETS("replicasets"),
-    REPLICATION_CONTROLLERS("replicationcontrollers"),
-    DEPLOYMENTS("deployments"),
-    STATEFUL_SETS("statefulsets"),
-    DAEMON_SETS("daemonsets"),
-    JOBS("jobs"),
-    CRON_JOBS("cronjobs"),
+    PODS,
+    REPLICA_SETS,
+    REPLICATION_CONTROLLERS,
+    DEPLOYMENTS,
+    STATEFUL_SETS,
+    DAEMON_SETS,
+    JOBS,
+    CRON_JOBS,
 
     // Service Discovery & Load Balancing
-    SERVICES("services"),
-    ENDPOINTS("endpoints"), // Note: singular is "Endpoint"
-    ENDPOINT_SLICES("endpointslices"),
-    INGRESSES("ingresses"),
-    INGRESS_CLASSES("ingressclasses"),
-    NETWORK_POLICIES("networkpolicies"),
+    SERVICES,
+    ENDPOINTS,
+    ENDPOINT_SLICES,
+    INGRESSES,
+    INGRESS_CLASSES,
+    NETWORK_POLICIES,
 
     // Config & Storage
-    CONFIG_MAPS("configmaps"),
-    SECRETS("secrets"),
-    PERSISTENT_VOLUMES("persistentvolumes"),
-    PERSISTENT_VOLUME_CLAIMS("persistentvolumeclaims"),
-    STORAGE_CLASSES("storageclasses"),
-    VOLUME_ATTACHMENTS("volumeattachments"),
-    CSINODES("csinodes"), // Typically csinodes
-    CSIDRIVERS("csidrivers"), // Typically csidrivers
-    CSISTORAGECAPACITIES("csistoragecapacities"), // Typically csistoragecapacities
+    CONFIG_MAPS,
+    SECRETS,
+    PERSISTENT_VOLUMES,
+    PERSISTENT_VOLUME_CLAIMS,
+    STORAGE_CLASSES,
+    VOLUME_ATTACHMENTS,
+    CSINODES,
+    CSIDRIVERS,
+    CSISTORAGECAPACITIES,
 
     // Cluster Resources
-    NAMESPACES("namespaces"),
-    NODES("nodes"),
-    EVENTS("events"),
-    LIMIT_RANGES("limitranges"),
-    RESOURCE_QUOTAS("resourcequotas"),
-    CUSTOM_RESOURCE_DEFINITIONS("customresourcedefinitions"),
+    NAMESPACES,
+    NODES,
+    EVENTS,
+    LIMIT_RANGES,
+    RESOURCE_QUOTAS,
+    CUSTOM_RESOURCE_DEFINITIONS,
 
     // RBAC (Role-Based Access Control)
-    SERVICE_ACCOUNTS("serviceaccounts"),
-    ROLES("roles"),
-    CLUSTER_ROLES("clusterroles"),
-    ROLE_BINDINGS("rolebindings"),
-    CLUSTER_ROLE_BINDINGS("clusterrolebindings"),
+    SERVICE_ACCOUNTS,
+    ROLES,
+    CLUSTER_ROLES,
+    ROLE_BINDINGS,
+    CLUSTER_ROLE_BINDINGS,
 
     // Policy
-    POD_DISRUPTION_BUDGETS("poddisruptionbudgets"),
-    // POD_SECURITY_POLICIES("podsecuritypolicies"), // Deprecated in 1.21, removed in 1.25
+    POD_DISRUPTION_BUDGETS,
+    // POD_SECURITY_POLICIES, // Deprecated in 1.21, removed in 1.25
 
     // Scheduling
-    PRIORITY_CLASSES("priorityclasses"),
+    PRIORITY_CLASSES,
 
     // API Machinery & Webhooks
-    MUTATING_WEBHOOK_CONFIGURATIONS("mutatingwebhookconfigurations"),
-    VALIDATING_WEBHOOK_CONFIGURATIONS("validatingwebhookconfigurations"),
-    APISERVICES("apiservices"), // Plural of APIService
-    CONTROLLER_REVISIONS("controllerrevisions"),
+    MUTATING_WEBHOOK_CONFIGURATIONS,
+    VALIDATING_WEBHOOK_CONFIGURATIONS,
+    APISERVICES,
+    CONTROLLER_REVISIONS,
 
     // Certificate Signing
-    CERTIFICATE_SIGNING_REQUESTS("certificatesigningrequests"),
+    CERTIFICATE_SIGNING_REQUESTS,
 
     // Lease (used for leader election)
-    LEASES("leases"),
+    LEASES,
 
     // Autoscaling
-    HORIZONTAL_POD_AUTOSCALERS("horizontalpodautoscalers");
-
-    private final String plural;
-
-    KubernetesKind(String plural) {
-        this.plural = plural;
-    }
-
-    public String getPlural() {
-        return plural;
-    }
+    HORIZONTAL_POD_AUTOSCALERS,
 }
