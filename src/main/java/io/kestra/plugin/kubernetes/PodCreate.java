@@ -77,33 +77,32 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
         @Example(
             title = "Launch a Pod with input files and gather its output files.",
             full = true,
-            code = {
+            code = """
+                id: kubernetes_pod_create
+                namespace: company.team
+
+                inputs:
+                  - id: file
+                    type: FILE
+
+                tasks:
+                  - id: pod_create
+                    type: io.kestra.plugin.kubernetes.PodCreate
+                    spec:
+                      containers:
+                      - name: unittest
+                        image: centos
+                        command:
+                          - cp
+                          - "{{workingDir}}/data.txt"
+                          - "{{workingDir}}/out.txt"
+                      restartPolicy: Never
+                    waitUntilRunning: PT3M
+                    inputFiles:
+                      data.txt: "{{inputs.file}}"
+                    outputFiles:
+                      - out.txt
                 """
-                    id: kubernetes
-                    namespace: company.team
-
-                    inputs:
-                      - id: file
-                        type: FILE
-
-                    tasks:
-                      - id: kubernetes
-                        type: io.kestra.plugin.kubernetes.PodCreate
-                        spec:
-                          containers:
-                          - name: unittest
-                            image: centos
-                            command:
-                              - cp
-                              - "{{workingDir}}/data.txt"
-                              - "{{workingDir}}/out.txt"
-                          restartPolicy: Never
-                        waitUntilRunning: PT3M
-                        inputFiles:
-                          data.txt: "{{inputs.file}}"
-                        outputFiles:
-                          - out.txt"""
-            }
         )
     }
 )

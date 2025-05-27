@@ -65,7 +65,7 @@ public class DeleteTest {
             .id(Get.class.getSimpleName())
             .type(Get.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .resourceType(Property.ofValue(KubernetesKind.DEPLOYMENTS))
+            .resourceType(Property.ofValue("deployments"))
             .resourcesNames(Property.ofValue(List.of("my-deployment")))
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build();
@@ -80,7 +80,7 @@ public class DeleteTest {
             .id(Delete.class.getSimpleName())
             .type(Delete.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .resourceType(Property.ofValue(KubernetesKind.DEPLOYMENTS))
+            .resourceType(Property.ofValue("deployments"))
             .resourcesNames(Property.ofValue(List.of("my-deployment")))
             .build();
 
@@ -146,7 +146,7 @@ public class DeleteTest {
             .id(Get.class.getSimpleName())
             .type(Get.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .resourceType(Property.ofValue(KubernetesKind.DEPLOYMENTS))
+            .resourceType(Property.ofValue("deployments"))
             .fetchType(Property.ofValue(FetchType.FETCH))
             .build();
 
@@ -160,7 +160,7 @@ public class DeleteTest {
             .id(Delete.class.getSimpleName())
             .type(Delete.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .resourceType(Property.ofValue(KubernetesKind.DEPLOYMENTS))
+            .resourceType(Property.ofValue("deployments"))
             .resourcesNames(Property.ofValue(deploymentsNames))
             .build();
 

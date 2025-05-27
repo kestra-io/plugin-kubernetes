@@ -31,7 +31,7 @@ tasks:
   - id: get
     type: io.kestra.plugin.kubernetes.kubectl.Get
     namespace: default
-    resourceType: DEPLOYMENTS
+    resourceType: deployments
     resourcesNames:
       - my-deployment
     fetchType: FETCH_ONE
@@ -39,6 +39,6 @@ tasks:
   - id: delete
     type: io.kestra.plugin.kubernetes.kubectl.Delete
     namespace: default
-    resourceType: DEPLOYMENTS
+    resourceType: deployments
     resourcesNames:
       - my-deployment

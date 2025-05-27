@@ -40,7 +40,7 @@ import java.util.List;
                       kind: Deployment
                       metadata:
                         name: mypod
-            """
+                """
         ),
         @Example(
             title = "Apply a Kubernetes resource, using a namespace file.",
@@ -56,7 +56,7 @@ import java.util.List;
                       enabled: true
                     namespace: default
                     spec: "{{ read('deployment.yaml') }}"
-            """
+                """
         )
     }
 )

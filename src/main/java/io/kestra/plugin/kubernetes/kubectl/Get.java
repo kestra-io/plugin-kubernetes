@@ -1,7 +1,5 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
-import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.kestra.core.models.annotations.Example;
@@ -45,53 +43,69 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
             title = "Get all pods from Kubernetes using YAML (<=> kubectl get pods).",
             full = true,
             code = """
-                    id: get_all_pods
-                    namespace: company.team
+                id: get_all_pods
+                namespace: company.team
 
-                    tasks:
-                      - id: get
-                        type: io.kestra.plugin.kubernetes.kubectl.Get
-                        namespace: default
-                        resourceType: PODS
-                        fetchType: FETCH
+                tasks:
+                  - id: get
+                    type: io.kestra.plugin.kubernetes.kubectl.Get
+                    namespace: default
+                    resourceType: pods
+                    fetchType: FETCH
                 """
         ),
         @Example(
             title = "Get one deployment named my-deployment from Kubernetes using YAML (<=> kubectl get deployment my-deployment).",
             full = true,
             code = """
-                    id: get_one_deployment
-                    namespace: company.team
+                id: get_one_deployment
+                namespace: company.team
 
-                    tasks:
-                      - id: get
-                        type: io.kestra.plugin.kubernetes.kubectl.Get
-                        namespace: default
-                        resourceType: DEPLOYMENTS
-                        resourcesNames:
-                          - my-deployment
-                        fetchType: FETCH_ONE
+                tasks:
+                  - id: get
+                    type: io.kestra.plugin.kubernetes.kubectl.Get
+                    namespace: default
+                    resourceType: deployments
+                    resourcesNames:
+                      - my-deployment
+                    fetchType: FETCH_ONE
                 """
         ),
         @Example(
             title = "Get two deployments named my-deployment and my-deployment-2 from Kubernetes using YAML (<=> kubectl get deployment my-deployment) and store them in the internal storage.",
             full = true,
             code = """
-                    id: get_two_deployments
-                    namespace: company.team
+                id: get_two_deployments
+                namespace: company.team
 
-                    tasks:
-                      - id: get
-                        type: io.kestra.plugin.kubernetes.kubectl.Get
-                        namespace: default
-                        resourceType: DEPLOYMENTS
-                        resourcesNames:
-                          - my-deployment
-                          - my-deployment-2
-                        fetchType: STORE
+                tasks:
+                  - id: get
+                    type: io.kestra.plugin.kubernetes.kubectl.Get
+                    namespace: default
+                    resourceType: deployments
+                    resourcesNames:
+                      - my-deployment
+                      - my-deployment-2
+                    fetchType: STORE
                 """
+        ),
+        @Example(
+            title = "Get one custom resource named Shirt from Kubernetes using YAML (<=> kubectl get Shirt).",
+            full = true,
+            code = """
+                id: get_one_custom_resource
+                namespace: company.team
 
-        )
+                tasks:
+                  - id: get
+                    type: io.kestra.plugin.kubernetes.kubectl.Get
+                    namespace: default
+                    resourceType: shirts # could be Shirt
+                    apiGroup: stable.example.com
+                    apiVersion: v1
+                    fetchType: FETCH_ONE
+                """
+        ),
     }
 )
 @Schema(
@@ -110,7 +124,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         title = "The Kubernetes resource type (= kind) (e.g. pod, service)"
     )
     @NotNull
-    private Property<KubernetesKind> resourceType;
+    private Property<String> resourceType;
 
     @Schema(
         title = "The Kubernetes resources names"
@@ -134,9 +148,9 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     @Override
     public Output run(RunContext runContext) throws Exception {
         var renderedNamespace = runContext.render(this.namespace).as(String.class)
-            .orElseThrow(() -> new IllegalArgumentException("Namespace must be provided and rendered."));
-        var renderedKind = runContext.render(this.resourceType).as(KubernetesKind.class)
-            .orElseThrow(() -> new IllegalArgumentException("Kind must be provided and rendered."));
+            .orElseThrow(() -> new IllegalArgumentException("namespace must be provided and rendered."));
+        var renderedResourceType = runContext.render(this.resourceType).as(String.class)
+            .orElseThrow(() -> new IllegalArgumentException("resourceType must be provided and rendered."));
         var renderedResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
         var renderedApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("apps");
         var renderedApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
@@ -144,33 +158,33 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
         List<Metadata> metadataList = new ArrayList<>();
 
-        try (KubernetesClient client = PodService.client(runContext, this.getConnection())) {
+        try (var client = PodService.client(runContext, this.getConnection())) {
 
             var resourceDefinitionContext = new ResourceDefinitionContext.Builder()
                 .withGroup(renderedApiGroup)
                 .withVersion(renderedApiVersion)
-                .withKind(renderedKind.name())
+                .withKind(renderedResourceType)
                 .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
                 .build();
 
             if (renderedResourcesNames.isEmpty()) {
-                runContext.logger().debug("Fetching all resources of kind '{}' in namespace '{}'", renderedKind, renderedNamespace);
+                runContext.logger().debug("Fetching all resources of kind '{}' in namespace '{}'", renderedResourceType, renderedNamespace);
                 var resources = client.genericKubernetesResources(resourceDefinitionContext)
                     .inNamespace(renderedNamespace)
                     .list()
                     .getItems();
 
-                for (GenericKubernetesResource resource : resources) {
+                for (var resource : resources) {
                     if (resource != null && resource.getMetadata() != null) {
                         metadataList.add(Metadata.from(resource.getMetadata()));
                     }
                 }
-                runContext.logger().info("Fetched {} resource(s) of kind '{}' in namespace '{}'", metadataList.size(), renderedKind, renderedNamespace);
+                runContext.logger().info("Fetched {} resource(s) of kind '{}' in namespace '{}'", metadataList.size(), renderedResourceType, renderedNamespace);
 
             } else {
                 renderedResourcesNames.forEach(name -> {
                         runContext.logger().debug("Fetching resource of kind '{}' with name '{}' in namespace '{}'",
-                            renderedKind, name, renderedNamespace);
+                            renderedResourceType, name, renderedNamespace);
 
                         var resource = client.genericKubernetesResources(resourceDefinitionContext)
                             .inNamespace(renderedNamespace)
@@ -180,17 +194,17 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                         if (resource != null && resource.getMetadata() != null) {
                             metadataList.add(Metadata.from(resource.getMetadata()));
                             runContext.logger().info("Fetched resource of kind '{}' with name '{}' in namespace '{}'",
-                                renderedKind, name, renderedNamespace);
+                                renderedResourceType, name, renderedNamespace);
                         } else {
                             runContext.logger().warn("Resource of kind '{}' with name '{}' not found in namespace '{}'",
-                                renderedKind, name, renderedNamespace);
+                                renderedResourceType, name, renderedNamespace);
                         }
                     }
                 );
             }
 
         } catch (KubernetesClientException e) {
-            runContext.logger().error("Kubernetes API error while fetching kind '{}' in namespace '{}': {}", renderedKind, renderedNamespace, e.getMessage(), e);
+            runContext.logger().error("Kubernetes API error while fetching kind '{}' in namespace '{}': {}", renderedResourceType, renderedNamespace, e.getMessage(), e);
             throw new Exception("Failed to interact with Kubernetes API: " + e.getMessage(), e);
         } catch (IllegalArgumentException e) {
             runContext.logger().error("Configuration error: {}", e.getMessage(), e);

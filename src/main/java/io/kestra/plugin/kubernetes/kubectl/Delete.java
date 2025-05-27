@@ -31,17 +31,17 @@ import java.util.List;
             title = "Delete a list of pods from Kubernetes using YAML (<=> kubectl delete pod my-pod my-pod-2).",
             full = true,
             code = """
-                    id: delete_pods
-                    namespace: company.team
+                id: delete_pods
+                namespace: company.team
 
-                    tasks:
-                      - id: delete
-                        type: io.kestra.plugin.kubernetes.kubectl.Delete
-                        namespace: default
-                        resourceType: PODS
-                        resourcesNames:
-                            - my-pod
-                            - my-pod-2
+                tasks:
+                  - id: delete
+                    type: io.kestra.plugin.kubernetes.kubectl.Delete
+                    namespace: default
+                    resourceType: pods
+                    resourcesNames:
+                      - my-pod
+                      - my-pod-2
                 """
         )
     }
@@ -61,7 +61,7 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
         title = "The Kubernetes resource type (= kind) (e.g. pod, service)"
     )
     @NotNull
-    private Property<KubernetesKind> resourceType;
+    private Property<String> resourceType;
 
     @Schema(
         title = "The Kubernetes resources names"
@@ -75,9 +75,9 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
         try (KubernetesClient client = PodService.client(runContext, this.getConnection())) {
 
             var renderedNamespace = runContext.render(this.namespace).as(String.class)
-                .orElseThrow(() -> new IllegalArgumentException("Namespace must be provided and rendered."));
-            var renderedKind = runContext.render(this.resourceType).as(KubernetesKind.class)
-                .orElseThrow(() -> new IllegalArgumentException("Kind must be provided and rendered."));
+                .orElseThrow(() -> new IllegalArgumentException("namespace must be provided and rendered."));
+            var renderedKind = runContext.render(this.resourceType).as(String.class)
+                .orElseThrow(() -> new IllegalArgumentException("resourceType must be provided and rendered."));
             var renderedResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
 
             runContext.logger().debug("Deleting resource(s) '{}' of kind '{}' in namespace '{}'", renderedResourcesNames, renderedKind, renderedNamespace);
@@ -85,7 +85,7 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
             var resourceDefinitionContext = new ResourceDefinitionContext.Builder()
                 .withGroup("apps")
                 .withVersion("v1")
-                .withKind(renderedKind.name())
+                .withKind(renderedKind)
                 .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
                 .build();
 
