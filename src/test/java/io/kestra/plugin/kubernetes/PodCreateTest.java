@@ -1,6 +1,5 @@
 package io.kestra.plugin.kubernetes;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.common.io.CharStreams;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.kestra.core.junit.annotations.KestraTest;
@@ -10,11 +9,7 @@ import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
-import io.kestra.core.runners.DefaultRunContext;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.runners.RunContextInitializer;
-import io.kestra.core.runners.WorkerTask;
+import io.kestra.core.runners.*;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.Await;
@@ -65,6 +60,8 @@ class PodCreateTest {
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30))) // Less than 30 secondes will make the test flaky cause the logs are not yet available
+//            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -91,7 +88,8 @@ class PodCreateTest {
         assertThat(runOutput.getMetadata().getName(), containsString("iokestrapluginkubernetespodcreatetest-run-podcreate"));
 
         List<LogEntry> logs = receive.collectList().block();
-        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(13L));
+
+        assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).count(), is(14L));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("10")).count(), is(1L));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().contains("is deleted")).count(), is(1L));
         assertThat(logs.stream().filter(logEntry -> logEntry.getLevel() == Level.INFO).filter(logEntry -> logEntry.getMessage().equals("error")).count(), is(1L));
@@ -121,7 +119,7 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
 
-        assertThrows( IllegalStateException.class, () -> task.run(runContextFinal));
+        assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
     }
 
     @Test
@@ -159,6 +157,8 @@ class PodCreateTest {
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30))) // Less than 30 secondes will make the test flaky cause the logs are not yet available
+//            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -212,6 +212,8 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(Arrays.asList("xml", "csv")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30))) // Less than 30 secondes will make the test flaky cause the logs are not yet available
+//            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .inputFiles(Map.of(
                 "files/in/in.txt", "I'm here",
                 "main.sh", "sleep 1\n" +
@@ -238,7 +240,6 @@ class PodCreateTest {
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep"));
-
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
