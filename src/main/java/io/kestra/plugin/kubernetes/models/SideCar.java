@@ -15,5 +15,5 @@ public class SideCar {
         title = "The image used for the file sidecar container."
     )
     @Builder.Default
-    private Property<String> image = Property.of("busybox");
+    private Property<String> image = Property.ofValue("busybox");
 }

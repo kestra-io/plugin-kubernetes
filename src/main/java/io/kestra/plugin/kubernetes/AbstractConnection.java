@@ -41,14 +41,14 @@ public abstract class AbstractConnection extends Task {
     )
     @NotNull
     @Builder.Default
-    protected final Property<Duration> waitUntilRunning = Property.of(Duration.ofMinutes(10));
+    protected final Property<Duration> waitUntilRunning = Property.ofValue(Duration.ofMinutes(10));
 
     @Schema(
         title = "The maximum duration to wait for the job completion."
     )
     @NotNull
     @Builder.Default
-    protected final Property<Duration> waitRunning = Property.of(Duration.ofHours(1));
+    protected final Property<Duration> waitRunning = Property.ofValue(Duration.ofHours(1));
 
     protected ListOptions listOptions(RunContext runContext) throws IllegalVariableEvaluationException {
         return new ListOptionsBuilder()

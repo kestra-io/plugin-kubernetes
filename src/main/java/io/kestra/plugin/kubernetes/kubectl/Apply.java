@@ -1,13 +1,7 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import io.fabric8.kubernetes.api.model.HasMetadata;
-import io.fabric8.kubernetes.api.model.KubernetesResourceList;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.dsl.Resource;
-import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
@@ -67,74 +61,57 @@ import java.util.List;
     }
 )
 @Schema(
-	title = "Apply a Kubernetes resource (e.g., a Kubernetes deployment)."
+    title = "Apply a Kubernetes resource (e.g., a Kubernetes deployment)."
 )
 @Slf4j
 public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 
-	@NotNull
-	@Schema(
-		title = "The Kubernetes resource spec"
-	)
-	private Property<String> spec;
+    @NotNull
+    @Schema(
+        title = "The Kubernetes resource spec"
+    )
+    private Property<String> spec;
 
-	@Schema(
-		title = "The Kubernetes namespace"
-	)
-	private Property<String> namespace;
+    @Schema(
+        title = "The Kubernetes namespace"
+    )
+    private Property<String> namespace;
 
-	@Override
-	public Apply.Output run(RunContext runContext) throws Exception {
-		String namespace = runContext.render(this.namespace).as(String.class).orElseThrow();
+    @Override
+    public Apply.Output run(RunContext runContext) throws Exception {
+        var namespace = runContext.render(this.namespace).as(String.class).orElseThrow();
 
-		try (KubernetesClient client = PodService.client(runContext, this.getConnection())) {
-			List<HasMetadata> resources = parseSpec(runContext.render(this.spec).as(String.class).orElseThrow());
-			log.debug("Parsed resources: {}", resources);
+        try (var client = PodService.client(runContext, this.getConnection())) {
+            var resources = parseSpec(runContext.render(this.spec).as(String.class).orElseThrow());
+            log.debug("Parsed resources: {}", resources);
 
-			List<Metadata> metadataList = new ArrayList<>();
-			for (HasMetadata resource : resources) {
-				Resource<HasMetadata> resourceClient = client.resource(resource).inNamespace(namespace);
+            List<Metadata> metadataList = new ArrayList<>();
+            for (var resource : resources) {
+                var resourceClient = client.resource(resource).inNamespace(namespace);
 
-				try {
-					HasMetadata hasMetadata = resourceClient.unlock().serverSideApply();
-					metadataList.add(Metadata.from(hasMetadata.getMetadata()));
-					log.info("Applied resource: {}", hasMetadata);
-				} catch (Exception exception) {
-					log.error("Failed to apply resource: {}", resource, exception);
-					throw new Exception("Failed to apply resource: " + resource, exception);
-				}
-			}
+                try {
+                    var hasMetadata = resourceClient.unlock().serverSideApply();
+                    metadataList.add(Metadata.from(hasMetadata.getMetadata()));
+                    log.info("Applied resource: {}", hasMetadata);
+                } catch (Exception exception) {
+                    log.error("Failed to apply resource: {}", resource, exception);
+                    throw new Exception("Failed to apply resource: " + resource, exception);
+                }
+            }
 
-			return Output.builder()
-				.metadata(metadataList)
-				.build();
-		}
-	}
+            return Output.builder()
+                .metadata(metadataList)
+                .build();
+        }
+    }
 
-	private List<HasMetadata> parseSpec(String spec) {
-		KubernetesSerialization serialization = new KubernetesSerialization();
-		Object resource = serialization.unmarshal(spec);
+    @Getter
+    @Builder
+    public static class Output implements io.kestra.core.models.tasks.Output {
 
-		List<HasMetadata> resources = new ArrayList<>();
-		switch (resource) {
-			case List<?> parsed -> resources.addAll((List<? extends HasMetadata>) parsed);
-			case HasMetadata parsed -> resources.add(parsed);
-			case KubernetesResourceList<?> parsed -> resources.addAll(parsed.getItems());
-			case null, default -> throw new IllegalArgumentException("Unknown resource");
-		}
-
-		return resources;
-	}
-
-	@Getter
-	@Builder
-	public static class Output implements io.kestra.core.models.tasks.Output {
-
-		@Schema(
-			title = "The pod metadata."
-		)
-		private final List<Metadata> metadata;
-
-	}
-
+        @Schema(
+            title = "The resource metadata."
+        )
+        private final List<Metadata> metadata;
+    }
 }

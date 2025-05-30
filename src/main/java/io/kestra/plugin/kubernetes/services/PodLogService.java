@@ -10,8 +10,6 @@ import io.kestra.core.utils.Await;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.event.Level;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -85,16 +83,16 @@ public class PodLogService implements AutoCloseable {
                     Await.until(scheduledFuture::isDone);
                 } catch (RuntimeException e) {
                     if (!e.getMessage().contains("Can't sleep")) {
-                        log.error(this.getClass().getName() + " exception", e);
+                        log.error("{} exception", this.getClass().getName(), e);
                     } else {
-                        log.debug(this.getClass().getName() + " exception", e);
+                        log.debug("{} exception", this.getClass().getName(), e);
                     }
                 }
 
                 try {
                     scheduledFuture.get();
                 } catch (ExecutionException | InterruptedException e) {
-                    log.error(this.getClass().getName() + " exception", e);
+                    log.error("{} exception", this.getClass().getName(), e);
                 }
             }
         );

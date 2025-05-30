@@ -77,33 +77,32 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
         @Example(
             title = "Launch a Pod with input files and gather its output files.",
             full = true,
-            code = {
+            code = """
+                id: kubernetes_pod_create
+                namespace: company.team
+
+                inputs:
+                  - id: file
+                    type: FILE
+
+                tasks:
+                  - id: pod_create
+                    type: io.kestra.plugin.kubernetes.PodCreate
+                    spec:
+                      containers:
+                      - name: unittest
+                        image: centos
+                        command:
+                          - cp
+                          - "{{workingDir}}/data.txt"
+                          - "{{workingDir}}/out.txt"
+                      restartPolicy: Never
+                    waitUntilRunning: PT3M
+                    inputFiles:
+                      data.txt: "{{inputs.file}}"
+                    outputFiles:
+                      - out.txt
                 """
-                    id: kubernetes
-                    namespace: company.team
-
-                    inputs:
-                      - id: file
-                        type: FILE
-
-                    tasks:
-                      - id: kubernetes
-                        type: io.kestra.plugin.kubernetes.PodCreate
-                        spec:
-                          containers:
-                          - name: unittest
-                            image: centos
-                            command:
-                              - cp
-                              - "{{workingDir}}/data.txt"
-                              - "{{workingDir}}/out.txt"
-                          restartPolicy: Never
-                        waitUntilRunning: PT3M
-                        inputFiles:
-                          data.txt: "{{inputs.file}}"
-                        outputFiles:
-                          - out.txt"""
-            }
         )
     }
 )
@@ -114,7 +113,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     )
     @NotNull
     @Builder.Default
-    private Property<String> namespace = Property.of("default");
+    private Property<String> namespace = Property.ofValue("default");
 
     @Schema(
         title = "The YAML metadata of the pod."
@@ -134,20 +133,20 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     )
     @NotNull
     @Builder.Default
-    private final Property<Boolean> delete = Property.of(true);
+    private final Property<Boolean> delete = Property.ofValue(true);
 
     @Schema(
         title = "Whether to reconnect to the current pod if it already exists."
     )
     @NotNull
     @Builder.Default
-    private final Property<Boolean> resume = Property.of(true);
+    private final Property<Boolean> resume = Property.ofValue(true);
 
     @Schema(
         title = "Additional time after the pod ends to wait for late logs."
     )
     @Builder.Default
-    private Property<Duration> waitForLogInterval = Property.of(Duration.ofSeconds(2));
+    private Property<Duration> waitForLogInterval = Property.ofValue(Duration.ofSeconds(2));
 
     @Override
     public PodCreate.Output run(RunContext runContext) throws Exception {

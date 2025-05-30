@@ -27,13 +27,13 @@ public class Connection {
         title = "The url to the Kubernetes API"
     )
     @Builder.Default
-    private final Property<String> masterUrl = Property.of("https://kubernetes.default.svc");
+    private final Property<String> masterUrl = Property.ofValue("https://kubernetes.default.svc");
 
     @Schema(
         title = "The API version"
     )
     @Builder.Default
-    private final Property<String> apiVersion = Property.of("v1");
+    private final Property<String> apiVersion = Property.ofValue("v1");
 
     @Schema(
         title = "The namespace used"
@@ -75,7 +75,7 @@ public class Connection {
         description = "default is RSA"
     )
     @Builder.Default
-    private final Property<String> clientKeyAlgo = Property.of("RSA");
+    private final Property<String> clientKeyAlgo = Property.ofValue("RSA");
 
     @Schema(
         title = "Client key passphrase"
