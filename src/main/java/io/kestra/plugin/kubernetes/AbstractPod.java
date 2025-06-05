@@ -34,7 +34,6 @@ abstract public class AbstractPod extends AbstractConnection {
     protected static final String INIT_FILES_CONTAINER_NAME = "init-files";
     protected static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
     protected static final String FILES_VOLUME_NAME = "kestra-files";
-    protected static final String OUTPUTFILES_FINALIZERS = "kestra.io/output-files";
 
     @Schema(
         title = "The files from the container filesystem to send to Kestra's internal storage.",
