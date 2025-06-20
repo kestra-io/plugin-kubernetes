@@ -152,7 +152,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         var renderedResourceType = runContext.render(this.resourceType).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("resourceType must be provided and rendered."));
         var renderedResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
-        var renderedApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("apps");
+        var renderedApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("");
         var renderedApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
         var renderedFetchType = runContext.render(this.fetchType).as(FetchType.class).orElse(NONE);
 
@@ -161,6 +161,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         try (var client = PodService.client(runContext, this.getConnection())) {
 
             var resourceDefinitionContext = new ResourceDefinitionContext.Builder()
+                // See: https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-uris
                 .withGroup(renderedApiGroup)
                 .withVersion(renderedApiVersion)
                 .withKind(renderedResourceType)
