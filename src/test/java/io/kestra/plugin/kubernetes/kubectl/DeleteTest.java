@@ -67,6 +67,8 @@ public class DeleteTest {
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue("deployments"))
             .resourcesNames(Property.ofValue(List.of("my-deployment")))
+            .apiGroup(Property.ofValue("apps"))
+            .apiVersion(Property.ofValue("v1"))
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build();
 
@@ -82,6 +84,8 @@ public class DeleteTest {
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue("deployments"))
             .resourcesNames(Property.ofValue(List.of("my-deployment")))
+            .apiGroup(Property.ofValue("apps"))
+            .apiVersion(Property.ofValue("v1"))
             .build();
 
         // Then
@@ -147,6 +151,8 @@ public class DeleteTest {
             .type(Get.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue("deployments"))
+            .apiGroup(Property.ofValue("apps"))
+            .apiVersion(Property.ofValue("v1"))
             .fetchType(Property.ofValue(FetchType.FETCH))
             .build();
 
@@ -162,6 +168,8 @@ public class DeleteTest {
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue("deployments"))
             .resourcesNames(Property.ofValue(deploymentsNames))
+            .apiGroup(Property.ofValue("apps"))
+            .apiVersion(Property.ofValue("v1"))
             .build();
 
         // Then

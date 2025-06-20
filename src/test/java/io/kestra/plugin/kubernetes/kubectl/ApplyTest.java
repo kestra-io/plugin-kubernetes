@@ -2,7 +2,6 @@ package io.kestra.plugin.kubernetes.kubectl;
 
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
-import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;

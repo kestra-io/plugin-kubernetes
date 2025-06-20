@@ -74,6 +74,8 @@ public class GetTest {
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue("deployments"))
             .resourcesNames(Property.ofValue(List.of(expectedDeploymentName)))
+            .apiGroup(Property.ofValue("apps"))
+            .apiVersion(Property.ofValue("v1"))
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build();
 
@@ -138,6 +140,8 @@ public class GetTest {
             .type(Get.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue("deployments"))
+            .apiGroup(Property.ofValue("apps"))
+            .apiVersion(Property.ofValue("v1"))
             .fetchType(Property.ofValue(FetchType.FETCH))
             .build();
 
@@ -230,9 +234,9 @@ public class GetTest {
             .type(Get.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .resourceType(Property.ofValue(shirtKind))
-            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .apiGroup(Property.ofValue(apiGroup))
             .apiVersion(Property.ofValue(apiVersion))
+            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build();
 
 
