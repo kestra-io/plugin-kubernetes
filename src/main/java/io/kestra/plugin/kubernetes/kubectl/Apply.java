@@ -57,6 +57,63 @@ import java.util.List;
                     namespace: default
                     spec: "{{ read('deployment.yaml') }}"
                 """
+        ),
+        @Example(
+            title = "Apply a Kubernetes custom resource definition, using YAML.",
+            full = true,
+            code = """
+                id: k8s
+                namespace: company.name
+
+                tasks:
+                  - id: apply
+                    type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    namespace: default
+                    spec: |-
+                      apiVersion: apiextensions.k8s.io/v1
+                      kind: CustomResourceDefinition
+                      metadata:
+                        name: shirts.stable.example.com
+                      spec:
+                        group: stable.example.com
+                        scope: Namespaced
+                        names:
+                          plural: shirts
+                          singular: shirt
+                          kind: Shirt
+                        versions:
+                        - name: v1
+                          served: true
+                          storage: true
+                          schema:
+                            openAPIV3Schema:
+                              type: object
+                              properties:
+                                apiVersion:
+                                  type: string
+                                kind:
+                                  type: string
+                                metadata:
+                                  type: object
+                                spec:
+                                  type: object
+                                  x-kubernetes-preserve-unknown-fields: true # Allows any fields in spec
+                                  properties:
+                                    # You should define your actual Shirt properties here later
+                                    # For example:
+                                    # color:
+                                    #   type: string
+                                    # size:
+                                    #   type: string
+                                    #   enum: ["S", "M", "L", "XL"]
+                                status:
+                                  type: object
+                                  x-kubernetes-preserve-unknown-fields: true # Allows any fields in status
+                                  properties:
+                                    # Define your status properties here
+                                    # message:
+                                    #   type: string
+                """
         )
     }
 )

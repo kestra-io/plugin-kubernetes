@@ -69,6 +69,16 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
     @NotNull
     private Property<List<String>> resourcesNames;
 
+    @Schema(
+        title = "The Kubernetes resource apiGroup"
+    )
+    private Property<String> apiGroup;
+
+    @Schema(
+        title = "The Kubernetes resource apiVersion"
+    )
+    private Property<String> apiVersion;
+
     @Override
     public VoidOutput run(RunContext runContext) throws Exception {
 
@@ -79,12 +89,14 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
             var renderedKind = runContext.render(this.resourceType).as(String.class)
                 .orElseThrow(() -> new IllegalArgumentException("resourceType must be provided and rendered."));
             var renderedResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
+            var renderedApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("");
+            var renderedApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
 
             runContext.logger().debug("Deleting resource(s) '{}' of kind '{}' in namespace '{}'", renderedResourcesNames, renderedKind, renderedNamespace);
 
             var resourceDefinitionContext = new ResourceDefinitionContext.Builder()
-                .withGroup("apps")
-                .withVersion("v1")
+                .withGroup(renderedApiGroup)
+                .withVersion(renderedApiVersion)
                 .withKind(renderedKind)
                 .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
                 .build();
