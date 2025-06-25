@@ -265,4 +265,45 @@ class PodCreateTest {
             is("2\n")
         );
     }
+
+    @Test
+    void workingDirCreatedWithOnlyOutputFiles() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .outputFiles(Property.ofValue(List.of("*.txt")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: file-writer",
+                "  image: debian:stable-slim",
+                "  command: [\"/bin/sh\"]",
+                "  args:",
+                "    - -c",
+                "    - >-",
+                "      echo 'hello from pod' > {{ workingDir }}/hello.txt",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        runContext = runContextInitializer.forWorker(
+            (DefaultRunContext) runContext,
+            WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build()
+        );
+
+        PodCreate.Output run = task.run(runContext);
+
+        assertThat(run.getOutputFiles(), hasKey("hello.txt"));
+
+        InputStream file = storageInterface.get(TenantService.MAIN_TENANT, null, run.getOutputFiles().get("hello.txt"));
+        String content = CharStreams.toString(new InputStreamReader(file));
+        assertThat(content.trim(), is("hello from pod"));
+    }
+
 }

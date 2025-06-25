@@ -134,6 +134,10 @@ abstract public class AbstractPod extends AbstractConnection {
             spec
                 .getInitContainers()
                 .add(filesContainer(runContext, volumeMount, false));
+        } else if (this.outputFiles != null) {
+            spec
+                .getInitContainers()
+                .add(workingDirectoryInitContainer(runContext, volumeMount));
         }
 
         if (this.inputFiles != null || this.outputFiles != null) {
@@ -192,5 +196,19 @@ abstract public class AbstractPod extends AbstractConnection {
         }
 
         return containerBuilder.build();
+    }
+
+    private Container workingDirectoryInitContainer(RunContext runContext, VolumeMount volumeMount) throws IllegalVariableEvaluationException {
+        return new ContainerBuilder()
+            .withName(INIT_FILES_CONTAINER_NAME)
+            .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
+            .withCommand(Arrays.asList(
+                "sh",
+                "-c",
+                "echo 'Creating working directory'\n" +
+                    "mkdir -p /kestra/working-dir\n"
+            ))
+            .withVolumeMounts(Collections.singletonList(volumeMount))
+            .build();
     }
 }
