@@ -226,7 +226,7 @@ public class GetTest {
             .build();
 
         applyTask.run(runContext);
-        Thread.sleep(500);
+        Thread.sleep(1000);
 
         // When
         var getTask = Get.builder()
