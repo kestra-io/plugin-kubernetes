@@ -24,6 +24,7 @@ public class PodLogService implements AutoCloseable {
     private final ThreadMainFactoryBuilder threadFactoryBuilder;
     private List<LogWatch> podLogs = new ArrayList<>();
     private ScheduledExecutorService scheduledExecutor;
+    private ScheduledFuture<?> scheduledFuture;
     @Getter
     private LoggingOutputStream outputStream;
     private Thread thread;
@@ -37,7 +38,7 @@ public class PodLogService implements AutoCloseable {
         outputStream = new LoggingOutputStream(logConsumer);
         AtomicBoolean started = new AtomicBoolean(false);
 
-        ScheduledFuture<?> scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
+        scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
             () -> {
                 Instant lastTimestamp = outputStream.getLastTimestamp() == null ? null : Instant.from(outputStream.getLastTimestamp());
 
@@ -91,6 +92,8 @@ public class PodLogService implements AutoCloseable {
 
                 try {
                     scheduledFuture.get();
+                } catch (CancellationException e) {
+                    log.debug("{} cancelled", this.getClass().getName(), e);
                 } catch (ExecutionException | InterruptedException e) {
                     log.error("{} exception", this.getClass().getName(), e);
                 }
@@ -103,6 +106,15 @@ public class PodLogService implements AutoCloseable {
         if (outputStream != null) {
             outputStream.flush();
             outputStream.close();
+        }
+
+        // Ensure the scheduled task reaches a terminal state to avoid blocking on future.get() in the listener
+        if (scheduledFuture != null) {
+            try {
+                scheduledFuture.cancel(true);
+            } catch (Exception ignore) {
+                // best-effort cancellation
+            }
         }
 
         if (thread != null) {
