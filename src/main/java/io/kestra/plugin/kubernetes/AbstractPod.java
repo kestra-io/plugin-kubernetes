@@ -179,6 +179,7 @@ abstract public class AbstractPod extends AbstractConnection {
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .withName(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
+            .withResources(fileSidecar != null ? fileSidecar.getResources() : null)
             .withCommand(Arrays.asList(
                 "sh",
                 "-c",

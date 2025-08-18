@@ -1,5 +1,6 @@
 package io.kestra.plugin.kubernetes.models;
 
+import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -16,4 +17,12 @@ public class SideCar {
     )
     @Builder.Default
     private Property<String> image = Property.ofValue("busybox");
+
+    @Schema(
+        title = "The resource requirements applied to the file sidecar container."
+    )
+    @PluginProperty(
+        additionalProperties = ResourceRequirements.class
+    )
+    private ResourceRequirements resources;
 }
