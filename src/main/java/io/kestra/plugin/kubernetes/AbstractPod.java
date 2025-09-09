@@ -179,10 +179,6 @@ abstract public class AbstractPod extends AbstractConnection {
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .withName(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
-            .withEnv(new EnvVarBuilder()
-                .withName("IFS")
-                .withValue(" \t\n")
-                .build())
             .withResources(fileSidecar != null ? fileSidecar.getResources() : null)
 //            .withResources(fileSidecar != null ? runContext.render(fileSidecar.getResources()).as(ResourceRequirements.class).orElse(null) : null)
             .withCommand(Arrays.asList(
@@ -208,10 +204,6 @@ abstract public class AbstractPod extends AbstractConnection {
         return new ContainerBuilder()
             .withName(INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
-            .withEnv(new EnvVarBuilder()
-                .withName("IFS")
-                .withValue(" \t\n")
-                .build())
             .withResources(fileSidecar != null ? fileSidecar.getResources() : null)
 //            .withResources(fileSidecar != null ? runContext.render(fileSidecar.getResources()).as(ResourceRequirements.class).orElse(null) : null)
             .withCommand(Arrays.asList(
