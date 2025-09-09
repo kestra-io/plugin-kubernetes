@@ -1,5 +1,7 @@
 package io.kestra.plugin.kubernetes;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.io.CharStreams;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Quantity;
@@ -316,21 +318,23 @@ class PodCreateTest {
 
     @Test
     void sidecarResources() throws Exception {
-        ResourceRequirements reqs = new ResourceRequirements();
-        reqs.setLimits(Map.of(
-            "cpu", Quantity.parse("200m"),
-            "memory", Quantity.parse("256Mi")));
-        reqs.setRequests(Map.of(
-            "cpu", Quantity.parse("100m"),
-            "memory", Quantity.parse("128Mi")));
+        ObjectMapper mapper = new ObjectMapper(new YAMLFactory()).findAndRegisterModules();
+        SideCar sidecar = mapper.readValue(
+            """
+                resources:
+                  limits:
+                    cpu: 200m
+                    memory: 256Mi
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi""",
+            SideCar.class);
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
-            .fileSidecar(SideCar.builder()
-                .resources(Property.ofValue(reqs))
-                .build())
+            .fileSidecar(sidecar)
             .inputFiles(Map.of(
                 "in.txt", "File content"
             ))
@@ -380,16 +384,16 @@ class PodCreateTest {
             log.info("Test detected pod creation: {}", podName);
 
             ResourceRequirements initReqs = createdPod.getSpec().getInitContainers().getFirst().getResources();
-            assertThat(initReqs.getLimits().get("cpu"), is(reqs.getLimits().get("cpu")));
-            assertThat(initReqs.getLimits().get("memory"), is(reqs.getLimits().get("memory")));
-            assertThat(initReqs.getRequests().get("cpu"), is(reqs.getRequests().get("cpu")));
-            assertThat(initReqs.getRequests().get("memory"), is(reqs.getRequests().get("memory")));
+            assertThat(initReqs.getLimits().get("cpu"), is(Quantity.parse("200m")));
+            assertThat(initReqs.getLimits().get("memory"), is(Quantity.parse("256Mi")));
+            assertThat(initReqs.getRequests().get("cpu"), is(Quantity.parse("100m")));
+            assertThat(initReqs.getRequests().get("memory"), is(Quantity.parse("128Mi")));
 
             ResourceRequirements sideReqs = createdPod.getSpec().getContainers().getLast().getResources();
-            assertThat(sideReqs.getLimits().get("cpu"), is(reqs.getLimits().get("cpu")));
-            assertThat(sideReqs.getLimits().get("memory"), is(reqs.getLimits().get("memory")));
-            assertThat(sideReqs.getRequests().get("cpu"), is(reqs.getRequests().get("cpu")));
-            assertThat(sideReqs.getRequests().get("memory"), is(reqs.getRequests().get("memory")));
+            assertThat(sideReqs.getLimits().get("cpu"), is(Quantity.parse("200m")));
+            assertThat(sideReqs.getLimits().get("memory"), is(Quantity.parse("256Mi")));
+            assertThat(sideReqs.getRequests().get("cpu"), is(Quantity.parse("100m")));
+            assertThat(sideReqs.getRequests().get("memory"), is(Quantity.parse("128Mi")));
 
             Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
                 Duration.ofMillis(200), Duration.ofMinutes(1));
