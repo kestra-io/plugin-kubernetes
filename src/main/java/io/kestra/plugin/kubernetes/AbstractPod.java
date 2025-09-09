@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -105,7 +106,9 @@ abstract public class AbstractPod extends AbstractConnection {
                 .filter(path -> !Files.isDirectory(path) && Files.isReadable(path))
                 .forEach(throwConsumer(outputFile -> {
                     Path relativePathFromContainerWDir = runContext.workingDir().resolve(Path.of("working-dir/kestra/working-dir/")).relativize(outputFile);
-                    Path resolvedOutputFile = runContext.workingDir().resolve(relativePathFromContainerWDir);
+                    // Sanitize the resolved path by encoding special characters
+                    Path sanitizedOutputFile = Path.of(java.net.URLEncoder.encode(relativePathFromContainerWDir.toString(), StandardCharsets.UTF_8));
+                    Path resolvedOutputFile = runContext.workingDir().resolve(sanitizedOutputFile);
                     moveFile(outputFile, resolvedOutputFile);
                 }));
         }
