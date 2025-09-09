@@ -413,7 +413,7 @@ class PodCreateTest {
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
-            .outputFiles(Property.ofValue(List.of("*.txt")))
+            .outputFiles(Property.ofValue(List.of("**.txt")))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
@@ -424,7 +424,9 @@ class PodCreateTest {
                 "  args:",
                 "    - -c",
                 "    - >-",
-                "      touch {{ workingDir }}/special\\ file.txt",
+                "      touch {{ workingDir }}/special\\ file.txt &&",
+                "      mkdir {{ workingDir }}/sub\\ dir &&",
+                "      touch {{ workingDir }}/sub\\ dir/more\\ special\\ file.txt",
                 "restartPolicy: Never"
             ))
             .build();
@@ -441,6 +443,7 @@ class PodCreateTest {
         PodCreate.Output run = task.run(runContext);
 
         assertThat(run.getOutputFiles(), hasKey("special+file.txt"));
+        assertThat(run.getOutputFiles(), hasKey("sub+dir/more+special+file.txt"));
     }
 
     @Test

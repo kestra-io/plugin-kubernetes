@@ -106,9 +106,13 @@ abstract public class AbstractPod extends AbstractConnection {
                 .filter(path -> !Files.isDirectory(path) && Files.isReadable(path))
                 .forEach(throwConsumer(outputFile -> {
                     Path relativePathFromContainerWDir = runContext.workingDir().resolve(Path.of("working-dir/kestra/working-dir/")).relativize(outputFile);
-                    // Sanitize the resolved path by encoding special characters
-                    Path sanitizedOutputFile = Path.of(java.net.URLEncoder.encode(relativePathFromContainerWDir.toString(), StandardCharsets.UTF_8));
-                    Path resolvedOutputFile = runContext.workingDir().resolve(sanitizedOutputFile);
+                    // Split path into components and sanitize by encoding special characters
+                    Path resolvedOutputFile = runContext.workingDir().path();
+                    for (int i = 0; i < relativePathFromContainerWDir.getNameCount(); i++) {
+                        resolvedOutputFile = resolvedOutputFile.resolve(Path.of(java.net.URLEncoder.encode(
+                            relativePathFromContainerWDir.getName(i).toString(),
+                            StandardCharsets.UTF_8)));
+                    }
                     moveFile(outputFile, resolvedOutputFile);
                 }));
         }
