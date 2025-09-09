@@ -107,6 +107,41 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
                     outputFiles:
                       - out.txt
                 """
+        ),
+        @Example(
+            title = "Launch a Pod with input files and gather its output files limiting resources for the init and sidecar containers.",
+            full = true,
+            code = """
+                id: kubernetes_pod_create
+                namespace: company.team
+
+                inputs:
+                  - id: file
+                    type: FILE
+
+                tasks:
+                  - id: pod_create
+                    type: io.kestra.plugin.kubernetes.PodCreate
+                    fileSidecar:
+                      resources:
+                        limits:
+                          cpu: "300m"
+                          memory: "512Mi"
+                    spec:
+                      containers:
+                      - name: unittest
+                        image: centos
+                        command:
+                          - cp
+                          - "{{workingDir}}/data.txt"
+                          - "{{workingDir}}/out.txt"
+                      restartPolicy: Never
+                    waitUntilRunning: PT3M
+                    inputFiles:
+                      data.txt: "{{inputs.file}}"
+                    outputFiles:
+                      - out.txt
+                """
         )
     }
 )

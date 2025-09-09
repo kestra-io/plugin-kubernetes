@@ -25,4 +25,5 @@ public class SideCar {
         additionalProperties = ResourceRequirements.class
     )
     private ResourceRequirements resources;
+//    private Property<ResourceRequirements> resources;
 }
