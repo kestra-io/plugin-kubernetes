@@ -14,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -22,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 public class PodLogService implements AutoCloseable {
     private final ThreadMainFactoryBuilder threadFactoryBuilder;
-    private List<LogWatch> podLogs = new ArrayList<>();
+    private List<LogWatch> podLogs = new CopyOnWriteArrayList<>();
     private ScheduledExecutorService scheduledExecutor;
     private ScheduledFuture<?> scheduledFuture;
     @Getter
@@ -49,10 +48,8 @@ public class PodLogService implements AutoCloseable {
                         runContext.logger().trace("No log since '{}', reconnecting", lastTimestamp == null ? "unknown" : lastTimestamp.toString());
                     }
 
-                    if (podLogs != null) {
-                        podLogs.forEach(LogWatch::close);
-                        podLogs = new ArrayList<>();
-                    }
+                    podLogs.forEach(LogWatch::close);
+                    podLogs.clear();
 
                     PodResource podResource = PodService.podRef(client, pod);
 
@@ -122,9 +119,8 @@ public class PodLogService implements AutoCloseable {
             thread = null;
         }
 
-        if (podLogs != null) {
-            podLogs.forEach(LogWatch::close);
-        }
+        podLogs.forEach(LogWatch::close);
+        podLogs.clear();
 
         if (scheduledExecutor != null) {
             scheduledExecutor.shutdownNow();

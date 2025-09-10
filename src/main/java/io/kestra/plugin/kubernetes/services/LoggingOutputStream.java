@@ -9,6 +9,8 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class LoggingOutputStream extends java.io.OutputStream {
     private final AbstractLogConsumer logConsumer;
@@ -38,7 +40,7 @@ public class LoggingOutputStream extends java.io.OutputStream {
         String line = baos.toString();
         baos.reset();
 
-        ArrayList<String> logs = new ArrayList<>(Arrays.asList(line.split("[ ]")));
+        List<String> logs = new CopyOnWriteArrayList<>(Arrays.asList(line.split("[ ]")));
         if (!logs.isEmpty()) {
             try {
                 lastTimestamp = Instant.parse(logs.get(0));
