@@ -173,13 +173,50 @@ abstract public class AbstractPod extends AbstractConnection {
         return resources;
     }
 
+    private static ResourceRequirements mapSidecarResources(RunContext runContext, SideCar sideCar) throws IllegalVariableEvaluationException {
+        if (sideCar == null) {
+            return null;
+        }
+
+        Map<String, Object> sidecarResources = runContext.render(sideCar.getResources()).asMap(String.class, Object.class);
+        if (sidecarResources == null) {
+            return null;
+        }
+
+        ResourceRequirements resourceRequirements = new ResourceRequirements();
+        ResourceRequirementsBuilder resourceRequirementsBuilder = new ResourceRequirementsBuilder();
+        if (sidecarResources.containsKey("claims")) {
+            try {
+                resourceRequirementsBuilder.withClaims((List<ResourceClaim>) sidecarResources.get("claims"));
+            } catch (ClassCastException e) {
+                throw new IllegalArgumentException("Sidecar resources claims must be a list of resource claims");
+            }
+        }
+        if (sidecarResources.containsKey("limits")) {
+            try {
+                resourceRequirementsBuilder.withLimits((Map<String, Quantity>) sidecarResources.get("limits"));
+            } catch (ClassCastException e) {
+                throw new IllegalArgumentException("Sidecar resources limits must be a map of string to quantity");
+            }
+        }
+        if (sidecarResources.containsKey("requests")) {
+            try {
+                resourceRequirementsBuilder.withRequests((Map<String, Quantity>) sidecarResources.get("requests"));
+            } catch (ClassCastException e) {
+                throw new IllegalArgumentException("Sidecar resources requests must be a map of string to quantity");
+            }
+        }
+        resourceRequirements = resourceRequirementsBuilder.build();
+        return resourceRequirements;
+    }
+
     private Container filesContainer(RunContext runContext, VolumeMount volumeMount, boolean finished) throws IllegalVariableEvaluationException {
         String s = finished ? "ended" : "ready";
 
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .withName(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
-            .withResources(fileSidecar != null ? runContext.render(fileSidecar.getResources()).as(ResourceRequirements.class).orElse(null) : null)
+            .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
             .withCommand(Arrays.asList(
                 "sh",
                 "-c",
@@ -203,7 +240,7 @@ abstract public class AbstractPod extends AbstractConnection {
         return new ContainerBuilder()
             .withName(INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
-            .withResources(fileSidecar != null ? runContext.render(fileSidecar.getResources()).as(ResourceRequirements.class).orElse(null) : null)
+            .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
             .withCommand(Arrays.asList(
                 "sh",
                 "-c",
