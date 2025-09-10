@@ -87,7 +87,7 @@ abstract public class AbstractPod extends AbstractConnection {
         PodService.uploadMarker(runContext, podResource, logger, "ready", INIT_FILES_CONTAINER_NAME);
     }
 
-    protected void downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {
+    protected Map<Path, Path> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {
         withRetries(
             logger,
             "downloadOutputFiles",
@@ -100,6 +100,8 @@ abstract public class AbstractPod extends AbstractConnection {
         PodService.uploadMarker(runContext, podResource, logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
 
         // Download output files
+        // path map from copied file path with encoded parts to the actually produced relative file path
+        Map<Path, Path> pathMap = new HashMap<>();
         // kubernetes copy by keeping the target repository which we don't want, so we move the files
         try (Stream<Path> files = Files.walk(runContext.workingDir().resolve(Path.of("working-dir/kestra/working-dir/")))) {
             files
@@ -113,9 +115,11 @@ abstract public class AbstractPod extends AbstractConnection {
                             relativePathFromContainerWDir.getName(i).toString(),
                             StandardCharsets.UTF_8)));
                     }
+                    pathMap.put(resolvedOutputFile, relativePathFromContainerWDir);
                     moveFile(outputFile, resolvedOutputFile);
                 }));
         }
+        return pathMap;
     }
 
     private void moveFile(Path from, Path to) throws IOException {

@@ -442,8 +442,8 @@ class PodCreateTest {
 
         PodCreate.Output run = task.run(runContext);
 
-        assertThat(run.getOutputFiles(), hasKey("special+file.txt"));
-        assertThat(run.getOutputFiles(), hasKey("sub+dir/more+special+file.txt"));
+        assertThat(run.getOutputFiles(), hasKey("special file.txt"));
+        assertThat(run.getOutputFiles(), hasKey("sub dir/more special file.txt"));
     }
 
     @Test
