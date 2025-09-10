@@ -424,9 +424,9 @@ class PodCreateTest {
                 "  args:",
                 "    - -c",
                 "    - >-",
-                "      touch {{ workingDir }}/special\\ file.txt &&",
+                "      echo 'I am fulfilled' > {{ workingDir }}/special\\ file.txt &&",
                 "      mkdir {{ workingDir }}/sub\\ dir &&",
-                "      touch {{ workingDir }}/sub\\ dir/more\\ special\\ file.txt",
+                "      echo 'I have content' > {{ workingDir }}/sub\\ dir/more\\ special\\ file.txt",
                 "restartPolicy: Never"
             ))
             .build();
@@ -444,6 +444,14 @@ class PodCreateTest {
 
         assertThat(run.getOutputFiles(), hasKey("special file.txt"));
         assertThat(run.getOutputFiles(), hasKey("sub dir/more special file.txt"));
+
+        InputStream file = storageInterface.get(TenantService.MAIN_TENANT, null, run.getOutputFiles().get("special file.txt"));
+        String content = CharStreams.toString(new InputStreamReader(file));
+        assertThat(content.trim(), is("I am fulfilled"));
+
+        file = storageInterface.get(TenantService.MAIN_TENANT, null, run.getOutputFiles().get("sub dir/more special file.txt"));
+        content = CharStreams.toString(new InputStreamReader(file));
+        assertThat(content.trim(), is("I have content"));
     }
 
     @Test
