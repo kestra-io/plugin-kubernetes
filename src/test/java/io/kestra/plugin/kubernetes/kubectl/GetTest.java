@@ -198,6 +198,13 @@ public class GetTest {
                                 properties:
                                   color: { type: string }
                                   size: { type: string }
+                        additionalPrinterColumns:
+                          - jsonPath: .spec.color
+                            name: Color
+                            type: string
+                          - jsonPath: .spec.size
+                            name: Size
+                            type: string
                     """, apiGroup, shirtKind, apiVersion)))
             .build();
 
