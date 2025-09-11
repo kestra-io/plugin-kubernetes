@@ -4,12 +4,14 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.utils.IdUtils;
 import io.kestra.plugin.kubernetes.services.ClientService;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -168,7 +170,7 @@ public class GetTest {
         // 1. Creates the CustomResourceDefinition
         // 2. Creates the CustomResource (Shirt) itself
         var applyCrd = Apply.builder()
-            .id("ApplyCRD")
+            .id("ApplyCRD-" + IdUtils.create())
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .spec(Property.ofValue(String.format("""
@@ -214,7 +216,7 @@ public class GetTest {
         }
 
         var applyCr = Apply.builder()
-            .id("ApplyCR")
+            .id("ApplyCR-" + IdUtils.create())
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .spec(Property.ofValue(String.format("""
