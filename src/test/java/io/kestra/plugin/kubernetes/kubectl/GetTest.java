@@ -4,6 +4,7 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.plugin.kubernetes.services.ClientService;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
@@ -161,6 +162,7 @@ public class GetTest {
         var apiGroup = "stable.example.com";
         var apiVersion = "v1";
         var shirtKind = "Shirt";
+        var shirtsPlural = "shirts";
         var crdName = "my-blue-shirt";
 
         // 1. Creates the CustomResourceDefinition
@@ -226,14 +228,25 @@ public class GetTest {
             .build();
 
         applyTask.run(runContext);
-        Thread.sleep(1000);
+
+        try(var client = ClientService.of()) {
+            client.apiextensions().v1().customResourceDefinitions()
+                .withName("shirts.stable.example.com")
+                .waitUntilCondition(
+                    crd -> crd != null
+                        && crd.getStatus() != null
+                        && crd.getStatus().getConditions() != null
+                        && crd.getStatus().getConditions().stream()
+                        .anyMatch(c -> "Established".equals(c.getType()) && "True".equals(c.getStatus())),
+                    30, java.util.concurrent.TimeUnit.SECONDS);
+        }
 
         // When
         var getTask = Get.builder()
             .id(Get.class.getSimpleName())
             .type(Get.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .resourceType(Property.ofValue(shirtKind))
+            .resourceType(Property.ofValue(shirtsPlural))
             .apiGroup(Property.ofValue(apiGroup))
             .apiVersion(Property.ofValue(apiVersion))
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
