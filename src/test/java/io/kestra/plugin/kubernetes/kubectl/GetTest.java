@@ -182,7 +182,7 @@ public class GetTest {
                       names:
                         plural: shirts
                         singular: shirt
-                        kind: Shirt
+                        kind: %s
                       versions:
                       - name: %s
                         served: true
@@ -196,7 +196,7 @@ public class GetTest {
                                 properties:
                                   color: { type: string }
                                   size: { type: string }
-                    """, apiGroup, apiVersion)))
+                    """, apiGroup, shirtKind, apiVersion)))
             .build();
 
         applyCrd.run(runContext);
