@@ -167,67 +167,39 @@ public class GetTest {
 
         // 1. Creates the CustomResourceDefinition
         // 2. Creates the CustomResource (Shirt) itself
-        var applyTask = Apply.builder()
-            .id(Apply.class.getSimpleName())
+        var applyCrd = Apply.builder()
+            .id("ApplyCRD")
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .spec(Property.ofValue(
-                String.format(
-                    """
-                        apiVersion: apiextensions.k8s.io/v1
-                        kind: CustomResourceDefinition
-                        metadata:
-                          name: shirts.stable.example.com
-                        spec:
-                          group: %s
-                          scope: Namespaced
-                          names:
-                            plural: shirts
-                            singular: shirt
-                            kind: %s
-                          versions:
-                          - name: %s
-                            served: true
-                            storage: true
-                            schema:
-                              openAPIV3Schema:
+            .spec(Property.ofValue(String.format("""
+                    apiVersion: apiextensions.k8s.io/v1
+                    kind: CustomResourceDefinition
+                    metadata:
+                      name: shirts.stable.example.com
+                    spec:
+                      group: %s
+                      scope: Namespaced
+                      names:
+                        plural: shirts
+                        singular: shirt
+                        kind: Shirt
+                      versions:
+                      - name: %s
+                        served: true
+                        storage: true
+                        schema:
+                          openAPIV3Schema:
+                            type: object
+                            properties:
+                              spec:
                                 type: object
                                 properties:
-                                  spec:
-                                    type: object
-                                    properties:
-                                      color:
-                                        type: string
-                                      size:
-                                        type: string
-                            additionalPrinterColumns:
-                            - jsonPath: .spec.color
-                              name: Color
-                              type: string
-                            - jsonPath: .spec.size
-                              name: Size
-                              type: string
-                        ---
-                        apiVersion: "%s/%s"
-                        kind: Shirt
-                        metadata:
-                          name: %s
-                          namespace: default
-                        spec:
-                          color: blue
-                          size: L
-                        """,
-                    apiGroup,
-                    shirtKind,
-                    apiVersion,
-                    apiGroup,
-                    apiVersion,
-                    crdName
-                )
-            ))
+                                  color: { type: string }
+                                  size: { type: string }
+                    """, apiGroup, apiVersion)))
             .build();
 
-        applyTask.run(runContext);
+        applyCrd.run(runContext);
 
         try(var client = ClientService.of()) {
             client.apiextensions().v1().customResourceDefinitions()
@@ -240,6 +212,25 @@ public class GetTest {
                         .anyMatch(c -> "Established".equals(c.getType()) && "True".equals(c.getStatus())),
                     30, java.util.concurrent.TimeUnit.SECONDS);
         }
+
+        var applyCr = Apply.builder()
+            .id("ApplyCR")
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue(DEFAULT_NAMESPACE))
+            .spec(Property.ofValue(String.format("""
+                    apiVersion: "%s/%s"
+                    kind: Shirt
+                    metadata:
+                      name: %s
+                      namespace: default
+                    spec:
+                      color: blue
+                      size: L
+                    """, apiGroup, apiVersion, crdName)))
+            .build();
+
+        applyCr.run(runContext);
+
 
         // When
         var getTask = Get.builder()
