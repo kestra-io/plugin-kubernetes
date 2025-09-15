@@ -4,11 +4,14 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.utils.IdUtils;
+import io.kestra.plugin.kubernetes.services.ClientService;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -161,79 +164,89 @@ public class GetTest {
         var apiGroup = "stable.example.com";
         var apiVersion = "v1";
         var shirtKind = "Shirt";
+        var shirtsPlural = "shirts";
         var crdName = "my-blue-shirt";
 
         // 1. Creates the CustomResourceDefinition
         // 2. Creates the CustomResource (Shirt) itself
-        var applyTask = Apply.builder()
-            .id(Apply.class.getSimpleName())
+        var applyCrd = Apply.builder()
+            .id("ApplyCRD-" + IdUtils.create())
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .spec(Property.ofValue(
-                String.format(
-                    """
-                        apiVersion: apiextensions.k8s.io/v1
-                        kind: CustomResourceDefinition
-                        metadata:
-                          name: shirts.stable.example.com
-                        spec:
-                          group: %s
-                          scope: Namespaced
-                          names:
-                            plural: shirts
-                            singular: shirt
-                            kind: %s
-                          versions:
-                          - name: %s
-                            served: true
-                            storage: true
-                            schema:
-                              openAPIV3Schema:
+            .spec(Property.ofValue(String.format("""
+                    apiVersion: apiextensions.k8s.io/v1
+                    kind: CustomResourceDefinition
+                    metadata:
+                      name: shirts.stable.example.com
+                    spec:
+                      group: %s
+                      scope: Namespaced
+                      names:
+                        plural: shirts
+                        singular: shirt
+                        kind: %s
+                      versions:
+                      - name: %s
+                        served: true
+                        storage: true
+                        schema:
+                          openAPIV3Schema:
+                            type: object
+                            properties:
+                              spec:
                                 type: object
                                 properties:
-                                  spec:
-                                    type: object
-                                    properties:
-                                      color:
-                                        type: string
-                                      size:
-                                        type: string
-                            additionalPrinterColumns:
-                            - jsonPath: .spec.color
-                              name: Color
-                              type: string
-                            - jsonPath: .spec.size
-                              name: Size
-                              type: string
-                        ---
-                        apiVersion: "%s/%s"
-                        kind: Shirt
-                        metadata:
-                          name: %s
-                          namespace: default
-                        spec:
-                          color: blue
-                          size: L
-                        """,
-                    apiGroup,
-                    shirtKind,
-                    apiVersion,
-                    apiGroup,
-                    apiVersion,
-                    crdName
-                )
-            ))
+                                  color: { type: string }
+                                  size: { type: string }
+                        additionalPrinterColumns:
+                          - jsonPath: .spec.color
+                            name: Color
+                            type: string
+                          - jsonPath: .spec.size
+                            name: Size
+                            type: string
+                    """, apiGroup, shirtKind, apiVersion)))
             .build();
 
-        applyTask.run(runContext);
-        Thread.sleep(1000);
+        applyCrd.run(runContext);
+
+        try(var client = ClientService.of()) {
+            client.apiextensions().v1().customResourceDefinitions()
+                .withName("shirts.stable.example.com")
+                .waitUntilCondition(
+                    crd -> crd != null
+                        && crd.getStatus() != null
+                        && crd.getStatus().getConditions() != null
+                        && crd.getStatus().getConditions().stream()
+                        .anyMatch(c -> "Established".equals(c.getType()) && "True".equals(c.getStatus())),
+                    30, java.util.concurrent.TimeUnit.SECONDS);
+        }
+
+        var applyCr = Apply.builder()
+            .id("ApplyCR-" + IdUtils.create())
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue(DEFAULT_NAMESPACE))
+            .spec(Property.ofValue(String.format("""
+                    apiVersion: "%s/%s"
+                    kind: Shirt
+                    metadata:
+                      name: %s
+                      namespace: default
+                    spec:
+                      color: blue
+                      size: L
+                    """, apiGroup, apiVersion, crdName)))
+            .build();
+
+        applyCr.run(runContext);
+
 
         // When
         var getTask = Get.builder()
             .id(Get.class.getSimpleName())
             .type(Get.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .resourceType(Property.ofValue(shirtKind))
+            .resourceType(Property.ofValue(shirtsPlural))
             .apiGroup(Property.ofValue(apiGroup))
             .apiVersion(Property.ofValue(apiVersion))
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
