@@ -18,6 +18,7 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.models.Connection;
 import io.kestra.plugin.kubernetes.models.Metadata;
@@ -34,13 +35,16 @@ import org.slf4j.Logger;
 
 import java.io.InterruptedIOException;
 import java.net.URI;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import jakarta.validation.constraints.NotNull;
 
+import static io.kestra.core.utils.Rethrow.throwFunction;
 import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
 
 @SuperBuilder
@@ -295,8 +299,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                             .filter(containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun"))
                             .forEach(containerStatus -> logger.error(containerStatus.getState().getTerminated().getMessage()));
                     } else if (this.outputFiles != null) {
-                        this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars);
-                        output.outputFiles(FilesService.outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class)));
+                        Map<Path, Path> pathMap = this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars);
+                        output.outputFiles(outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap));
                     }
 
                     delete(client, logger, pod, runContext);
@@ -315,6 +319,36 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             currentNamespace = null;
             currentConnection = null;
         }
+    }
+
+    // This and the following method were copied from FilesService and adapted. Cleaner solution might be to move them
+    // to FilesService with an optional pathMap parameter as any consumer of the method might have the same issues with
+    // spaces in file paths.
+    public static Map<String, URI> outputFiles(RunContext runContext, List<String> outputs, Map<Path, Path> pathMap) throws Exception {
+        List<String> renderedOutputs = outputs != null ? runContext.render(outputs) : null;
+        List<Path> allFilesMatching = runContext.workingDir().findAllFilesMatching(renderedOutputs);
+        var outputFiles = allFilesMatching.stream()
+            .map(throwFunction(path -> {
+                Path unsanitizedRelative = pathMap.get(path);
+                if (unsanitizedRelative == null) {
+                    throw new IllegalStateException("No unsanitized relative file path found for " + path);
+                }
+                return new AbstractMap.SimpleEntry<>(
+                    unsanitizedRelative.toString(),
+                    runContext.storage().putFile(path.toFile(), resolveUniqueNameForFile(path))
+                );
+            }))
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        if (runContext.logger().isTraceEnabled()) {
+            runContext.logger().trace("Captured {} output file(s).", allFilesMatching.size());
+        }
+
+        return outputFiles;
+    }
+
+    private static String resolveUniqueNameForFile(final Path path) {
+        return IdUtils.from(path.toString()) + "-" + path.toFile().getName();
     }
 
     private Pod createPod(RunContext runContext, KubernetesClient client, String namespace, Map<String, Object> additionalVars) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException {

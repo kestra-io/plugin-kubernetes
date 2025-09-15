@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -86,7 +87,7 @@ abstract public class AbstractPod extends AbstractConnection {
         PodService.uploadMarker(runContext, podResource, logger, "ready", INIT_FILES_CONTAINER_NAME);
     }
 
-    protected void downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {
+    protected Map<Path, Path> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {
         withRetries(
             logger,
             "downloadOutputFiles",
@@ -99,16 +100,26 @@ abstract public class AbstractPod extends AbstractConnection {
         PodService.uploadMarker(runContext, podResource, logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
 
         // Download output files
+        // path map from copied file path with encoded parts to the actually produced relative file path
+        Map<Path, Path> pathMap = new HashMap<>();
         // kubernetes copy by keeping the target repository which we don't want, so we move the files
         try (Stream<Path> files = Files.walk(runContext.workingDir().resolve(Path.of("working-dir/kestra/working-dir/")))) {
             files
                 .filter(path -> !Files.isDirectory(path) && Files.isReadable(path))
                 .forEach(throwConsumer(outputFile -> {
                     Path relativePathFromContainerWDir = runContext.workingDir().resolve(Path.of("working-dir/kestra/working-dir/")).relativize(outputFile);
-                    Path resolvedOutputFile = runContext.workingDir().resolve(relativePathFromContainerWDir);
+                    // Split path into components and sanitize by encoding special characters
+                    Path resolvedOutputFile = runContext.workingDir().path();
+                    for (int i = 0; i < relativePathFromContainerWDir.getNameCount(); i++) {
+                        resolvedOutputFile = resolvedOutputFile.resolve(Path.of(java.net.URLEncoder.encode(
+                            relativePathFromContainerWDir.getName(i).toString(),
+                            StandardCharsets.UTF_8)));
+                    }
+                    pathMap.put(resolvedOutputFile, relativePathFromContainerWDir);
                     moveFile(outputFile, resolvedOutputFile);
                 }));
         }
+        return pathMap;
     }
 
     private void moveFile(Path from, Path to) throws IOException {
