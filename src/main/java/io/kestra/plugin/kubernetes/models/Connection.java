@@ -151,7 +151,7 @@ public class Connection {
         }
 
         if (caCertData != null) {
-            builder.withCaCertData(runContext.render(caCertData).as(String.class).orElseThrow());
+            builder.withCaCertData(normalizeBase64(runContext, caCertData));
         }
 
         if (clientCertFile != null) {
@@ -167,7 +167,7 @@ public class Connection {
         }
 
         if (clientCertData != null) {
-            builder.withClientCertData(runContext.render(clientCertData).as(String.class).orElseThrow());
+            builder.withClientCertData(normalizeBase64(runContext, clientCertData));
         }
 
         if (clientKeyFile != null) {
@@ -175,7 +175,7 @@ public class Connection {
         }
 
         if (clientKeyData != null) {
-            builder.withClientKeyData(runContext.render(clientKeyData).as(String.class).orElseThrow());
+            builder.withClientKeyData(normalizeBase64(runContext, clientKeyData));
         }
 
         if (clientKeyAlgo != null) {
@@ -211,5 +211,12 @@ public class Connection {
         }
 
         return builder.build();
+    }
+
+    private String normalizeBase64(RunContext runContext, Property<String> prop) throws IllegalVariableEvaluationException {
+        return runContext.render(prop)
+            .as(String.class)
+            .map(s -> s.replaceAll("\\s", ""))
+            .orElseThrow();
     }
 }
