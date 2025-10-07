@@ -15,7 +15,7 @@ import java.util.Map;
 @Getter
 public class Metadata {
     @Schema(
-            title = "Generated Uid of this resource"
+            title = "Generated UUID of this resource"
     )
     private String uid;
 
@@ -55,7 +55,7 @@ public class Metadata {
     private final Long deletionGracePeriodSeconds;
 
     @Schema(
-            title = "Deletetion datetime"
+            title = "Deletion datetime"
     )
     private final Instant deletionTimestamp;
 
@@ -90,7 +90,7 @@ public class Metadata {
     private final String resourceVersion;
 
     @Schema(
-            title = "Direct link on the api of this resource"
+            title = "Direct link to the API of this resource"
     )
     private final String selfLink;
 

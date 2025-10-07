@@ -58,7 +58,7 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
     private Property<String> namespace;
 
     @Schema(
-        title = "The Kubernetes resource type (= kind) (e.g. pod, service)"
+        title = "The Kubernetes resource type (= kind) (e.g., pod, service)"
     )
     @NotNull
     private Property<String> resourceType;

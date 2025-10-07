@@ -159,34 +159,34 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private Property<String> namespace = Property.ofValue("default");
 
     @Schema(
-        title = "The YAML metadata of the pod."
+        title = "The YAML metadata of the pod"
     )
     @PluginProperty(dynamic = true)
     private Map<String, Object> metadata;
 
     @Schema(
-        title = "The YAML spec of the pod."
+        title = "The YAML spec of the pod"
     )
     @PluginProperty(dynamic = true)
     @NotNull
     private Map<String, Object> spec;
 
     @Schema(
-        title = "Whether the pod should be deleted upon completion."
+        title = "Whether the pod should be deleted upon completion"
     )
     @NotNull
     @Builder.Default
     private final Property<Boolean> delete = Property.ofValue(true);
 
     @Schema(
-        title = "Whether to reconnect to the current pod if it already exists."
+        title = "Whether to reconnect to the current pod if it already exists"
     )
     @NotNull
     @Builder.Default
     private final Property<Boolean> resume = Property.ofValue(true);
 
     @Schema(
-        title = "Additional time after the pod ends to wait for late logs."
+        title = "Additional time after the pod ends to wait for late logs"
     )
     @Builder.Default
     private Property<Duration> waitForLogInterval = Property.ofValue(Duration.ofSeconds(2));
@@ -232,7 +232,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         logger.info("Pod '{}' is resumed from an already running pod ", pod.getMetadata().getName());
 
                     } else if (!existingPods.getItems().isEmpty()) {
-                        logger.warn("More than one pod exist for the label selector {}, no pods will be resumed.", labelSelector);
+                        logger.warn("More than one pod exists for the label selector {}, no pods will be resumed.", labelSelector);
                     }
                 }
 
@@ -408,12 +408,12 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "The pod metadata."
+            title = "The pod metadata"
         )
         private final Metadata metadata;
 
         @Schema(
-            title = "The pod status."
+            title = "The pod status"
         )
         private final PodStatus status;
 

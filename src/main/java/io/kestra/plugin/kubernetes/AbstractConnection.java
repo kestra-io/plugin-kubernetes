@@ -33,7 +33,7 @@ public abstract class AbstractConnection extends Task {
     private Connection connection;
 
     @Schema(
-        title = "The maximum duration to wait until the job and the pod is created.",
+        title = "The maximum duration to wait until the job and the pod is created",
         description = "This timeout is the maximum time that Kubernetes scheduler will take to\n" +
             "* schedule the job\n" +
             "* pull the pod image\n" +
@@ -44,7 +44,7 @@ public abstract class AbstractConnection extends Task {
     protected final Property<Duration> waitUntilRunning = Property.ofValue(Duration.ofMinutes(10));
 
     @Schema(
-        title = "The maximum duration to wait for the job completion."
+        title = "The maximum duration to wait for the job completion"
     )
     @NotNull
     @Builder.Default
