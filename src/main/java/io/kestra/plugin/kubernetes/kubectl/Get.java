@@ -121,7 +121,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     private Property<String> namespace;
 
     @Schema(
-        title = "The Kubernetes resource type (= kind) (e.g. pod, service)"
+        title = "The Kubernetes resource type (= kind) (e.g., pod, service)"
     )
     @NotNull
     private Property<String> resourceType;
@@ -256,25 +256,25 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     public static class Output implements io.kestra.core.models.tasks.Output {
 
         @Schema(
-            title = "The metadata for multiple resources.",
+            title = "The metadata for multiple resources",
             description = "Only available when `fetchType` is set to `FETCH`."
         )
         private final List<Metadata> metadataItems;
 
         @Schema(
-            title = "The metadata for a single resource.",
+            title = "The metadata for a single resource",
             description = "Only available when `fetchType` is set to `FETCH_ONE`."
         )
         private final Metadata metadataItem;
 
         @Schema(
-            title = "The output files URI in Kestra's internal storage.",
+            title = "The output files URI in Kestra's internal storage",
             description = "Only available when `fetchType` is set to `STORE`."
         )
         private final URI uri;
 
         @Schema(
-            title = "The count of the fetched or stored resources."
+            title = "The count of the fetched or stored resources"
         )
         private Integer size;
     }

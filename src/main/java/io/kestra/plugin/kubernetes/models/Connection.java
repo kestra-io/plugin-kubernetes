@@ -24,7 +24,7 @@ public class Connection {
     private final Property<Boolean> disableHostnameVerification;
 
     @Schema(
-        title = "The url to the Kubernetes API"
+        title = "The URL to the Kubernetes API"
     )
     @Builder.Default
     private final Property<String> masterUrl = Property.ofValue("https://kubernetes.default.svc");

@@ -167,7 +167,7 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
     public static class Output implements io.kestra.core.models.tasks.Output {
 
         @Schema(
-            title = "The resource metadata."
+            title = "The resource metadata"
         )
         private final List<Metadata> metadata;
     }

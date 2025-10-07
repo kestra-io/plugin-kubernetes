@@ -108,9 +108,9 @@ abstract public class PodService {
                 podResource = podRef(client, pod);
 
                 if (podResource.get() != null) {
-                    logger.debug("Pod is still alive, refreshing and trying to wait more", e);
+                    logger.debug("Pod is still alive, refreshing and trying to wait longer", e);
                 } else {
-                    logger.warn("Unable to refresh pods, no pods was found!", e);
+                    logger.warn("Unable to refresh pods, no pods were found!", e);
                     throw e;
                 }
             }
