@@ -54,7 +54,7 @@ public class LoggingOutputStream extends java.io.OutputStream {
         }
 
         // we have no way to know that a log is from stdErr so with Kubernetes all logs will always be INFO
-        // Ensure the consumed line is trimmed so the matcher ^::(\{.*})::$ reliably matches
+        
         logConsumer.accept(line, false);
     }
 
