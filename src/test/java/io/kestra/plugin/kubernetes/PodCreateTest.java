@@ -544,8 +544,8 @@ class PodCreateTest {
         PodCreate.Output runOutput = task.run(runContext);
 
         // Assert that all special char outputs are parsed and available
-        assertThat(runOutput.getVars().get("PROJECT_ID"), is("101"));
+        assertThat(runOutput.getVars().get("PROJECT_ID").toString(), is("101"));
         assertThat(runOutput.getVars().get("PROJECT_NAME"), is("One O One"));
-        assertThat(runOutput.getVars().get("LABEL"), is("4004"));
+        assertThat(runOutput.getVars().get("LABEL").toString(), is("4004"));
     }
 }
