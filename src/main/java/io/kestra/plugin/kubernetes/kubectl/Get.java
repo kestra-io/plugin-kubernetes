@@ -3,6 +3,7 @@ package io.kestra.plugin.kubernetes.kubectl;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Metric;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.executions.metrics.Counter;
 import io.kestra.core.models.property.Property;
@@ -106,6 +107,14 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                     apiVersion: v1
                     fetchType: FETCH_ONE
                 """
+        ),
+    },
+    metrics = {
+        @Metric(
+            name = "fetch.size",
+            type = Counter.TYPE,
+            unit = "records",
+            description = "The number of rows fetch."
         ),
     }
 )
@@ -222,8 +231,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         switch (renderedFetchType) {
             case NONE:
                 output = Output.builder().build();
-                runContext.metric(Counter.of("store.fetchedItemsCount", 0));
-                runContext.metric(Counter.of("fetch.fetchedItemsCount", 0));
+                runContext.metric(Counter.of("fetch.size", 0, "fetch", "false", "store", "false"));
                 break;
             case FETCH:
                 output = Output.builder()
@@ -231,7 +239,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                     .statusItems(statusList)
                     .size(fetchedItemsCount)
                     .build();
-                runContext.metric(Counter.of("fetch.fetchedItemsCount", fetchedItemsCount));
+                runContext.metric(Counter.of("fetch.size", fetchedItemsCount, "fetch", "true", "store", "false"));
                 break;
             case FETCH_ONE:
                 output = Output.builder()
@@ -239,7 +247,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                     .statusItem(statusList.isEmpty() ? null : statusList.getFirst())
                     .size(fetchedItemsCount)
                     .build();
-                runContext.metric(Counter.of("fetch.fetchedItemsCount", fetchedItemsCount));
+                runContext.metric(Counter.of("fetch.size", fetchedItemsCount, "fetch", "true", "store", "false"));
                 break;
             case STORE:
                 var result = storeResult(metadataList, statusList, runContext);
@@ -248,7 +256,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                     .uri(result.getKey())
                     .size(storedItemsCount)
                     .build();
-                runContext.metric(Counter.of("store.fetchedItemsCount", storedItemsCount));
+                runContext.metric(Counter.of("fetch.size", storedItemsCount, "fetch", "false", "store", "true"));
                 break;
             default:
                 throw new IllegalStateException("Unexpected fetchType value: " + fetchType);
