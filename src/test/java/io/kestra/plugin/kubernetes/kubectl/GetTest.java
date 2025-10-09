@@ -86,8 +86,17 @@ public class GetTest {
         // Then
         var output = getTask.run(runContext);
         assertThat(output.getMetadataItem().getName(), is(expectedDeploymentName));
+
+        // Verify status is populated
         assertThat(output.getStatusItem(), org.hamcrest.Matchers.notNullValue());
         assertThat(output.getStatusItem().getStatus(), org.hamcrest.Matchers.notNullValue());
+
+        // Verify Deployment-specific status fields
+        var status = output.getStatusItem().getStatus();
+        assertThat(status.containsKey("replicas"), is(true));
+        assertThat(status.get("replicas"), is(3)); // matches spec.replicas
+        assertThat(status.containsKey("conditions"), is(true));
+        assertThat(status.get("conditions"), org.hamcrest.Matchers.instanceOf(java.util.List.class));
     }
 
     @Test
@@ -156,9 +165,22 @@ public class GetTest {
         assertThat(output.getMetadataItems().size(), is(2));
         assertThat(output.getMetadataItems().getFirst().getName(), is("my-deployment"));
         assertThat(output.getMetadataItems().getLast().getName(), is("my-deployment-2"));
+
+        // Verify status list is populated
         assertThat(output.getStatusItems(), org.hamcrest.Matchers.notNullValue());
         assertThat(output.getStatusItems().size(), is(2));
-        assertThat(output.getStatusItems().getFirst().getStatus(), org.hamcrest.Matchers.notNullValue());
+
+        // Verify first deployment has valid status
+        var firstStatus = output.getStatusItems().getFirst().getStatus();
+        assertThat(firstStatus, org.hamcrest.Matchers.notNullValue());
+        assertThat(firstStatus.containsKey("replicas"), is(true));
+        assertThat(firstStatus.get("replicas"), is(3));
+
+        // Verify second deployment has valid status
+        var lastStatus = output.getStatusItems().getLast().getStatus();
+        assertThat(lastStatus, org.hamcrest.Matchers.notNullValue());
+        assertThat(lastStatus.containsKey("replicas"), is(true));
+        assertThat(lastStatus.get("replicas"), is(3));
     }
 
     @Test
@@ -261,7 +283,10 @@ public class GetTest {
         // Then
         var output = getTask.run(runContext);
         assertThat(output.getMetadataItem().getName(), is(crdName));
-        // Custom resources may or may not have status depending on the CRD definition
+
+        // Verify status field exists (custom resources may have null/empty status)
         assertThat(output.getStatusItem(), org.hamcrest.Matchers.notNullValue());
+        // Status map may be null for custom resources without status subresource
+        // but the ResourceStatus wrapper should always be present
     }
 }

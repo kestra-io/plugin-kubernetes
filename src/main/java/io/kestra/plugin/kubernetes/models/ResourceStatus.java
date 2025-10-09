@@ -18,17 +18,13 @@ public class ResourceStatus {
 
     /**
      * Extracts the status from a GenericKubernetesResource.
-     * The status is typically stored in the resource's additional properties.
+     * The status field will be null if the resource doesn't contain status information.
      *
-     * @param resource The Kubernetes resource to extract status from
-     * @return ResourceStatus containing the status map, or null if no status exists
+     * @param resource The Kubernetes resource to extract status from (must not be null)
+     * @return ResourceStatus with status map (may be null if no status exists)
      */
     @SuppressWarnings("unchecked")
     public static ResourceStatus from(GenericKubernetesResource resource) {
-        if (resource == null) {
-            return null;
-        }
-
         Map<String, Object> additionalProperties = resource.getAdditionalProperties();
         if (additionalProperties == null) {
             return ResourceStatus.builder().status(null).build();
