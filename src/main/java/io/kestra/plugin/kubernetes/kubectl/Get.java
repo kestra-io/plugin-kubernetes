@@ -12,6 +12,7 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
 import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Metadata;
+import io.kestra.plugin.kubernetes.models.ResourceStatus;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -157,6 +158,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         var renderedFetchType = runContext.render(this.fetchType).as(FetchType.class).orElse(NONE);
 
         List<Metadata> metadataList = new ArrayList<>();
+        List<ResourceStatus> statusList = new ArrayList<>();
 
         try (var client = PodService.client(runContext, this.getConnection())) {
 
@@ -178,6 +180,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                 for (var resource : resources) {
                     if (resource != null && resource.getMetadata() != null) {
                         metadataList.add(Metadata.from(resource.getMetadata()));
+                        statusList.add(ResourceStatus.from(resource));
                     }
                 }
                 runContext.logger().info("Fetched {} resource(s) of kind '{}' in namespace '{}'", metadataList.size(), renderedResourceType, renderedNamespace);
@@ -194,6 +197,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
                         if (resource != null && resource.getMetadata() != null) {
                             metadataList.add(Metadata.from(resource.getMetadata()));
+                            statusList.add(ResourceStatus.from(resource));
                             runContext.logger().info("Fetched resource of kind '{}' with name '{}' in namespace '{}'",
                                 renderedResourceType, name, renderedNamespace);
                         } else {
@@ -224,6 +228,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
             case FETCH:
                 output = Output.builder()
                     .metadataItems(metadataList)
+                    .statusItems(statusList)
                     .size(fetchedItemsCount)
                     .build();
                 runContext.metric(Counter.of("fetch.fetchedItemsCount", fetchedItemsCount));
@@ -231,12 +236,13 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
             case FETCH_ONE:
                 output = Output.builder()
                     .metadataItem(metadataList.isEmpty() ? null : metadataList.getFirst())
+                    .statusItem(statusList.isEmpty() ? null : statusList.getFirst())
                     .size(fetchedItemsCount)
                     .build();
                 runContext.metric(Counter.of("fetch.fetchedItemsCount", fetchedItemsCount));
                 break;
             case STORE:
-                var result = storeResult(metadataList, runContext);
+                var result = storeResult(metadataList, statusList, runContext);
                 int storedItemsCount = result.getValue().intValue();
                 output = Output.builder()
                     .uri(result.getKey())
@@ -249,6 +255,13 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         }
 
         return output;
+    }
+
+    @Getter
+    @Builder
+    public static class ResourceInfo {
+        private final Metadata metadata;
+        private final ResourceStatus status;
     }
 
     @Getter
@@ -268,6 +281,18 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         private final Metadata metadataItem;
 
         @Schema(
+            title = "The status for multiple resources",
+            description = "Only available when `fetchType` is set to `FETCH`."
+        )
+        private final List<ResourceStatus> statusItems;
+
+        @Schema(
+            title = "The status for a single resource",
+            description = "Only available when `fetchType` is set to `FETCH_ONE`."
+        )
+        private final ResourceStatus statusItem;
+
+        @Schema(
             title = "The output files URI in Kestra's internal storage",
             description = "Only available when `fetchType` is set to `STORE`."
         )
@@ -279,8 +304,17 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         private Integer size;
     }
 
-    private Map.Entry<URI, Long> storeResult(List<Metadata> metadata, RunContext runContext) throws IOException {
+    private Map.Entry<URI, Long> storeResult(List<Metadata> metadataList, List<ResourceStatus> statusList, RunContext runContext) throws IOException {
         var tempFile = runContext.workingDir().createTempFile(".ion").toFile();
+
+        // Combine metadata and status into ResourceInfo objects
+        List<ResourceInfo> resourceInfoList = new ArrayList<>();
+        for (int i = 0; i < metadataList.size(); i++) {
+            resourceInfoList.add(ResourceInfo.builder()
+                .metadata(metadataList.get(i))
+                .status(i < statusList.size() ? statusList.get(i) : null)
+                .build());
+        }
 
         try (
             var output = new BufferedWriter(new FileWriter(tempFile), FileSerde.BUFFER_SIZE)
@@ -288,7 +322,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
             var flowable = Flux
                 .create(
                     s -> {
-                        metadata.forEach(s::next);
+                        resourceInfoList.forEach(s::next);
                         s.complete();
                     },
                     FluxSink.OverflowStrategy.BUFFER
