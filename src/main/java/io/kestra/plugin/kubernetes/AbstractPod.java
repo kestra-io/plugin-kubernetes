@@ -37,14 +37,14 @@ abstract public class AbstractPod extends AbstractConnection {
     protected static final String FILES_VOLUME_NAME = "kestra-files";
 
     @Schema(
-        title = "The files from the container filesystem to send to Kestra's internal storage.",
+        title = "The files from the container filesystem to send to Kestra's internal storage",
         description = "Only files created inside the `kestra/working-dir` directory of the container can be retrieved.\n" +
             "Must be a list of [glob](https://en.wikipedia.org/wiki/Glob_(programming)) expressions relative to the current working directory, some examples: `my-dir/**`, `my-dir/*/**` or `my-dir/my-file.txt`.."
     )
     protected Property<List<String>> outputFiles;
 
     @Schema(
-        title = "The files to create on the local filesystem. It can be a map or a JSON object.",
+        title = "The files to create on the local filesystem – it can be a map or a JSON object.",
         description = "The files will be available inside the `kestra/working-dir` directory of the container. You can use the special variable `{{workingDir}}` in your command to refer to it."
     )
     @PluginProperty(
@@ -55,7 +55,7 @@ abstract public class AbstractPod extends AbstractConnection {
 
 
     @Schema(
-        title = "The configuration of the file sidecar container that handle download and upload of files."
+        title = "The configuration of the file sidecar container that handles the download and upload of files"
     )
     @PluginProperty
     @Builder.Default

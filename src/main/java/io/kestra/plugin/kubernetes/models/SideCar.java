@@ -13,13 +13,13 @@ import java.util.Map;
 @Jacksonized
 public class SideCar {
     @Schema(
-        title = "The image used for the file sidecar container."
+        title = "The image used for the file sidecar container"
     )
     @Builder.Default
     private Property<String> image = Property.ofValue("busybox");
 
     @Schema(
-        title = "The resource requirements applied to the file sidecar container."
+        title = "The resource requirements applied to the file sidecar container"
     )
     private Property<Map<String, Object>> resources;
 }
