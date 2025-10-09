@@ -86,6 +86,8 @@ public class GetTest {
         // Then
         var output = getTask.run(runContext);
         assertThat(output.getMetadataItem().getName(), is(expectedDeploymentName));
+        assertThat(output.getStatusItem(), org.hamcrest.Matchers.notNullValue());
+        assertThat(output.getStatusItem().getStatus(), org.hamcrest.Matchers.notNullValue());
     }
 
     @Test
@@ -154,6 +156,9 @@ public class GetTest {
         assertThat(output.getMetadataItems().size(), is(2));
         assertThat(output.getMetadataItems().getFirst().getName(), is("my-deployment"));
         assertThat(output.getMetadataItems().getLast().getName(), is("my-deployment-2"));
+        assertThat(output.getStatusItems(), org.hamcrest.Matchers.notNullValue());
+        assertThat(output.getStatusItems().size(), is(2));
+        assertThat(output.getStatusItems().getFirst().getStatus(), org.hamcrest.Matchers.notNullValue());
     }
 
     @Test
@@ -256,5 +261,7 @@ public class GetTest {
         // Then
         var output = getTask.run(runContext);
         assertThat(output.getMetadataItem().getName(), is(crdName));
+        // Custom resources may or may not have status depending on the CRD definition
+        assertThat(output.getStatusItem(), org.hamcrest.Matchers.notNullValue());
     }
 }
