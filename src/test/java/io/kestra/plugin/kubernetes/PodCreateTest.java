@@ -512,4 +512,40 @@ class PodCreateTest {
             executorService.shutdownNow();
         }
     }
+
+    @Test
+    void parseOutputsWithSpecialChars() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id("special-char-test")
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: special-char-container",
+                "  image: debian:stable-slim",
+                "  command:",
+                "    - 'bash'",
+                "    - '-c'",
+                "    - \"echo '::{\\\"outputs\\\": {\\\"PROJECT_ID\\\": 101, \\\"PROJECT_NAME\\\": \\\"One O One\\\", \\\"LABEL\\\": \\\"4004\\\"}}::'\"",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        runContext = runContextInitializer.forWorker(
+            (DefaultRunContext) runContext,
+            WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build()
+        );
+
+        PodCreate.Output runOutput = task.run(runContext);
+
+        // Assert that all special char outputs are parsed and available
+        assertThat(runOutput.getVars().get("PROJECT_ID").toString(), is("101"));
+        assertThat(runOutput.getVars().get("PROJECT_NAME"), is("One O One"));
+        assertThat(runOutput.getVars().get("LABEL").toString(), is("4004"));
+    }
 }

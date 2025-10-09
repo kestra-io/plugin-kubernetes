@@ -38,7 +38,11 @@ public class LoggingOutputStream extends java.io.OutputStream {
         String line = baos.toString();
         baos.reset();
 
-        ArrayList<String> logs = new ArrayList<>(Arrays.asList(line.split("[ ]")));
+        // Trim to remove accidental leading/trailing spaces that can break output marker parsing
+        line = line.trim();
+
+        // Split by any whitespace to safely extract a potential ISO timestamp prefix injected by k8s
+        ArrayList<String> logs = new ArrayList<>(Arrays.asList(line.split("\\s+")));
         if (!logs.isEmpty()) {
             try {
                 lastTimestamp = Instant.parse(logs.get(0));
@@ -50,6 +54,7 @@ public class LoggingOutputStream extends java.io.OutputStream {
         }
 
         // we have no way to know that a log is from stdErr so with Kubernetes all logs will always be INFO
+        
         logConsumer.accept(line, false);
     }
 

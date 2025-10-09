@@ -189,8 +189,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         title = "Additional time after the pod ends to wait for late logs"
     )
     @Builder.Default
-    private Property<Duration> waitForLogInterval = Property.ofValue(Duration.ofSeconds(2));
-
+    private Property<Duration> waitForLogInterval = Property.ofValue(Duration.ofSeconds(30));
+    
     private final AtomicBoolean killed = new AtomicBoolean(false);
     private final AtomicReference<String> currentPodName = new AtomicReference<>();
     private volatile String currentNamespace;
