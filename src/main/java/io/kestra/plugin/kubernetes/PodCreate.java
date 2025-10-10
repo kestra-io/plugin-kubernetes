@@ -282,6 +282,27 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         ended = waitForCompletion(client, logger, pod, waitRunningValue);
                     }
 
+                    // Check for container failures when outputFiles are present
+                    // When outputFiles are configured, waitForCompletionExcept only checks if containers terminated
+                    // but doesn't validate their exit codes, so we need to check explicitly
+                    if (this.outputFiles != null && ended.getStatus() != null && ended.getStatus().getContainerStatuses() != null) {
+                        ended.getStatus().getContainerStatuses().stream()
+                            .filter(containerStatus -> !containerStatus.getName().equals(SIDECAR_FILES_CONTAINER_NAME))
+                            .filter(containerStatus -> containerStatus.getState() != null && containerStatus.getState().getTerminated() != null)
+                            .filter(containerStatus -> containerStatus.getState().getTerminated().getExitCode() != 0)
+                            .findFirst()
+                            .ifPresent(containerStatus -> {
+                                throw new IllegalStateException(
+                                    "Container '" + containerStatus.getName() + "' failed with exit code " +
+                                    containerStatus.getState().getTerminated().getExitCode() +
+                                    (containerStatus.getState().getTerminated().getReason() != null ?
+                                        ", reason: " + containerStatus.getState().getTerminated().getReason() : "") +
+                                    (containerStatus.getState().getTerminated().getMessage() != null ?
+                                        ", message: " + containerStatus.getState().getTerminated().getMessage() : "")
+                                );
+                            });
+                    }
+
                     handleEnd(ended, runContext);
 
                     PodStatus podStatus = PodStatus.from(ended.getStatus());
