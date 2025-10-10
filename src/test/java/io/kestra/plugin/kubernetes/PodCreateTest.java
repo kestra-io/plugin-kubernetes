@@ -160,6 +160,35 @@ class PodCreateTest {
     }
 
     @Test
+    void failedWithOutputFiles() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .outputFiles(Property.ofValue(List.of("results.json")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'echo \"Container failing\" && exit 1'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+
+        assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+    }
+
+    @Test
     void resume() throws Exception {
         Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
 

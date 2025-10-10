@@ -278,6 +278,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                     var waitRunningValue = runContext.render(this.waitRunning).as(Duration.class).orElseThrow();
                     if (this.outputFiles != null) {
                         ended = PodService.waitForCompletionExcept(client, logger, pod, waitRunningValue, SIDECAR_FILES_CONTAINER_NAME);
+                        // Check for container failures when outputFiles are present
+                        // waitForCompletionExcept only checks if containers terminated, not their exit codes
+                        PodService.checkContainerFailures(ended, SIDECAR_FILES_CONTAINER_NAME);
                     } else {
                         ended = waitForCompletion(client, logger, pod, waitRunningValue);
                     }
