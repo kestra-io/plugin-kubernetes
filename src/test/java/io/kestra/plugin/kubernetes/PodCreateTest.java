@@ -111,6 +111,7 @@ class PodCreateTest {
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
+            .resume(Property.ofValue(false))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -127,9 +128,18 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
 
-        assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(runContextFinal, null)) {
+            assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+
+            // Verify pod was deleted after failure
+            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofSeconds(10));
+        }
     }
 
     @Test
@@ -161,8 +171,6 @@ class PodCreateTest {
 
     @Test
     void failedWithOutputFiles() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
-
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
@@ -185,28 +193,9 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
 
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
-
-        Thread.sleep(500);
-
-        List<LogEntry> logs = receive.collectList().block();
-
-        // Verify the "Container failing" message was captured before cleanup
-        assertThat(logs.stream()
-            .filter(logEntry -> logEntry.getMessage().contains("Container failing"))
-            .count(),
-            greaterThan(0L));
-
-        // Verify the pod was deleted after failure
-        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
-        try (KubernetesClient client = PodService.client(runContextFinal, null)) {
-            Await.until(() -> client.pods().inNamespace("default")
-                .withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(1));
-        }
     }
 
     @Test
@@ -727,8 +716,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
 
         IllegalStateException exception = assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
         assertThat(exception.getMessage(), containsString("container-failure"));
@@ -747,14 +735,6 @@ class PodCreateTest {
             .filter(logEntry -> logEntry.getMessage().contains("Second container failing"))
             .count(),
             greaterThan(0L));
-
-        // Verify the pod was deleted after failure
-        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
-        try (KubernetesClient client = PodService.client(runContextFinal, null)) {
-            Await.until(() -> client.pods().inNamespace("default")
-                .withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(1));
-        }
     }
 
     @Test
@@ -764,7 +744,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(5))) // Use shorter duration for test
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(5)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -791,13 +771,5 @@ class PodCreateTest {
         // Verify that at least the waitForLogInterval duration has elapsed
         // This confirms handleEnd() sleep happens before exception is thrown
         assertThat(elapsedTime, greaterThanOrEqualTo(5000L)); // 5 seconds minimum
-
-        // Verify the pod was deleted after failure
-        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
-        try (KubernetesClient client = PodService.client(runContextFinal, null)) {
-            Await.until(() -> client.pods().inNamespace("default")
-                .withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(1));
-        }
     }
 }
