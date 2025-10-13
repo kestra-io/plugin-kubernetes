@@ -137,7 +137,7 @@ abstract public class PodService {
             .orElse(new IllegalStateException("Pods terminated without any containers status !"));
     }
 
-    public static void checkContainerFailures(Pod pod, String exceptContainer) throws IllegalStateException {
+    public static void checkContainerFailures(Pod pod, String exceptContainer, Logger logger) throws IllegalStateException {
         if (pod.getStatus() == null || pod.getStatus().getContainerStatuses() == null) {
             return;
         }
@@ -149,12 +149,13 @@ abstract public class PodService {
             .findFirst()
             .ifPresent(containerStatus -> {
                 ContainerStateTerminated terminated = containerStatus.getState().getTerminated();
-                throw new IllegalStateException(
-                    "Container '" + containerStatus.getName() + "' failed with exit code " +
+                String errorMsg = "Container '" + containerStatus.getName() + "' failed with exit code " +
                     terminated.getExitCode() +
                     (terminated.getReason() != null ? ", reason: " + terminated.getReason() : "") +
-                    (terminated.getMessage() != null ? ", message: " + terminated.getMessage() : "")
-                );
+                    (terminated.getMessage() != null ? ", message: " + terminated.getMessage() : "");
+
+                logger.error(errorMsg);
+                throw new IllegalStateException(errorMsg);
             });
     }
 
