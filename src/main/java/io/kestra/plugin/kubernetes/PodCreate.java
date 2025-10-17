@@ -276,40 +276,35 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                     // wait until completion of the pods
                     Pod ended;
                     var waitRunningValue = runContext.render(this.waitRunning).as(Duration.class).orElseThrow();
-                    if (this.outputFiles != null) {
-                        ended = PodService.waitForCompletionExcept(client, logger, pod, waitRunningValue, SIDECAR_FILES_CONTAINER_NAME);
-                        // Check for container failures when outputFiles are present
-                        // waitForCompletionExcept only checks if containers terminated, not their exit codes
-                        PodService.checkContainerFailures(ended, SIDECAR_FILES_CONTAINER_NAME);
-                    } else {
-                        ended = waitForCompletion(client, logger, pod, waitRunningValue);
+
+                    try {
+                        if (this.outputFiles != null) {
+                            ended = PodService.waitForCompletionExcept(client, logger, pod, waitRunningValue, SIDECAR_FILES_CONTAINER_NAME);
+                        } else {
+                            ended = waitForCompletion(client, logger, pod, waitRunningValue);
+                        }
+
+                        // Collect late logs and check for failures (throws if container failed)
+                        handleEnd(ended, runContext, this.outputFiles != null);
+
+                        PodStatus podStatus = PodStatus.from(ended.getStatus());
+                        Output.OutputBuilder output = Output.builder()
+                            .metadata(Metadata.from(ended.getMetadata()))
+                            .status(podStatus)
+                            .vars(logConsumer.getOutputs());
+
+                        // Download output files if configured and task succeeded
+                        if (this.outputFiles != null) {
+                            Map<Path, Path> pathMap = this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars);
+                            output.outputFiles(outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap));
+                        }
+
+                        return output
+                            .build();
+                    } finally {
+                        // Always delete the pod, even if an exception occurred
+                        delete(client, logger, pod, runContext);
                     }
-
-                    handleEnd(ended, runContext);
-
-                    PodStatus podStatus = PodStatus.from(ended.getStatus());
-                    Output.OutputBuilder output = Output.builder()
-                        .metadata(Metadata.from(ended.getMetadata()))
-                        .status(podStatus)
-                        .vars(logConsumer.getOutputs());
-
-                    if (isFailed(podStatus)) {
-                        podStatus.getConditions().stream()
-                            .filter(podCondition -> Objects.equals(podCondition.getReason(), "PodFailed"))
-                            .forEach(podCondition -> logger.error(podCondition.getMessage()));
-
-                        podStatus.getContainerStatuses().stream()
-                            .filter(containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun"))
-                            .forEach(containerStatus -> logger.error(containerStatus.getState().getTerminated().getMessage()));
-                    } else if (this.outputFiles != null) {
-                        Map<Path, Path> pathMap = this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars);
-                        output.outputFiles(outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap));
-                    }
-
-                    delete(client, logger, pod, runContext);
-
-                    return output
-                        .build();
                 } catch (InterruptedException | InterruptedIOException e) {
                     logger.info("Task was interrupted.");
                     Thread.currentThread().interrupt();
@@ -398,11 +393,19 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         }
     }
 
-    private void handleEnd(Pod ended, RunContext runContext) throws InterruptedException, IllegalVariableEvaluationException {
+    private void handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles) throws InterruptedException, IllegalVariableEvaluationException {
+        Logger logger = runContext.logger();
+
         // let some time to gather the logs before delete
         Thread.sleep(runContext.render(this.waitForLogInterval).as(Duration.class).orElseThrow().toMillis());
 
-        if (ended.getStatus() != null && ended.getStatus().getPhase().equals("Failed")) {
+        // Check for failures based on whether outputFiles are configured
+        if (hasOutputFiles) {
+            // For pods with outputFiles, check container exit codes
+            // (pod phase stays "Running" due to sidecar container)
+            PodService.checkContainerFailures(ended, SIDECAR_FILES_CONTAINER_NAME, logger);
+        } else if (ended.getStatus() != null && ended.getStatus().getPhase().equals("Failed")) {
+            // For pods without outputFiles, check pod phase
             throw PodService.failedMessage(ended);
         }
     }
