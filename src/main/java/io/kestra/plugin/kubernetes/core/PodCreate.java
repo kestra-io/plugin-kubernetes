@@ -1,4 +1,4 @@
-package io.kestra.plugin.kubernetes;
+package io.kestra.plugin.kubernetes.core;
 
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.*;
@@ -20,6 +20,7 @@ import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
+import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Connection;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.PodStatus;
@@ -66,7 +67,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
 
                 tasks:
                   - id: pod_create
-                    type: io.kestra.plugin.kubernetes.PodCreate
+                    type: io.kestra.plugin.kubernetes.core.PodCreate
                     namespace: default
                     metadata:
                       labels:
@@ -95,7 +96,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
 
                 tasks:
                   - id: pod_create
-                    type: io.kestra.plugin.kubernetes.PodCreate
+                    type: io.kestra.plugin.kubernetes.core.PodCreate
                     spec:
                       containers:
                       - name: unittest
@@ -125,7 +126,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
 
                 tasks:
                   - id: pod_create
-                    type: io.kestra.plugin.kubernetes.PodCreate
+                    type: io.kestra.plugin.kubernetes.core.PodCreate
                     fileSidecar:
                       resources:
                         limits:

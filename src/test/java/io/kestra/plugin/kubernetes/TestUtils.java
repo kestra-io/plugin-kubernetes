@@ -6,7 +6,7 @@ import io.kestra.core.serializers.JacksonMapper;
 
 import java.util.Map;
 
-abstract class TestUtils {
+public abstract class TestUtils {
     private static final ObjectMapper mapper = JacksonMapper.ofYaml();
 
     public static <T> Map<String, Object> convert(Class<T> cls, String... yaml) throws JsonProcessingException {
