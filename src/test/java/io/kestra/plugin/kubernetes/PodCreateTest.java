@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -793,7 +794,13 @@ class PodCreateTest {
 
     @Test
     void completeLogCollectionAfterQuickTermination() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        AtomicInteger expectedLogCounter = new AtomicInteger(0);
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
+            String message = logEntry.getLeft().getMessage();
+            if (message.startsWith("Log line ") || message.equals("FINAL")) {
+                expectedLogCounter.incrementAndGet();
+            }
+        });
 
         // Generate exactly 20 identifiable log lines in quick succession, then fail
         PodCreate task = PodCreate.builder()
@@ -824,7 +831,13 @@ class PodCreateTest {
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
         long elapsedTime = System.currentTimeMillis() - startTime;
 
-        Thread.sleep(500); // Allow log queue to flush
+        // Wait for all logs to be collected with retry mechanism (expect 20 numbered + 1 FINAL = 21 logs)
+        Await.until(
+            () -> expectedLogCounter.get() >= 21,
+            Duration.ofMillis(100),
+            Duration.ofSeconds(5)
+        );
+
         List<LogEntry> logs = receive.collectList().block();
 
         // Verify all 20 numbered logs were collected (no missing logs)
@@ -849,7 +862,12 @@ class PodCreateTest {
 
     @Test
     void highThroughputLogCollectionNoPrecisionLoss() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        AtomicInteger lineCounter = new AtomicInteger(0);
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
+            if (logEntry.getLeft().getMessage().startsWith("Line")) {
+                lineCounter.incrementAndGet();
+            }
+        });
 
         // Generate 100 logs as fast as possible (tight loop, no delays)
         // Tests that nanosecond timestamp precision prevents log loss
@@ -883,15 +901,9 @@ class PodCreateTest {
 
         // Wait for all logs to be collected with retry mechanism
         Await.until(
-            () -> {
-                List<LogEntry> logs = receive.collectList().block();
-                long lineCount = logs.stream()
-                    .filter(log -> log.getMessage().startsWith("Line"))
-                    .count();
-                return lineCount >= 100L;
-            },
+            () -> lineCounter.get() >= 100,
             Duration.ofMillis(100),
-            Duration.ofSeconds(5)
+            Duration.ofSeconds(10)
         );
 
         List<LogEntry> logs = receive.collectList().block();
