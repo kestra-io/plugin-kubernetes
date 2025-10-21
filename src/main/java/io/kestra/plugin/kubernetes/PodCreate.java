@@ -244,40 +244,40 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 currentPodName.set(pod.getMetadata().getName());
 
                 try (Watch ignored = PodService.podRef(client, pod).watch(listOptions(runContext), new PodWatcher(logger))) {
-                    // in case of resuming an already running pod, the status will be running
-                    if (!"Running".equals(pod.getStatus().getPhase())) {
-                        // wait for init container
-                        if (this.inputFiles != null) {
-                            Map<String, String> finalInputFiles = PluginUtilsService.transformInputFiles(runContext, additionalVars, this.inputFiles);
+                    try {
+                        // in case of resuming an already running pod, the status will be running
+                        if (!"Running".equals(pod.getStatus().getPhase())) {
+                            // wait for init container
+                            if (this.inputFiles != null) {
+                                Map<String, String> finalInputFiles = PluginUtilsService.transformInputFiles(runContext, additionalVars, this.inputFiles);
 
-                            PluginUtilsService.createInputFiles(
-                                runContext,
-                                PodService.tempDir(runContext),
-                                finalInputFiles,
-                                additionalVars
-                            );
+                                PluginUtilsService.createInputFiles(
+                                    runContext,
+                                    PodService.tempDir(runContext),
+                                    finalInputFiles,
+                                    additionalVars
+                                );
 
-                            pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, runContext.render(this.waitUntilRunning).as(Duration.class).orElseThrow());
-                            this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger, finalInputFiles.keySet());
+                                pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, runContext.render(this.waitUntilRunning).as(Duration.class).orElseThrow());
+                                this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger, finalInputFiles.keySet());
+                            }
+
+                            // wait for pods ready
+                            pod = PodService.waitForPodReady(client, pod, runContext.render(this.waitUntilRunning).as(Duration.class).orElseThrow());
                         }
 
-                        // wait for pods ready
-                        pod = PodService.waitForPodReady(client, pod, runContext.render(this.waitUntilRunning).as(Duration.class).orElseThrow());
-                    }
+                        if (pod.getStatus() != null && pod.getStatus().getPhase().equals("Failed")) {
+                            throw PodService.failedMessage(pod);
+                        }
 
-                    if (pod.getStatus() != null && pod.getStatus().getPhase().equals("Failed")) {
-                        throw PodService.failedMessage(pod);
-                    }
+                        // watch log
+                        AbstractLogConsumer logConsumer = new DefaultLogConsumer(runContext);
+                        podLogService.watch(client, pod, logConsumer, runContext);
 
-                    // watch log
-                    AbstractLogConsumer logConsumer = new DefaultLogConsumer(runContext);
-                    podLogService.watch(client, pod, logConsumer, runContext);
+                        // wait until completion of the pods
+                        Pod ended;
+                        var waitRunningValue = runContext.render(this.waitRunning).as(Duration.class).orElseThrow();
 
-                    // wait until completion of the pods
-                    Pod ended;
-                    var waitRunningValue = runContext.render(this.waitRunning).as(Duration.class).orElseThrow();
-
-                    try {
                         if (this.outputFiles != null) {
                             ended = PodService.waitForCompletionExcept(client, logger, pod, waitRunningValue, SIDECAR_FILES_CONTAINER_NAME);
                         } else {
@@ -302,7 +302,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         return output
                             .build();
                     } finally {
-                        // Always delete the pod, even if an exception occurred
+                        // Always delete the pod, even if an exception occurred during initialization or execution
                         delete(client, logger, pod, runContext);
                     }
                 } catch (InterruptedException | InterruptedIOException e) {

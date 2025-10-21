@@ -261,6 +261,69 @@ class PodCreateTest {
     }
 
     @Test
+    void initializationFailureDeletesPod() throws Exception {
+        // Test for issue #211: pod cleanup when inputFiles reference missing upstream outputs
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .inputFiles(Map.of("data.txt", "{{ outputs['nonexistent-task']['outputFiles']['data.txt'] }}"))
+            .waitUntilRunning(Property.ofValue(Duration.ofSeconds(30)))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'cat {{ workingDir }}/data.txt'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        Future<?> taskFuture = executorService.submit(() -> {
+            try {
+                task.run(finalRunContext);
+            } catch (Exception e) {
+                log.debug("Task failed as expected during initialization.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod creation
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                return !pods.isEmpty();
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().get(0);
+            String podName = createdPod.getMetadata().getName();
+            log.info("Test detected pod creation: {}", podName);
+
+            // Wait for pod to be deleted despite the initialization failure
+            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(2));
+
+            log.info("Pod {} was successfully deleted after initialization failure.", podName);
+        } finally {
+            taskFuture.cancel(true);
+            executorService.shutdownNow();
+        }
+    }
+
+    @Test
     void resume() throws Exception {
         Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
 
