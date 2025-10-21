@@ -261,6 +261,59 @@ class PodCreateTest {
     }
 
     @Test
+    void missingInputFilesFailsFastWithValidation() throws Exception {
+        // Test for issue #211: validation prevents pod creation when inputFiles are invalid
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .inputFiles(Map.of("data.txt", "{{ outputs['nonexistent-task']['outputFiles']['data.txt'] }}"))
+            .waitUntilRunning(Property.ofValue(Duration.ofSeconds(30)))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'cat {{ workingDir }}/data.txt'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        // Should fail fast with validation error before pod creation
+        long startTime = System.currentTimeMillis();
+        Exception exception = assertThrows(Exception.class, () -> task.run(finalRunContext));
+        long elapsedTime = System.currentTimeMillis() - startTime;
+
+        // Verify error message mentions the problematic file reference
+        assertThat(exception.getMessage(), containsString("outputs"));
+        assertThat(exception.getMessage(), containsString("nonexistent-task"));
+
+        // Should fail in < 2 seconds, not wait 30 seconds for timeout
+        assertThat(elapsedTime, lessThan(2000L));
+
+        // Verify no pod was created
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+            assertThat(pods, empty());
+        }
+
+        log.info("Validation prevented pod creation and failed in {}ms", elapsedTime);
+    }
+
+    @Test
     void resume() throws Exception {
         Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
 
