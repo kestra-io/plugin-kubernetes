@@ -111,6 +111,7 @@ class PodCreateTest {
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
+            .resume(Property.ofValue(false))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -127,9 +128,18 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
 
-        assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(runContextFinal, null)) {
+            assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+
+            // Verify pod was deleted after failure
+            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofSeconds(10));
+        }
     }
 
     @Test
@@ -186,6 +196,68 @@ class PodCreateTest {
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
 
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+    }
+
+    @Test
+    void failedWithOutputFilesDeletesPod() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .outputFiles(Property.ofValue(List.of("results.json")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'echo \"Container failing\" && sleep 1 && exit 1'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        Future<?> taskFuture = executorService.submit(() -> {
+            try {
+                task.run(finalRunContext);
+            } catch (Exception e) {
+                log.debug("Task failed as expected.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod creation
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                return !pods.isEmpty();
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().get(0);
+            String podName = createdPod.getMetadata().getName();
+            log.info("Test detected pod creation: {}", podName);
+
+            // Wait for pod to be deleted despite the failure
+            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(2));
+
+            log.info("Pod {} was successfully deleted after failure with outputFiles.", podName);
+        } finally {
+            taskFuture.cancel(true);
+            executorService.shutdownNow();
+        }
     }
 
     @Test
@@ -576,5 +648,128 @@ class PodCreateTest {
         assertThat(runOutput.getVars().get("PROJECT_ID").toString(), is("101"));
         assertThat(runOutput.getVars().get("PROJECT_NAME"), is("One O One"));
         assertThat(runOutput.getVars().get("LABEL").toString(), is("4004"));
+    }
+
+    @Test
+    void successWithOutputFiles() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .outputFiles(Property.ofValue(List.of("result.txt")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'echo \"Task succeeded\" > {{ workingDir }}/result.txt && exit 0'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+
+        PodCreate.Output output = task.run(runContextFinal);
+
+        assertThat(output.getOutputFiles(), hasKey("result.txt"));
+        InputStream file = storageInterface.get(TenantService.MAIN_TENANT, null, output.getOutputFiles().get("result.txt"));
+        String content = CharStreams.toString(new InputStreamReader(file));
+        assertThat(content.trim(), is("Task succeeded"));
+    }
+
+    @Test
+    void multipleContainersOneFailsWithOutputFiles() throws Exception {
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .outputFiles(Property.ofValue(List.of("result.txt")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: container-success",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'echo \"First container succeeded\" && exit 0'",
+                "- name: container-failure",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'echo \"Second container failing\" && exit 1'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+        assertThat(exception.getMessage(), containsString("container-failure"));
+        assertThat(exception.getMessage(), containsString("exit code 1"));
+
+        Thread.sleep(500);
+
+        List<LogEntry> logs = receive.collectList().block();
+
+        // Verify logs from both containers were collected
+        assertThat(logs.stream()
+            .filter(logEntry -> logEntry.getMessage().contains("First container succeeded"))
+            .count(),
+            greaterThan(0L));
+        assertThat(logs.stream()
+            .filter(logEntry -> logEntry.getMessage().contains("Second container failing"))
+            .count(),
+            greaterThan(0L));
+    }
+
+    @Test
+    void logCollectionTimingWithOutputFiles() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .outputFiles(Property.ofValue(List.of("result.txt")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(5)))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'echo \"Container failing\" && exit 1'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+
+        long startTime = System.currentTimeMillis();
+        assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+        long elapsedTime = System.currentTimeMillis() - startTime;
+
+        // Verify that at least the waitForLogInterval duration has elapsed
+        // This confirms handleEnd() sleep happens before exception is thrown
+        assertThat(elapsedTime, greaterThanOrEqualTo(5000L)); // 5 seconds minimum
     }
 }
