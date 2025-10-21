@@ -190,7 +190,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     )
     @Builder.Default
     private Property<Duration> waitForLogInterval = Property.ofValue(Duration.ofSeconds(30));
-    
+
     private final AtomicBoolean killed = new AtomicBoolean(false);
     private final AtomicReference<String> currentPodName = new AtomicReference<>();
     private volatile String currentNamespace;
@@ -302,7 +302,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         }
 
                         // Collect late logs and check for failures (throws if container failed)
-                        handleEnd(ended, runContext, this.outputFiles != null);
+                        handleEnd(ended, runContext, this.outputFiles != null, client, podLogService);
 
                         PodStatus podStatus = PodStatus.from(ended.getStatus());
                         Output.OutputBuilder output = Output.builder()
@@ -410,11 +410,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         }
     }
 
-    private void handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles) throws InterruptedException, IllegalVariableEvaluationException {
+    private void handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles, KubernetesClient client, PodLogService podLogService) throws Exception {
         Logger logger = runContext.logger();
 
-        // let some time to gather the logs before delete
-        Thread.sleep(runContext.render(this.waitForLogInterval).as(Duration.class).orElseThrow().toMillis());
+        // Fetch any remaining logs deterministically after pod termination
+        podLogService.fetchFinalLogs(client, ended);
 
         // Check for failures based on whether outputFiles are configured
         if (hasOutputFiles) {

@@ -797,7 +797,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(5)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -821,8 +820,8 @@ class PodCreateTest {
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
         long elapsedTime = System.currentTimeMillis() - startTime;
 
-        // Verify that at least the waitForLogInterval duration has elapsed
-        // This confirms handleEnd() sleep happens before exception is thrown
-        assertThat(elapsedTime, greaterThanOrEqualTo(5000L)); // 5 seconds minimum
+        // Verify deterministic log collection completes quickly (no 30-second wait)
+        // With old sleep-based approach this would take 30+ seconds, now should be much faster
+        assertThat(elapsedTime, lessThan(10000L)); // Should complete in under 10 seconds
     }
 }
