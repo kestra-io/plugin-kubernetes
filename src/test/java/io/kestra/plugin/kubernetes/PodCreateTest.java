@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -791,7 +792,10 @@ class PodCreateTest {
     }
 
     @Test
-    void logCollectionTimingWithOutputFiles() throws Exception {
+    void completeLogCollectionAfterQuickTermination() throws Exception {
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+
+        // Generate exactly 20 identifiable log lines in quick succession, then fail
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
@@ -802,10 +806,10 @@ class PodCreateTest {
                 "containers:",
                 "- name: unittest",
                 "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
+                "  command:",
+                "    - 'bash'",
                 "    - '-c'",
-                "    - 'echo \"Container failing\" && exit 1'",
+                "    - 'for i in {1..20}; do echo \"Log line $i\"; done; echo \"FINAL\" && exit 1'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -820,8 +824,116 @@ class PodCreateTest {
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
         long elapsedTime = System.currentTimeMillis() - startTime;
 
-        // Verify deterministic log collection completes quickly (no 30-second wait)
-        // With old sleep-based approach this would take 30+ seconds, now should be much faster
-        assertThat(elapsedTime, lessThan(10000L)); // Should complete in under 10 seconds
+        Thread.sleep(500); // Allow log queue to flush
+        List<LogEntry> logs = receive.collectList().block();
+
+        // Verify all 20 numbered logs were collected (no missing logs)
+        for (int i = 1; i <= 20; i++) {
+            String expected = "Log line " + i;
+            long count = logs.stream()
+                .filter(log -> log.getMessage().equals(expected))
+                .count();
+            assertThat("Missing or duplicate log: " + expected, count, is(1L));
+        }
+
+        // Verify final log before exit was captured
+        assertThat(logs.stream()
+            .filter(log -> log.getMessage().equals("FINAL"))
+            .count(),
+            is(1L));
+
+        // Verify fast completion with deterministic log collection (no 30-second sleep)
+        assertThat("Should complete quickly without artificial delays",
+            elapsedTime, lessThan(10000L));
+    }
+
+    @Test
+    void highThroughputLogCollectionNoPrecisionLoss() throws Exception {
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+
+        // Generate 100 logs as fast as possible (tight loop, no delays)
+        // Tests that nanosecond timestamp precision prevents log loss
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command:",
+                "    - 'bash'",
+                "    - '-c'",
+                "    - 'for i in {1..100}; do echo \"Line$i\"; done'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContextFinal = runContextInitializer.forWorker(
+            (DefaultRunContext) runContext,
+            WorkerTask.builder().task(task).taskRun(taskRun).build()
+        );
+
+        task.run(runContextFinal);
+
+        // Wait for all logs to be collected with retry mechanism
+        Await.until(
+            () -> {
+                List<LogEntry> logs = receive.collectList().block();
+                long lineCount = logs.stream()
+                    .filter(log -> log.getMessage().startsWith("Line"))
+                    .count();
+                return lineCount >= 100L;
+            },
+            Duration.ofMillis(100),
+            Duration.ofSeconds(5)
+        );
+
+        List<LogEntry> logs = receive.collectList().block();
+
+        // Count how many "Line" logs we got (excluding system logs like "Pod created", "Pod deleted")
+        List<String> lineMessages = logs.stream()
+            .filter(log -> log.getMessage().startsWith("Line"))
+            .map(LogEntry::getMessage)
+            .toList();
+
+        long lineCount = lineMessages.size();
+
+        // If test fails, provide diagnostics
+        if (lineCount != 100L) {
+            log.error("Expected 100 logs but got {}. First 5: {}, Last 5: {}",
+                lineCount,
+                lineMessages.stream().limit(5).toList(),
+                lineMessages.stream().skip(Math.max(0, lineCount - 5)).toList()
+            );
+        }
+
+        // Should get all 100 lines with nanosecond precision timestamp filtering
+        assertThat("All high-throughput logs should be collected without loss",
+            lineCount, is(100L));
+
+        // Verify no duplicates - all collected lines should be unique
+        long uniqueLines = lineMessages.stream()
+            .distinct()
+            .count();
+
+        if (uniqueLines != 100L) {
+            // Find duplicates for diagnostics
+            Map<String, Long> frequencies = lineMessages.stream()
+                .collect(Collectors.groupingBy(msg -> msg, Collectors.counting()));
+            List<String> duplicates = frequencies.entrySet().stream()
+                .filter(e -> e.getValue() > 1)
+                .map(e -> e.getKey() + " (x" + e.getValue() + ")")
+                .toList();
+            log.error("Found {} duplicate log lines: {}", duplicates.size(), duplicates);
+        }
+
+        assertThat("Timestamp filtering should prevent duplicate logs",
+            uniqueLines, is(100L));
     }
 }
