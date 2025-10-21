@@ -324,8 +324,23 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         return output
                             .build();
                     } finally {
-                        // Always delete the pod, even if an exception occurred during initialization or execution
-                        delete(client, logger, pod, runContext);
+                        // Signal sidecar to exit gracefully before pod deletion
+                        // This runs on all paths (success, failure, interruption) ensuring fast pod cleanup
+                        if (this.outputFiles != null) {
+                            try {
+                                PodService.uploadMarker(runContext, PodService.podRef(client, pod),
+                                                       logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
+                                logger.debug("Signaled sidecar to exit before pod deletion");
+                            } catch (Exception markerException) {
+                                // Failure is acceptable - pod might already be terminating
+                                logger.debug("Could not signal sidecar (pod may be terminating): {}", markerException.getMessage());
+                            }
+                        }
+
+                        // Delete the pod if not already killed externally (kill() deletes the pod itself)
+                        if (!killed.get()) {
+                            delete(client, logger, pod, runContext);
+                        }
                     }
                 } catch (InterruptedException | InterruptedIOException e) {
                     logger.info("Task was interrupted.");
