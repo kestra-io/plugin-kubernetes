@@ -186,9 +186,14 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private final Property<Boolean> resume = Property.ofValue(true);
 
     @Schema(
-        title = "Additional time after the pod ends to wait for late logs"
+        title = "Additional time after the pod ends to wait for late logs",
+        description = "This property is deprecated and no longer used. Log collection now uses a deterministic approach " +
+                     "that fetches remaining logs immediately after pod termination using timestamp-based filtering, " +
+                     "eliminating the need for arbitrary wait periods.",
+        deprecated = true
     )
     @Builder.Default
+    @Deprecated
     private Property<Duration> waitForLogInterval = Property.ofValue(Duration.ofSeconds(30));
 
     private final AtomicBoolean killed = new AtomicBoolean(false);
