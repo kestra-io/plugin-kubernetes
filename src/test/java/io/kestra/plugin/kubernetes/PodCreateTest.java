@@ -261,8 +261,8 @@ class PodCreateTest {
     }
 
     @Test
-    void initializationFailureDeletesPod() throws Exception {
-        // Test for issue #211: pod cleanup when inputFiles reference missing upstream outputs
+    void missingInputFilesFailsFastWithValidation() throws Exception {
+        // Test for issue #211: validation prevents pod creation when inputFiles are invalid
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
@@ -284,43 +284,33 @@ class PodCreateTest {
             ))
             .build();
 
-        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
 
-        ExecutorService executorService = Executors.newSingleThreadExecutor();
-        Future<?> taskFuture = executorService.submit(() -> {
-            try {
-                task.run(finalRunContext);
-            } catch (Exception e) {
-                log.debug("Task failed as expected during initialization.", e);
-            }
-        });
-
         String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
 
+        // Should fail fast with validation error before pod creation
+        long startTime = System.currentTimeMillis();
+        Exception exception = assertThrows(Exception.class, () -> task.run(finalRunContext));
+        long elapsedTime = System.currentTimeMillis() - startTime;
+
+        // Verify error message mentions the problematic file reference
+        assertThat(exception.getMessage(), containsString("outputs"));
+        assertThat(exception.getMessage(), containsString("nonexistent-task"));
+
+        // Should fail in < 2 seconds, not wait 30 seconds for timeout
+        assertThat(elapsedTime, lessThan(2000L));
+
+        // Verify no pod was created
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
-            // Wait for pod creation
-            Await.until(() -> {
-                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty();
-            }, Duration.ofMillis(200), Duration.ofMinutes(1));
-
-            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().get(0);
-            String podName = createdPod.getMetadata().getName();
-            log.info("Test detected pod creation: {}", podName);
-
-            // Wait for pod to be deleted despite the initialization failure
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(2));
-
-            log.info("Pod {} was successfully deleted after initialization failure.", podName);
-        } finally {
-            taskFuture.cancel(true);
-            executorService.shutdownNow();
+            var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+            assertThat(pods, empty());
         }
+
+        log.info("Validation prevented pod creation and failed in {}ms", elapsedTime);
     }
 
     @Test
