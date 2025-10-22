@@ -12,12 +12,12 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.PatchStrategy;
+import io.kestra.plugin.kubernetes.models.ResourceStatus;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 
 import java.time.Duration;
@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
                     namespace: production
                     resourceType: deployment
                     resourceName: my-api
+                    apiGroup: apps
                     wait: true
                     waitTimeout: PT10M
                     patch: |
@@ -78,6 +79,7 @@ import java.util.concurrent.TimeUnit;
                     namespace: production
                     resourceType: deployment
                     resourceName: my-api
+                    apiGroup: apps
                     patch: |
                       {
                         "spec": {
@@ -111,6 +113,7 @@ import java.util.concurrent.TimeUnit;
                     namespace: production
                     resourceType: deployment
                     resourceName: my-api
+                    apiGroup: apps
                     patchStrategy: JSON_PATCH
                     patch: |
                       [
@@ -131,6 +134,7 @@ import java.util.concurrent.TimeUnit;
                     namespace: production
                     resourceType: deployment
                     resourceName: my-api
+                    apiGroup: apps
                     patchStrategy: JSON_MERGE
                     patch: |
                       {
@@ -179,6 +183,7 @@ import java.util.concurrent.TimeUnit;
                     namespace: production
                     resourceType: deployment
                     resourceName: my-api
+                    apiGroup: apps
                     patchStrategy: JSON_PATCH
                     patch: |
                       [
@@ -221,7 +226,6 @@ import java.util.concurrent.TimeUnit;
         "kubectl.Patch allows targeted updates to specific fields. Supports three patch strategies: " +
         "Strategic Merge (default), JSON Merge, and JSON Patch."
 )
-@Slf4j
 public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
     @NotNull
@@ -268,8 +272,9 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
     private Property<String> apiGroup;
 
     @Schema(
-        title = "The Kubernetes resource apiVersion",
-        description = "Default is 'v1'. For apps resources (deployments, statefulsets), use 'apps/v1'."
+        title = "The Kubernetes resource API version",
+        description = "The version part of the API (e.g., 'v1', 'v1beta1'). Default is 'v1'. " +
+            "Note: This is just the version, not the full group/version. Use apiGroup for the group part."
     )
     private Property<String> apiVersion;
 
@@ -315,16 +320,16 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
             .orElseThrow(() -> new IllegalArgumentException("patch content must be provided"));
         var strategy = runContext.render(this.patchStrategy).as(PatchStrategy.class)
             .orElse(PatchStrategy.STRATEGIC_MERGE);
-        var apiGroup = runContext.render(this.apiGroup).as(String.class).orElse("");
-        var apiVersion = runContext.render(this.apiVersion).as(String.class).orElse(determineApiVersion(resourceType, apiGroup));
+        var renderedApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("");
+        var renderedApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
         var shouldWait = runContext.render(this.wait).as(Boolean.class).orElse(false);
         var timeout = runContext.render(this.waitTimeout).as(Duration.class).orElse(Duration.ofMinutes(5));
 
         try (var client = PodService.client(runContext, this.getConnection())) {
             // Build resource definition context
             var resourceContext = new ResourceDefinitionContext.Builder()
-                .withGroup(apiGroup)
-                .withVersion(apiVersion)
+                .withGroup(renderedApiGroup)
+                .withVersion(renderedApiVersion)
                 .withKind(resourceType)
                 .withNamespaced(true)
                 .build();
@@ -335,9 +340,9 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
                 .withName(resourceName);
 
             // Apply patch based on strategy
-            log.info("Patching {} '{}' in namespace '{}' using {} strategy",
+            runContext.logger().info("Patching {} '{}' in namespace '{}' using {} strategy",
                 resourceType, resourceName, namespace, strategy);
-            log.debug("Patch content: {}", patchContent);
+            runContext.logger().debug("Patch content: {}", patchContent);
 
             var patchedResource = switch (strategy) {
                 case STRATEGIC_MERGE -> resourceClient.patch(patchContent);
@@ -355,7 +360,7 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
                 throw new Exception("Failed to patch resource: resource not found or patch failed");
             }
 
-            log.info("Successfully patched {} '{}'", resourceType, resourceName);
+            runContext.logger().info("Successfully patched {} '{}'", resourceType, resourceName);
 
             // Optionally wait for resource condition
             if (shouldWait) {
@@ -366,6 +371,7 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
             return Output.builder()
                 .metadata(Metadata.from(patchedResource.getMetadata()))
+                .status(ResourceStatus.from(patchedResource))
                 .build();
         }
     }
@@ -550,32 +556,6 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
         }
     }
 
-    /**
-     * Determines the appropriate API version based on resource type.
-     * This is a helper to provide sensible defaults for common resources.
-     */
-    private String determineApiVersion(String resourceType, String apiGroup) {
-        if (!apiGroup.isEmpty()) {
-            // Custom resources - let the user specify or use v1 as default
-            return "v1";
-        }
-
-        // Common resource types that use apps/v1
-        var appsV1Resources = java.util.Set.of(
-            "deployment", "deployments",
-            "statefulset", "statefulsets",
-            "daemonset", "daemonsets",
-            "replicaset", "replicasets"
-        );
-
-        if (appsV1Resources.contains(resourceType.toLowerCase())) {
-            return "apps/v1";
-        }
-
-        // Default to v1 for core resources (pods, services, configmaps, etc.)
-        return "v1";
-    }
-
     @Getter
     @Builder
     public static class Output implements io.kestra.core.models.tasks.Output {
@@ -584,5 +564,12 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
             title = "The resource metadata after patching"
         )
         private final Metadata metadata;
+
+        @Schema(
+            title = "The resource status after patching",
+            description = "Contains the current state of the resource including conditions, replicas, phase, etc. " +
+                "Useful for validation and conditional logic in workflows."
+        )
+        private final ResourceStatus status;
     }
 }

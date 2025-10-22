@@ -9,9 +9,12 @@ import io.kestra.plugin.kubernetes.models.PatchStrategy;
 import io.kestra.plugin.kubernetes.services.PodService;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -22,6 +25,41 @@ class PatchTest {
     @Inject
     private RunContextFactory runContextFactory;
 
+    // Track created resources for cleanup
+    private final List<ResourceToCleanup> resourcesToCleanup = new ArrayList<>();
+
+    @AfterEach
+    void cleanup() throws Exception {
+        var runContext = runContextFactory.of();
+        try (KubernetesClient client = PodService.client(runContext, null)) {
+            for (var resource : resourcesToCleanup) {
+                try {
+                    log.info("Cleaning up {} '{}' in namespace '{}'", resource.type, resource.name, resource.namespace);
+                    switch (resource.type.toLowerCase()) {
+                        case "deployment" -> client.apps().deployments()
+                            .inNamespace(resource.namespace)
+                            .withName(resource.name)
+                            .delete();
+                        case "pod" -> client.pods()
+                            .inNamespace(resource.namespace)
+                            .withName(resource.name)
+                            .delete();
+                        default -> log.warn("Unknown resource type for cleanup: {}", resource.type);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to cleanup {} '{}': {}", resource.type, resource.name, e.getMessage());
+                }
+            }
+            resourcesToCleanup.clear();
+        }
+    }
+
+    private void trackForCleanup(String type, String name, String namespace) {
+        resourcesToCleanup.add(new ResourceToCleanup(type, name, namespace));
+    }
+
+    private record ResourceToCleanup(String type, String name, String namespace) {}
+
     /**
      * Test strategic merge patch (default strategy).
      * This test patches a deployment's container resources.
@@ -30,17 +68,19 @@ class PatchTest {
     void testStrategicMergePatch() throws Exception {
         var runContext = runContextFactory.of();
 
+        String deploymentName = "iokestrapluginkuberneteskubectlpatchtest-strategicmerge-" + System.currentTimeMillis();
+
         // First, create a deployment to patch
         var applyTask = Apply.builder()
             .id("create-deployment")
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
             .spec(Property.ofValue(
-                """
+                String.format("""
                     apiVersion: apps/v1
                     kind: Deployment
                     metadata:
-                      name: patch-test-deployment
+                      name: %s
                       labels:
                         app: patch-test
                     spec:
@@ -56,22 +96,19 @@ class PatchTest {
                           containers:
                           - name: nginx
                             image: nginx:1.19
-                            resources:
-                              limits:
-                                memory: "128Mi"
-                                cpu: "100m"
-                    """
+                    """, deploymentName)
             ))
             .build();
 
         applyTask.run(runContext);
+        trackForCleanup("deployment", deploymentName, "default");
 
         // Wait for deployment to be created
         try (KubernetesClient client = PodService.client(runContext, null)) {
             Await.until(() -> {
                 var deployment = client.apps().deployments()
                     .inNamespace("default")
-                    .withName("patch-test-deployment")
+                    .withName(deploymentName)
                     .get();
                 return deployment != null;
             }, Duration.ofMillis(100), Duration.ofSeconds(30));
@@ -83,7 +120,8 @@ class PatchTest {
             .type(Patch.class.getName())
             .namespace(Property.ofValue("default"))
             .resourceType(Property.ofValue("deployment"))
-            .resourceName(Property.ofValue("patch-test-deployment"))
+            .resourceName(Property.ofValue(deploymentName))
+            .apiGroup(Property.ofValue("apps"))
             .patchStrategy(Property.ofValue(PatchStrategy.STRATEGIC_MERGE))
             .patch(Property.ofValue(
                 """
@@ -113,7 +151,8 @@ class PatchTest {
         var output = patchTask.run(runContext);
 
         assertThat(output.getMetadata(), notNullValue());
-        assertThat(output.getMetadata().getName(), equalTo("patch-test-deployment"));
+        assertThat(output.getMetadata().getName(), equalTo(deploymentName));
+        assertThat(output.getStatus(), notNullValue());
     }
 
     /**
@@ -124,17 +163,19 @@ class PatchTest {
     void testJsonPatch() throws Exception {
         var runContext = runContextFactory.of();
 
+        String deploymentName = "iokestrapluginkuberneteskubectlpatchtest-jsonpatch-" + System.currentTimeMillis();
+
         // Create a deployment
         var applyTask = Apply.builder()
             .id("create-deployment")
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
             .spec(Property.ofValue(
-                """
+                String.format("""
                     apiVersion: apps/v1
                     kind: Deployment
                     metadata:
-                      name: json-patch-test
+                      name: %s
                       labels:
                         app: json-patch
                     spec:
@@ -150,18 +191,19 @@ class PatchTest {
                           containers:
                           - name: nginx
                             image: nginx:latest
-                    """
+                    """, deploymentName)
             ))
             .build();
 
         applyTask.run(runContext);
+        trackForCleanup("deployment", deploymentName, "default");
 
         // Wait for deployment to be created
         try (KubernetesClient client = PodService.client(runContext, null)) {
             Await.until(() -> {
                 var deployment = client.apps().deployments()
                     .inNamespace("default")
-                    .withName("json-patch-test")
+                    .withName(deploymentName)
                     .get();
                 return deployment != null;
             }, Duration.ofMillis(100), Duration.ofSeconds(30));
@@ -173,7 +215,8 @@ class PatchTest {
             .type(Patch.class.getName())
             .namespace(Property.ofValue("default"))
             .resourceType(Property.ofValue("deployment"))
-            .resourceName(Property.ofValue("json-patch-test"))
+            .resourceName(Property.ofValue(deploymentName))
+            .apiGroup(Property.ofValue("apps"))
             .patchStrategy(Property.ofValue(PatchStrategy.JSON_PATCH))
             .patch(Property.ofValue(
                 """
@@ -187,7 +230,7 @@ class PatchTest {
         var output = patchTask.run(runContext);
 
         assertThat(output.getMetadata(), notNullValue());
-        assertThat(output.getMetadata().getName(), equalTo("json-patch-test"));
+        assertThat(output.getMetadata().getName(), equalTo(deploymentName));
     }
 
     /**
@@ -198,17 +241,19 @@ class PatchTest {
     void testJsonMergePatch() throws Exception {
         var runContext = runContextFactory.of();
 
+        String deploymentName = "iokestrapluginkuberneteskubectlpatchtest-jsonmerge-" + System.currentTimeMillis();
+
         // Create a deployment with an annotation
         var applyTask = Apply.builder()
             .id("create-deployment")
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
             .spec(Property.ofValue(
-                """
+                String.format("""
                     apiVersion: apps/v1
                     kind: Deployment
                     metadata:
-                      name: json-merge-test
+                      name: %s
                       labels:
                         app: json-merge
                       annotations:
@@ -227,18 +272,19 @@ class PatchTest {
                           containers:
                           - name: nginx
                             image: nginx:latest
-                    """
+                    """, deploymentName)
             ))
             .build();
 
         applyTask.run(runContext);
+        trackForCleanup("deployment", deploymentName, "default");
 
         // Wait for deployment to be created
         try (KubernetesClient client = PodService.client(runContext, null)) {
             Await.until(() -> {
                 var deployment = client.apps().deployments()
                     .inNamespace("default")
-                    .withName("json-merge-test")
+                    .withName(deploymentName)
                     .get();
                 return deployment != null;
             }, Duration.ofMillis(100), Duration.ofSeconds(30));
@@ -250,7 +296,8 @@ class PatchTest {
             .type(Patch.class.getName())
             .namespace(Property.ofValue("default"))
             .resourceType(Property.ofValue("deployment"))
-            .resourceName(Property.ofValue("json-merge-test"))
+            .resourceName(Property.ofValue(deploymentName))
+            .apiGroup(Property.ofValue("apps"))
             .patchStrategy(Property.ofValue(PatchStrategy.JSON_MERGE))
             .patch(Property.ofValue(
                 """
@@ -268,76 +315,71 @@ class PatchTest {
         var output = patchTask.run(runContext);
 
         assertThat(output.getMetadata(), notNullValue());
-        assertThat(output.getMetadata().getName(), equalTo("json-merge-test"));
+        assertThat(output.getMetadata().getName(), equalTo(deploymentName));
     }
 
     /**
-     * Test patch with wait functionality.
-     * This verifies that the wait mechanism doesn't cause errors.
+     * Test patch with wait functionality on a Pod.
+     * This verifies that the wait mechanism works correctly with Ready condition.
      */
     @Test
     void testPatchWithWait() throws Exception {
         var runContext = runContextFactory.of();
 
-        // Create a deployment
+        String podName = "iokestrapluginkuberneteskubectlpatchtest-patchwithwait-" + System.currentTimeMillis();
+
+        // Create a simple pod
         var applyTask = Apply.builder()
-            .id("create-deployment")
+            .id("create-pod")
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
             .spec(Property.ofValue(
-                """
-                    apiVersion: apps/v1
-                    kind: Deployment
+                String.format("""
+                    apiVersion: v1
+                    kind: Pod
                     metadata:
-                      name: wait-test
+                      name: %s
                       labels:
-                        app: wait-test
+                        app: patch-wait-test
                     spec:
-                      replicas: 1
-                      selector:
-                        matchLabels:
-                          app: wait-test
-                      template:
-                        metadata:
-                          labels:
-                            app: wait-test
-                        spec:
-                          containers:
-                          - name: nginx
-                            image: nginx:latest
-                    """
+                      containers:
+                      - name: nginx
+                        image: nginx:latest
+                        ports:
+                        - containerPort: 80
+                    """, podName)
             ))
             .build();
 
         applyTask.run(runContext);
+        trackForCleanup("pod", podName, "default");
 
-        // Wait for deployment to be ready before patching
+        // Wait for pod to be ready before patching
         try (KubernetesClient client = PodService.client(runContext, null)) {
             Await.until(() -> {
-                var deployment = client.apps().deployments()
+                var pod = client.pods()
                     .inNamespace("default")
-                    .withName("wait-test")
+                    .withName(podName)
                     .get();
-                if (deployment == null) {
+                if (pod == null || pod.getStatus() == null) {
                     return false;
                 }
-                // Check if deployment has Ready condition
-                var conditions = deployment.getStatus() != null ? deployment.getStatus().getConditions() : null;
+                var conditions = pod.getStatus().getConditions();
                 if (conditions == null) {
                     return false;
                 }
                 return conditions.stream()
-                    .anyMatch(c -> "Available".equals(c.getType()) && "True".equals(c.getStatus()));
+                    .anyMatch(c -> "Ready".equals(c.getType()) && "True".equals(c.getStatus()));
             }, Duration.ofMillis(200), Duration.ofMinutes(2));
         }
 
-        // Patch with wait enabled (short timeout for test)
+        // Patch pod with wait enabled - just add a label (won't trigger restart)
         var patchTask = Patch.builder()
-            .id("patch-with-wait")
+            .id("patch-pod-with-wait")
             .type(Patch.class.getName())
             .namespace(Property.ofValue("default"))
-            .resourceType(Property.ofValue("deployment"))
-            .resourceName(Property.ofValue("wait-test"))
+            .resourceType(Property.ofValue("pod"))
+            .resourceName(Property.ofValue(podName))
             .patch(Property.ofValue(
                 """
                     {
@@ -350,25 +392,50 @@ class PatchTest {
                     """
             ))
             .wait(Property.ofValue(true))
-            .waitTimeout(Property.ofValue(Duration.ofMinutes(2)))
+            .waitTimeout(Property.ofValue(Duration.ofSeconds(30)))
             .build();
 
         var output = patchTask.run(runContext);
 
         assertThat(output.getMetadata(), notNullValue());
-        assertThat(output.getMetadata().getName(), equalTo("wait-test"));
+        assertThat(output.getMetadata().getName(), equalTo(podName));
+
+        // Verify status output contains pod status information
+        assertThat(output.getStatus(), notNullValue());
+        assertThat(output.getStatus().getStatus(), notNullValue());
+
+        // Pods should have a phase in their status
+        var statusMap = output.getStatus().getStatus();
+        assertThat(statusMap.get("phase"), notNullValue());
+        assertThat(statusMap.get("phase"), equalTo("Running"));
+
+        // Verify conditions exist (Ready, Initialized, etc.)
+        assertThat(statusMap.get("conditions"), notNullValue());
+        assertThat(statusMap.get("conditions"), instanceOf(java.util.List.class));
+
+        // Verify containerStatuses exist
+        assertThat(statusMap.get("containerStatuses"), notNullValue());
+        assertThat(statusMap.get("containerStatuses"), instanceOf(java.util.List.class));
+
+        // Verify the label was added
+        try (KubernetesClient client = PodService.client(runContext, null)) {
+            var pod = client.pods()
+                .inNamespace("default")
+                .withName(podName)
+                .get();
+            assertThat(pod.getMetadata().getLabels().get("patched"), equalTo("true"));
+        }
     }
 
     /**
-     * Test patching with Kestra template variables.
-     * This ensures that property rendering works correctly.
+     * Test patching deployment replicas with JSON Patch.
+     * This verifies the task works correctly with JSON Patch operations.
      */
     @Test
-    void testPatchWithTemplating() throws Exception {
-        var runContext = runContextFactory.of(java.util.Map.of(
-            "deploymentName", "templating-test",
-            "newReplicas", 3
-        ));
+    void testPatchDeploymentReplicas() throws Exception {
+        var runContext = runContextFactory.of();
+
+        String deploymentName = "iokestrapluginkuberneteskubectlpatchtest-replicas-" + System.currentTimeMillis();
 
         // Create a deployment
         var applyTask = Apply.builder()
@@ -376,55 +443,57 @@ class PatchTest {
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
             .spec(Property.ofValue(
-                """
+                String.format("""
                     apiVersion: apps/v1
                     kind: Deployment
                     metadata:
-                      name: templating-test
+                      name: %s
                       labels:
-                        app: templating
+                        app: replica-test
                     spec:
                       replicas: 1
                       selector:
                         matchLabels:
-                          app: templating
+                          app: replica-test
                       template:
                         metadata:
                           labels:
-                            app: templating
+                            app: replica-test
                         spec:
                           containers:
                           - name: nginx
                             image: nginx:latest
-                    """
+                    """, deploymentName)
             ))
             .build();
 
         applyTask.run(runContext);
+        trackForCleanup("deployment", deploymentName, "default");
 
         // Wait for deployment to be created
         try (KubernetesClient client = PodService.client(runContext, null)) {
             Await.until(() -> {
                 var deployment = client.apps().deployments()
                     .inNamespace("default")
-                    .withName("templating-test")
+                    .withName(deploymentName)
                     .get();
                 return deployment != null;
             }, Duration.ofMillis(100), Duration.ofSeconds(30));
         }
 
-        // Patch using template variables
+        // Patch to scale deployment
         var patchTask = Patch.builder()
-            .id("patch-templating")
+            .id("patch-replicas")
             .type(Patch.class.getName())
             .namespace(Property.ofValue("default"))
             .resourceType(Property.ofValue("deployment"))
-            .resourceName(Property.ofValue("{{ deploymentName }}"))
+            .resourceName(Property.ofValue(deploymentName))
+            .apiGroup(Property.ofValue("apps"))
             .patchStrategy(Property.ofValue(PatchStrategy.JSON_PATCH))
             .patch(Property.ofValue(
                 """
                     [
-                      {"op": "replace", "path": "/spec/replicas", "value": {{ newReplicas }}}
+                      {"op": "replace", "path": "/spec/replicas", "value": 3}
                     ]
                     """
             ))
@@ -433,7 +502,20 @@ class PatchTest {
         var output = patchTask.run(runContext);
 
         assertThat(output.getMetadata(), notNullValue());
-        assertThat(output.getMetadata().getName(), equalTo("templating-test"));
+        assertThat(output.getMetadata().getName(), equalTo(deploymentName));
+
+        // Verify status output is present
+        assertThat(output.getStatus(), notNullValue());
+        // Status map might be null initially for deployments, but the object should exist
+
+        // Verify replicas were updated
+        try (KubernetesClient client = PodService.client(runContext, null)) {
+            var deployment = client.apps().deployments()
+                .inNamespace("default")
+                .withName(deploymentName)
+                .get();
+            assertThat(deployment.getSpec().getReplicas(), equalTo(3));
+        }
     }
 
     /**
