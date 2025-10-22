@@ -66,13 +66,17 @@ class PodCreateTest {
 
     @Test
     void run() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        AtomicInteger logCounter = new AtomicInteger(0);
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
+            if (logEntry.getLeft().getLevel() == Level.INFO) {
+                logCounter.incrementAndGet();
+            }
+        });
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30))) // Less than 30 secondes will make the test flaky cause the logs are not yet available
 //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .spec(TestUtils.convert(
                 ObjectMeta.class,
@@ -95,9 +99,14 @@ class PodCreateTest {
 
         PodCreate.Output runOutput = task.run(runContext);
 
-        Thread.sleep(500);
-
         assertThat(runOutput.getMetadata().getName(), containsString("iokestrapluginkubernetespodcreatetest-run-podcreate"));
+
+        // Wait for all logs to be collected (expect 14 INFO logs)
+        Await.until(
+            () -> logCounter.get() >= 14,
+            Duration.ofMillis(100),
+            Duration.ofSeconds(5)
+        );
 
         List<LogEntry> logs = receive.collectList().block();
 
@@ -178,7 +187,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("results.json")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -207,7 +215,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("results.json")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
             .spec(TestUtils.convert(
@@ -323,7 +330,6 @@ class PodCreateTest {
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30))) // Less than 30 secondes will make the test flaky cause the logs are not yet available
 //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .spec(TestUtils.convert(
                 ObjectMeta.class,
@@ -378,7 +384,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(Arrays.asList("xml", "csv")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30))) // Less than 30 secondes will make the test flaky cause the logs are not yet available
 //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .inputFiles(Map.of(
                 "files/in/in.txt", "I'm here",
@@ -439,7 +444,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("*.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -495,7 +499,6 @@ class PodCreateTest {
                 "in.txt", "File content"
             ))
             .outputFiles(Property.ofValue(List.of("out.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -570,7 +573,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("**.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -675,7 +677,6 @@ class PodCreateTest {
             .id("special-char-test")
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -712,7 +713,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -741,14 +741,19 @@ class PodCreateTest {
 
     @Test
     void multipleContainersOneFailsWithOutputFiles() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        AtomicInteger logCounter = new AtomicInteger(0);
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
+            String message = logEntry.getLeft().getMessage();
+            if (message.contains("First container succeeded") || message.contains("Second container failing")) {
+                logCounter.incrementAndGet();
+            }
+        });
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -777,7 +782,12 @@ class PodCreateTest {
         assertThat(exception.getMessage(), containsString("container-failure"));
         assertThat(exception.getMessage(), containsString("exit code 1"));
 
-        Thread.sleep(500);
+        // Wait for logs from both containers to be collected
+        Await.until(
+            () -> logCounter.get() >= 2,
+            Duration.ofMillis(100),
+            Duration.ofSeconds(5)
+        );
 
         List<LogEntry> logs = receive.collectList().block();
 
