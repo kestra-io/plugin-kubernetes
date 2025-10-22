@@ -186,11 +186,16 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private final Property<Boolean> resume = Property.ofValue(true);
 
     @Schema(
-        title = "Additional time after the pod ends to wait for late logs"
+        title = "Additional time after the pod ends to wait for late logs",
+        description = "This property is deprecated and no longer used. Log collection now uses a deterministic approach " +
+                     "that fetches remaining logs immediately after pod termination using timestamp-based filtering, " +
+                     "eliminating the need for arbitrary wait periods.",
+        deprecated = true
     )
     @Builder.Default
+    @Deprecated
     private Property<Duration> waitForLogInterval = Property.ofValue(Duration.ofSeconds(30));
-    
+
     private final AtomicBoolean killed = new AtomicBoolean(false);
     private final AtomicReference<String> currentPodName = new AtomicReference<>();
     private volatile String currentNamespace;
@@ -302,7 +307,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         }
 
                         // Collect late logs and check for failures (throws if container failed)
-                        handleEnd(ended, runContext, this.outputFiles != null);
+                        handleEnd(ended, runContext, this.outputFiles != null, client, podLogService);
 
                         PodStatus podStatus = PodStatus.from(ended.getStatus());
                         Output.OutputBuilder output = Output.builder()
@@ -319,8 +324,23 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         return output
                             .build();
                     } finally {
-                        // Always delete the pod, even if an exception occurred during initialization or execution
-                        delete(client, logger, pod, runContext);
+                        // Signal sidecar to exit gracefully before pod deletion
+                        // This runs on all paths (success, failure, interruption) ensuring fast pod cleanup
+                        if (this.outputFiles != null) {
+                            try {
+                                PodService.uploadMarker(runContext, PodService.podRef(client, pod),
+                                                       logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
+                                logger.debug("Signaled sidecar to exit before pod deletion");
+                            } catch (Exception markerException) {
+                                // Failure is acceptable - pod might already be terminating
+                                logger.debug("Could not signal sidecar (pod may be terminating): {}", markerException.getMessage());
+                            }
+                        }
+
+                        // Delete the pod if not already killed externally (kill() deletes the pod itself)
+                        if (!killed.get()) {
+                            delete(client, logger, pod, runContext);
+                        }
                     }
                 } catch (InterruptedException | InterruptedIOException e) {
                     logger.info("Task was interrupted.");
@@ -410,11 +430,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         }
     }
 
-    private void handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles) throws InterruptedException, IllegalVariableEvaluationException {
+    private void handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles, KubernetesClient client, PodLogService podLogService) throws Exception {
         Logger logger = runContext.logger();
 
-        // let some time to gather the logs before delete
-        Thread.sleep(runContext.render(this.waitForLogInterval).as(Duration.class).orElseThrow().toMillis());
+        // Fetch any remaining logs deterministically after pod termination
+        podLogService.fetchFinalLogs(client, ended);
 
         // Check for failures based on whether outputFiles are configured
         if (hasOutputFiles) {

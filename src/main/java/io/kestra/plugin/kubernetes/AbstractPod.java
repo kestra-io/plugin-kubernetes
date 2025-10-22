@@ -97,8 +97,6 @@ abstract public class AbstractPod extends AbstractConnection {
                 .copy(PodService.tempDir(runContext))
         );
 
-        PodService.uploadMarker(runContext, podResource, logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
-
         // Download output files
         // path map from copied file path with encoded parts to the actually produced relative file path
         Map<Path, Path> pathMap = new HashMap<>();

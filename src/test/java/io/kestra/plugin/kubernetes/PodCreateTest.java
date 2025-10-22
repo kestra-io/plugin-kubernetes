@@ -41,6 +41,8 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -64,13 +66,17 @@ class PodCreateTest {
 
     @Test
     void run() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        AtomicInteger logCounter = new AtomicInteger(0);
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
+            if (logEntry.getLeft().getLevel() == Level.INFO) {
+                logCounter.incrementAndGet();
+            }
+        });
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30))) // Less than 30 secondes will make the test flaky cause the logs are not yet available
 //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .spec(TestUtils.convert(
                 ObjectMeta.class,
@@ -93,9 +99,14 @@ class PodCreateTest {
 
         PodCreate.Output runOutput = task.run(runContext);
 
-        Thread.sleep(500);
-
         assertThat(runOutput.getMetadata().getName(), containsString("iokestrapluginkubernetespodcreatetest-run-podcreate"));
+
+        // Wait for all logs to be collected (expect 14 INFO logs)
+        Await.until(
+            () -> logCounter.get() >= 14,
+            Duration.ofMillis(100),
+            Duration.ofSeconds(5)
+        );
 
         List<LogEntry> logs = receive.collectList().block();
 
@@ -176,7 +187,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("results.json")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -205,7 +215,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("results.json")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
             .spec(TestUtils.convert(
@@ -250,10 +259,124 @@ class PodCreateTest {
             log.info("Test detected pod creation: {}", podName);
 
             // Wait for pod to be deleted despite the failure
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(2));
+            long deletionStartTime = System.currentTimeMillis();
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                if (!pods.isEmpty()) {
+                    var pod = pods.get(0);
+                    String phase = pod.getStatus() != null ? pod.getStatus().getPhase() : "Unknown";
+                    String deletionTimestamp = pod.getMetadata().getDeletionTimestamp();
+                    log.debug("Pod {} status: phase={}, deletionTimestamp={}", podName, phase, deletionTimestamp);
+                }
+                return pods.isEmpty();
+            }, Duration.ofMillis(200), Duration.ofMinutes(2));
+            long deletionDuration = System.currentTimeMillis() - deletionStartTime;
 
-            log.info("Pod {} was successfully deleted after failure with outputFiles.", podName);
+            log.info("Pod {} was successfully deleted after failure with outputFiles. Deletion took {}ms", podName, deletionDuration);
+        } finally {
+            taskFuture.cancel(true);
+            executorService.shutdownNow();
+        }
+    }
+
+    @Test
+    void sidecarExitsGracefullyOnFailure() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .outputFiles(Property.ofValue(List.of("results.json")))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'echo \"Container failing\" && exit 1'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        Future<?> taskFuture = executorService.submit(() -> {
+            try {
+                task.run(finalRunContext);
+            } catch (Exception e) {
+                log.debug("Task failed as expected.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod creation and completion
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                if (pods.isEmpty()) {
+                    return false;
+                }
+                var pod = pods.get(0);
+                String phase = pod.getStatus() != null ? pod.getStatus().getPhase() : null;
+                return "Failed".equals(phase) || "Succeeded".equals(phase);
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var completedPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().get(0);
+            String podName = completedPod.getMetadata().getName();
+            log.info("Pod {} completed with phase: {}", podName, completedPod.getStatus().getPhase());
+
+            // Verify sidecar container exists and check its status
+            var containerStatuses = completedPod.getStatus().getContainerStatuses();
+            var sidecarStatus = containerStatuses.stream()
+                .filter(status -> status.getName().equals("out-files"))
+                .findFirst();
+
+            assertThat("Sidecar container should exist", sidecarStatus.isPresent(), is(true));
+
+            // Check if sidecar is still running (it shouldn't be if marker was signaled)
+            if (sidecarStatus.get().getState().getRunning() != null) {
+                log.warn("Sidecar is still running - marker may not have been signaled");
+            }
+
+            // Wait for pod deletion and measure time
+            long deletionStartTime = System.currentTimeMillis();
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                if (!pods.isEmpty()) {
+                    var pod = pods.get(0);
+                    var sidecarCurrentStatus = pod.getStatus().getContainerStatuses().stream()
+                        .filter(status -> status.getName().equals("out-files"))
+                        .findFirst();
+
+                    if (sidecarCurrentStatus.isPresent()) {
+                        var state = sidecarCurrentStatus.get().getState();
+                        if (state.getTerminated() != null) {
+                            String reason = state.getTerminated().getReason();
+                            log.info("Sidecar terminated with reason: {}", reason);
+                            // Verify sidecar terminated gracefully (Completed), not force-killed (Error/Killed)
+                            assertThat("Sidecar should exit gracefully with Completed status",
+                                reason, is("Completed"));
+                        }
+                    }
+                }
+                return pods.isEmpty();
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+            long deletionDuration = System.currentTimeMillis() - deletionStartTime;
+
+            // Verify pod deletion was fast (< 15 seconds indicates graceful sidecar exit)
+            assertThat("Pod deletion should be fast when sidecar exits gracefully (< 15s)",
+                deletionDuration, lessThan(15000L));
+
+            log.info("Pod {} deleted in {}ms - sidecar exited gracefully", podName, deletionDuration);
         } finally {
             taskFuture.cancel(true);
             executorService.shutdownNow();
@@ -321,7 +444,6 @@ class PodCreateTest {
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30))) // Less than 30 secondes will make the test flaky cause the logs are not yet available
 //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .spec(TestUtils.convert(
                 ObjectMeta.class,
@@ -376,7 +498,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(Arrays.asList("xml", "csv")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30))) // Less than 30 secondes will make the test flaky cause the logs are not yet available
 //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .inputFiles(Map.of(
                 "files/in/in.txt", "I'm here",
@@ -437,7 +558,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("*.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -493,7 +613,6 @@ class PodCreateTest {
                 "in.txt", "File content"
             ))
             .outputFiles(Property.ofValue(List.of("out.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -568,7 +687,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("**.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -673,7 +791,6 @@ class PodCreateTest {
             .id("special-char-test")
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -710,7 +827,6 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -739,14 +855,19 @@ class PodCreateTest {
 
     @Test
     void multipleContainersOneFailsWithOutputFiles() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        AtomicInteger logCounter = new AtomicInteger(0);
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
+            String message = logEntry.getLeft().getMessage();
+            if (message.contains("First container succeeded") || message.contains("Second container failing")) {
+                logCounter.incrementAndGet();
+            }
+        });
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(30)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -775,7 +896,12 @@ class PodCreateTest {
         assertThat(exception.getMessage(), containsString("container-failure"));
         assertThat(exception.getMessage(), containsString("exit code 1"));
 
-        Thread.sleep(500);
+        // Wait for logs from both containers to be collected
+        Await.until(
+            () -> logCounter.get() >= 2,
+            Duration.ofMillis(100),
+            Duration.ofSeconds(5)
+        );
 
         List<LogEntry> logs = receive.collectList().block();
 
@@ -791,22 +917,30 @@ class PodCreateTest {
     }
 
     @Test
-    void logCollectionTimingWithOutputFiles() throws Exception {
+    void completeLogCollectionAfterQuickTermination() throws Exception {
+        AtomicInteger expectedLogCounter = new AtomicInteger(0);
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
+            String message = logEntry.getLeft().getMessage();
+            if (message.startsWith("Log line ") || message.equals("FINAL")) {
+                expectedLogCounter.incrementAndGet();
+            }
+        });
+
+        // Generate exactly 20 identifiable log lines in quick succession, then fail
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(5)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
                 "- name: unittest",
                 "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
+                "  command:",
+                "    - 'bash'",
                 "    - '-c'",
-                "    - 'echo \"Container failing\" && exit 1'",
+                "    - 'for i in {1..20}; do echo \"Log line $i\"; done; echo \"FINAL\" && exit 1'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -821,8 +955,142 @@ class PodCreateTest {
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
         long elapsedTime = System.currentTimeMillis() - startTime;
 
-        // Verify that at least the waitForLogInterval duration has elapsed
-        // This confirms handleEnd() sleep happens before exception is thrown
-        assertThat(elapsedTime, greaterThanOrEqualTo(5000L)); // 5 seconds minimum
+        // Wait for all logs to be collected with retry mechanism (expect 20 numbered + 1 FINAL = 21 logs)
+        log.info("Task completed, waiting for logs. Current count: {}/21", expectedLogCounter.get());
+
+        try {
+            Await.until(
+                () -> {
+                    int current = expectedLogCounter.get();
+                    if (current < 21) {
+                        log.debug("Still waiting for logs: {}/21", current);
+                    }
+                    return current >= 21;
+                },
+                Duration.ofMillis(100),
+                Duration.ofSeconds(10)
+            );
+        } catch (Exception e) {
+            log.error("Timeout waiting for logs. Collected {}/21 logs after 10 seconds", expectedLogCounter.get());
+            throw e;
+        }
+
+        log.info("All logs collected: {}/21", expectedLogCounter.get());
+        List<LogEntry> logs = receive.collectList().block();
+
+        log.info("Total logs in Flux: {}", logs.size());
+
+        // Verify all 20 numbered logs were collected (no missing logs)
+        for (int i = 1; i <= 20; i++) {
+            String expected = "Log line " + i;
+            long count = logs.stream()
+                .filter(log -> log.getMessage().equals(expected))
+                .count();
+            if (count != 1) {
+                log.error("Missing or duplicate log: {} (found {} times)", expected, count);
+            }
+            assertThat("Missing or duplicate log: " + expected, count, is(1L));
+        }
+
+        // Verify final log before exit was captured
+        long finalCount = logs.stream()
+            .filter(log -> log.getMessage().equals("FINAL"))
+            .count();
+        if (finalCount != 1) {
+            log.error("Missing or duplicate FINAL log (found {} times)", finalCount);
+        }
+        assertThat(finalCount, is(1L));
+
+        assertThat("Should complete quickly without artificial delays",
+            elapsedTime, lessThan(30000L));
+    }
+
+    @Test
+    void highThroughputLogCollectionNoPrecisionLoss() throws Exception {
+        AtomicInteger lineCounter = new AtomicInteger(0);
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
+            if (logEntry.getLeft().getMessage().startsWith("Line")) {
+                lineCounter.incrementAndGet();
+            }
+        });
+
+        // Generate 100 logs as fast as possible (tight loop, no delays)
+        // Tests that nanosecond timestamp precision prevents log loss
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command:",
+                "    - 'bash'",
+                "    - '-c'",
+                "    - 'for i in {1..100}; do echo \"Line$i\"; done'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContextFinal = runContextInitializer.forWorker(
+            (DefaultRunContext) runContext,
+            WorkerTask.builder().task(task).taskRun(taskRun).build()
+        );
+
+        task.run(runContextFinal);
+
+        // Wait for all logs to be collected with retry mechanism
+        Await.until(
+            () -> lineCounter.get() >= 100,
+            Duration.ofMillis(100),
+            Duration.ofSeconds(10)
+        );
+
+        List<LogEntry> logs = receive.collectList().block();
+
+        // Count how many "Line" logs we got (excluding system logs like "Pod created", "Pod deleted")
+        List<String> lineMessages = logs.stream()
+            .filter(log -> log.getMessage().startsWith("Line"))
+            .map(LogEntry::getMessage)
+            .toList();
+
+        long lineCount = lineMessages.size();
+
+        // If test fails, provide diagnostics
+        if (lineCount != 100L) {
+            log.error("Expected 100 logs but got {}. First 5: {}, Last 5: {}",
+                lineCount,
+                lineMessages.stream().limit(5).toList(),
+                lineMessages.stream().skip(Math.max(0, lineCount - 5)).toList()
+            );
+        }
+
+        // Should get all 100 lines with nanosecond precision timestamp filtering
+        assertThat("All high-throughput logs should be collected without loss",
+            lineCount, is(100L));
+
+        // Verify no duplicates - all collected lines should be unique
+        long uniqueLines = lineMessages.stream()
+            .distinct()
+            .count();
+
+        if (uniqueLines != 100L) {
+            // Find duplicates for diagnostics
+            Map<String, Long> frequencies = lineMessages.stream()
+                .collect(Collectors.groupingBy(msg -> msg, Collectors.counting()));
+            List<String> duplicates = frequencies.entrySet().stream()
+                .filter(e -> e.getValue() > 1)
+                .map(e -> e.getKey() + " (x" + e.getValue() + ")")
+                .toList();
+            log.error("Found {} duplicate log lines: {}", duplicates.size(), duplicates);
+        }
+
+        assertThat("Timestamp filtering should prevent duplicate logs",
+            uniqueLines, is(100L));
     }
 }

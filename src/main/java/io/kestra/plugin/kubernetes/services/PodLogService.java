@@ -11,7 +11,9 @@ import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.StringReader;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -64,7 +66,7 @@ public class PodLogService implements AutoCloseable {
                                 .inContainer(container.getName())
                                 .usingTimestamps()
                                 .sinceTime(lastTimestamp != null ?
-                                    lastTimestamp.plusSeconds(1).toString() :
+                                    lastTimestamp.plusNanos(1).toString() :
                                     null
                                 )
                                 .watchLog(outputStream)
@@ -99,6 +101,42 @@ public class PodLogService implements AutoCloseable {
                 }
             }
         );
+    }
+
+    public void fetchFinalLogs(KubernetesClient client, Pod pod) throws IOException {
+        if (outputStream == null) {
+            return;
+        }
+
+        Instant lastTimestamp = outputStream.getLastTimestamp();
+        PodResource podResource = PodService.podRef(client, pod);
+
+        pod.getSpec()
+            .getContainers()
+            .forEach(container -> {
+                try {
+                    String logs = podResource
+                        .inContainer(container.getName())
+                        .usingTimestamps()
+                        .sinceTime(lastTimestamp != null ?
+                            lastTimestamp.plusNanos(1).toString() :
+                            null
+                        )
+                        .getLog();
+
+                    if (logs != null && !logs.isEmpty()) {
+                        // Parse and write each line to outputStream
+                        BufferedReader reader = new BufferedReader(new StringReader(logs));
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            outputStream.write((line + "\n").getBytes());
+                        }
+                        outputStream.flush();
+                    }
+                } catch (IOException e) {
+                    log.error("Error fetching final logs for container {}", container.getName(), e);
+                }
+            });
     }
 
     @Override
