@@ -31,37 +31,32 @@ import java.util.concurrent.TimeUnit;
 @Plugin(
     examples = {
         @Example(
-            title = "Patch deployment memory limits and wait for rollout to complete.",
+            title = "Patch pod resource limits and wait for it to become ready.",
             full = true,
             code = """
-                id: patch_deployment_with_wait
+                id: patch_pod_with_wait
                 namespace: company.team
 
                 tasks:
                   - id: patch
                     type: io.kestra.plugin.kubernetes.kubectl.Patch
                     namespace: production
-                    resourceType: deployment
-                    resourceName: my-api
-                    apiGroup: apps
+                    resourceType: pod
+                    resourceName: my-pod
                     wait: true
-                    waitTimeout: PT10M
+                    waitTimeout: PT5M
                     patch: |
                       {
                         "spec": {
-                          "template": {
-                            "spec": {
-                              "containers": [
-                                {
-                                  "name": "api",
-                                  "resources": {
-                                    "limits": {"memory": "2Gi", "cpu": "1000m"},
-                                    "requests": {"memory": "1Gi", "cpu": "500m"}
-                                  }
-                                }
-                              ]
+                          "containers": [
+                            {
+                              "name": "app",
+                              "resources": {
+                                "limits": {"memory": "512Mi", "cpu": "500m"},
+                                "requests": {"memory": "256Mi", "cpu": "250m"}
+                              }
                             }
-                          }
+                          ]
                         }
                       }
                 """
@@ -191,32 +186,6 @@ import java.util.concurrent.TimeUnit;
                         {"op": "replace", "path": "/spec/replicas", "value": 10}
                       ]
                 """
-        ),
-        @Example(
-            title = "Patch custom resource and wait for custom condition.",
-            full = true,
-            code = """
-                id: patch_custom_resource_with_wait
-                namespace: company.team
-
-                tasks:
-                  - id: patch
-                    type: io.kestra.plugin.kubernetes.kubectl.Patch
-                    namespace: production
-                    resourceType: myresources
-                    resourceName: my-custom-resource
-                    apiGroup: example.com
-                    apiVersion: v1
-                    wait: true
-                    waitTimeout: PT5M
-                    waitCondition: ".status.phase == Processed"
-                    patch: |
-                      {
-                        "spec": {
-                          "replicas": 5
-                        }
-                      }
-                """
         )
     }
 )
@@ -236,7 +205,8 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
     @NotNull
     @Schema(
-        title = "The Kubernetes resource type (e.g., deployment, statefulset, pod)"
+        title = "The Kubernetes resource type (e.g., deployment, statefulset, pod)",
+        description = "Note: Currently only namespaced resources are supported. Cluster-scoped resources (e.g., ClusterRole, Node) are not supported."
     )
     private Property<String> resourceType;
 
@@ -280,32 +250,19 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
     @Builder.Default
     @Schema(
-        title = "Wait for the patched resource to reach a specific condition",
-        description = "When enabled, the task will wait for the resource to meet the specified condition after patching. " +
-            "Works with any resource type including custom resources. " +
-            "Use with waitCondition to specify what to wait for."
+        title = "Wait for the patched resource to become ready",
+        description = "When enabled, waits for the resource to report Ready=True in its status conditions. " +
+            "Supports Pods, StatefulSets, and custom resources that use the Ready condition. " +
+            "Note: Deployments are not supported as they use the Available condition instead of Ready."
     )
     private Property<Boolean> wait = Property.ofValue(false);
 
     @Builder.Default
     @Schema(
-        title = "Maximum duration to wait for the condition",
-        description = "Only used when wait is enabled. The task will fail if the resource does not meet the condition within this timeout."
+        title = "Maximum duration to wait for resource to become ready",
+        description = "Only used when wait is enabled. The task will fail if the resource does not become ready within this timeout."
     )
     private Property<Duration> waitTimeout = Property.ofValue(Duration.ofMinutes(5));
-
-    @Schema(
-        title = "The condition to wait for",
-        description = "A JsonPath expression to evaluate on the resource status. " +
-            "The wait succeeds when the expression evaluates to true. " +
-            "Default: '.status.conditions[?(@.type==\"Ready\")].status' contains 'True' " +
-            "Examples:\n" +
-            "- For Deployments: '.status.conditions[?(@.type==\"Progressing\" && @.status==\"True\")]'\n" +
-            "- For custom field: '.status.phase == \"Running\"'\n" +
-            "- For replica count: '.status.readyReplicas == .spec.replicas'\n" +
-            "Leave empty to use the default ready condition."
-    )
-    private Property<String> waitCondition;
 
     @Override
     public Output run(RunContext runContext) throws Exception {
@@ -357,16 +314,15 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
             };
 
             if (patchedResource == null) {
-                throw new Exception("Failed to patch resource: resource not found or patch failed");
+                throw new IllegalStateException("Failed to patch resource: resource not found or patch failed");
             }
 
             runContext.logger().info("Successfully patched {} '{}'", resourceType, resourceName);
 
-            // Optionally wait for resource condition
+            // Optionally wait for resource to become ready
             if (shouldWait) {
-                var condition = runContext.render(this.waitCondition).as(String.class).orElse(null);
-                waitForResourceCondition(client, resourceContext, namespace, resourceName,
-                    condition, timeout, runContext.logger());
+                waitForResourceReady(client, resourceContext, namespace, resourceName,
+                    timeout, runContext.logger());
             }
 
             return Output.builder()
@@ -377,36 +333,28 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
     }
 
     /**
-     * Waits for a Kubernetes resource to meet a specific condition after patching.
+     * Waits for a Kubernetes resource to become ready after patching.
      * <p>
-     * This method works with any resource type including custom resources by using
-     * a generic condition predicate. If no custom condition is specified, it defaults
-     * to checking for a Ready=True condition in the resource status.
+     * This method checks for a Ready=True condition in the resource status.
+     * Works with Pods, StatefulSets, and custom resources that use the Ready condition.
+     * Does not work with Deployments (which use the Available condition).
      *
      * @param client the Kubernetes client
      * @param resourceContext the resource definition context
      * @param namespace the namespace of the resource
      * @param resourceName the name of the resource
-     * @param customCondition optional custom condition expression (null for default)
      * @param timeout the maximum duration to wait
      * @param logger the logger for status messages
      */
-    private void waitForResourceCondition(
+    private void waitForResourceReady(
         KubernetesClient client,
         ResourceDefinitionContext resourceContext,
         String namespace,
         String resourceName,
-        String customCondition,
         Duration timeout,
         Logger logger
     ) {
-        logger.info("Waiting for resource '{}' to meet condition (timeout: {})...", resourceName, timeout);
-
-        if (customCondition != null && !customCondition.isBlank()) {
-            logger.debug("Using custom wait condition: {}", customCondition);
-        } else {
-            logger.debug("Using default wait condition: Ready=True");
-        }
+        logger.info("Waiting for resource '{}' to become ready (timeout: {})...", resourceName, timeout);
 
         var resourceClient = client.genericKubernetesResources(resourceContext)
             .inNamespace(namespace)
@@ -414,104 +362,12 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
         // Use waitUntilCondition with a predicate
         resourceClient.waitUntilCondition(
-            resource -> {
-                if (resource == null) {
-                    return false;
-                }
-
-                // If custom condition specified, evaluate it
-                if (customCondition != null && !customCondition.isBlank()) {
-                    return evaluateCustomCondition(resource, customCondition, logger);
-                }
-
-                // Default: check for Ready=True condition
-                return isResourceReady(resource);
-            },
+            resource -> resource != null && isResourceReady(resource),
             timeout.toSeconds(),
             TimeUnit.SECONDS
         );
 
-        logger.info("Resource '{}' condition met successfully", resourceName);
-    }
-
-    /**
-     * Evaluates a custom condition on a resource.
-     * <p>
-     * Supports simple field path expressions like:
-     * - ".status.phase" == "Running"
-     * - ".status.ready" == true
-     * - ".status.readyReplicas" == ".spec.replicas"
-     *
-     * @param resource the resource to evaluate
-     * @param condition the condition expression
-     * @param logger the logger for debug messages
-     * @return true if condition is met, false otherwise
-     */
-    private boolean evaluateCustomCondition(
-        io.fabric8.kubernetes.api.model.GenericKubernetesResource resource,
-        String condition,
-        Logger logger
-    ) {
-        try {
-            // Simple evaluation: check if a specific field path equals a value
-            // For now, support basic field checks in status
-            // Example: ".status.phase == Running"
-            var additionalProperties = resource.getAdditionalProperties();
-            if (additionalProperties == null) {
-                return false;
-            }
-
-            // Parse simple conditions (this is a basic implementation)
-            // For production, you'd want a proper expression evaluator
-            if (condition.contains("==")) {
-                var parts = condition.split("==");
-                if (parts.length == 2) {
-                    var fieldPath = parts[0].trim();
-                    var expectedValue = parts[1].trim().replace("\"", "");
-
-                    var actualValue = getFieldValue(additionalProperties, fieldPath);
-                    boolean result = expectedValue.equals(String.valueOf(actualValue));
-
-                    logger.debug("Condition check: {} == {} ? {} (actual: {})",
-                        fieldPath, expectedValue, result, actualValue);
-
-                    return result;
-                }
-            }
-
-            logger.warn("Unable to parse condition: {}", condition);
-            return false;
-        } catch (Exception e) {
-            logger.warn("Error evaluating custom condition '{}': {}", condition, e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Extracts a field value from a resource using a simple dot-notation path.
-     * Example: ".status.phase" returns the value of resource.status.phase
-     */
-    private Object getFieldValue(java.util.Map<String, Object> map, String fieldPath) {
-        var path = fieldPath.trim();
-        if (path.startsWith(".")) {
-            path = path.substring(1);
-        }
-
-        var parts = path.split("\\.");
-        Object current = map;
-
-        for (var part : parts) {
-            if (current instanceof java.util.Map) {
-                current = ((java.util.Map<?, ?>) current).get(part);
-                if (current == null) {
-                    return null;
-                }
-            } else {
-                return null;
-            }
-        }
-
-        return current;
+        logger.info("Resource '{}' is ready", resourceName);
     }
 
     /**
