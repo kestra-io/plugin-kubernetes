@@ -16,7 +16,6 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.runners.*;
-import io.kestra.core.runners.WorkerTask;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.Await;
@@ -35,6 +34,7 @@ import reactor.core.publisher.Flux;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -75,6 +75,7 @@ class PodCreateTest {
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
 //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .spec(TestUtils.convert(
                 ObjectMeta.class,
@@ -185,6 +186,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("results.json")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -213,6 +215,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("results.json")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
             .spec(TestUtils.convert(
@@ -275,7 +278,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .inputFiles(Map.of("data.txt", "{{ outputs['nonexistent-task']['outputFiles']['data.txt'] }}"))
-            .waitUntilRunning(Property.ofValue(Duration.ofSeconds(30)))
+            .waitUntilRunning(Property.ofValue(Duration.ofSeconds(10)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
             .spec(TestUtils.convert(
@@ -328,6 +331,7 @@ class PodCreateTest {
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
 //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .spec(TestUtils.convert(
                 ObjectMeta.class,
@@ -382,6 +386,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(Arrays.asList("xml", "csv")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
 //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
             .inputFiles(Map.of(
                 "files/in/in.txt", "I'm here",
@@ -442,6 +447,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("*.txt")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -492,6 +498,7 @@ class PodCreateTest {
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
             .fileSidecar(sidecar)
             .inputFiles(Map.of(
                 "in.txt", "File content"
@@ -571,6 +578,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("**.txt")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -675,6 +683,7 @@ class PodCreateTest {
             .id("special-char-test")
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -711,6 +720,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -752,6 +762,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -816,6 +827,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
                 "containers:",
@@ -834,10 +846,7 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
-
-        long startTime = System.currentTimeMillis();
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
-        long elapsedTime = System.currentTimeMillis() - startTime;
 
         // Wait for all logs to be collected with retry mechanism (expect 20 numbered + 1 FINAL = 21 logs)
         Await.until(
@@ -862,10 +871,6 @@ class PodCreateTest {
             .filter(log -> log.getMessage().equals("FINAL"))
             .count(),
             is(1L));
-
-        // Verify fast completion with deterministic log collection (no 30-second sleep)
-        assertThat("Should complete quickly without artificial delays",
-            elapsedTime, lessThan(10000L));
     }
 
 }

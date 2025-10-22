@@ -187,13 +187,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
     @Schema(
         title = "Additional time after the pod ends to wait for late logs",
-        description = "This property is deprecated and no longer used. Log collection now uses a deterministic approach " +
-                     "that fetches remaining logs immediately after pod termination using timestamp-based filtering, " +
-                     "eliminating the need for arbitrary wait periods.",
-        deprecated = true
+        description = "After deterministic log collection completes, wait this duration to allow any remaining logs " +
+                     "to arrive through the async queue. Useful as a safety net for high-throughput scenarios."
     )
     @Builder.Default
-    @Deprecated
     private Property<Duration> waitForLogInterval = Property.ofValue(Duration.ofSeconds(30));
 
     private final AtomicBoolean killed = new AtomicBoolean(false);
@@ -420,6 +417,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
         // Fetch any remaining logs deterministically after pod termination
         podLogService.fetchFinalLogs(client, ended);
+
+        // Wait for async queue to process logs
+        Thread.sleep(runContext.render(this.waitForLogInterval).as(Duration.class).orElseThrow().toMillis());
 
         // Check for failures based on whether outputFiles are configured
         if (hasOutputFiles) {
