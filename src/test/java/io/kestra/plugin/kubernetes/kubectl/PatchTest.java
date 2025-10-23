@@ -391,8 +391,7 @@ class PatchTest {
                     }
                     """
             ))
-            .wait(Property.ofValue(true))
-            .waitTimeout(Property.ofValue(Duration.ofSeconds(30)))
+            .waitUntilReady(Property.ofValue(Duration.ofSeconds(30)))
             .build();
 
         var output = patchTask.run(runContext);
@@ -553,5 +552,133 @@ class PatchTest {
                 containsString("404")
             ));
         }
+    }
+
+    /**
+     * Test that output status is refreshed after wait completes.
+     * Creates a pod with a broken image (won't start), then patches it to a good image
+     * and waits for it to become ready. Verifies the output reflects the final ready state.
+     */
+    @Test
+    void testOutputRefreshedAfterWaitFromBrokenToWorking() throws Exception {
+        var runContext = runContextFactory.of();
+
+        String podName = "iokestrapluginkuberneteskubectlpatchtest-refresh-" + System.currentTimeMillis();
+
+        // Create a pod with a non-existent image that will never be ready
+        var applyTask = Apply.builder()
+            .id("create-broken-pod")
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(Property.ofValue(
+                String.format("""
+                    apiVersion: v1
+                    kind: Pod
+                    metadata:
+                      name: %s
+                      labels:
+                        app: refresh-test
+                    spec:
+                      containers:
+                      - name: app
+                        image: nonexistent-image-that-will-never-exist:v999
+                    """, podName)
+            ))
+            .build();
+
+        applyTask.run(runContext);
+        trackForCleanup("pod", podName, "default");
+
+        // Wait a bit to ensure pod is in ImagePullBackOff/ErrImagePull state
+        Thread.sleep(2000);
+
+        // Verify pod is NOT ready before patching
+        try (KubernetesClient client = PodService.client(runContext, null)) {
+            var pod = client.pods()
+                .inNamespace("default")
+                .withName(podName)
+                .get();
+
+            assertThat(pod, notNullValue());
+            assertThat(pod.getStatus(), notNullValue());
+
+            // Pod should not be ready
+            if (pod.getStatus().getConditions() != null) {
+                var readyCondition = pod.getStatus().getConditions().stream()
+                    .filter(c -> "Ready".equals(c.getType()))
+                    .findFirst();
+
+                if (readyCondition.isPresent()) {
+                    assertThat(readyCondition.get().getStatus(), not(equalTo("True")));
+                }
+            }
+        }
+
+        // Patch pod to use a working image and wait for it to become ready
+        var patchTask = Patch.builder()
+            .id("patch-to-working-image")
+            .type(Patch.class.getName())
+            .namespace(Property.ofValue("default"))
+            .resourceType(Property.ofValue("pod"))
+            .resourceName(Property.ofValue(podName))
+            .patch(Property.ofValue(
+                """
+                {
+                  "spec": {
+                    "containers": [
+                      {
+                        "name": "app",
+                        "image": "nginx:latest"
+                      }
+                    ]
+                  }
+                }
+                """
+            ))
+            .waitUntilReady(Property.ofValue(Duration.ofMinutes(1)))
+            .build();
+
+        var output = patchTask.run(runContext);
+
+        // Verify output contains current metadata
+        assertThat(output.getMetadata(), notNullValue());
+        assertThat(output.getMetadata().getName(), equalTo(podName));
+
+        // Output should reflect the UPDATED ready state after wait
+        assertThat(output.getStatus(), notNullValue());
+        assertThat(output.getStatus().getStatus(), notNullValue());
+
+        var statusMap = output.getStatus().getStatus();
+
+        // Pod should now be Running (not Pending)
+        assertThat(statusMap.get("phase"), equalTo("Running"));
+
+        // Verify Ready condition exists and is True
+        assertThat(statusMap.get("conditions"), notNullValue());
+        assertThat(statusMap.get("conditions"), instanceOf(java.util.List.class));
+
+        @SuppressWarnings("unchecked")
+        var conditions = (java.util.List<java.util.Map<String, Object>>) statusMap.get("conditions");
+        var readyCondition = conditions.stream()
+            .filter(c -> "Ready".equals(c.get("type")))
+            .findFirst();
+
+        assertThat(readyCondition.isPresent(), equalTo(true));
+        assertThat(readyCondition.get().get("status"), equalTo("True"));
+
+        // Container should be running with the new image
+        assertThat(statusMap.get("containerStatuses"), notNullValue());
+        assertThat(statusMap.get("containerStatuses"), instanceOf(java.util.List.class));
+
+        @SuppressWarnings("unchecked")
+        var containerStatuses = (java.util.List<java.util.Map<String, Object>>) statusMap.get("containerStatuses");
+        assertThat(containerStatuses.size(), equalTo(1));
+
+        var containerStatus = containerStatuses.get(0);
+        assertThat(containerStatus.get("ready"), equalTo(true));
+
+        // Verify the image was actually changed to nginx
+        String imageUsed = (String) containerStatus.get("image");
+        assertThat(imageUsed, containsString("nginx"));
     }
 }
