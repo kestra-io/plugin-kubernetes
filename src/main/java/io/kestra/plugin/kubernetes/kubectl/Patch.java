@@ -19,14 +19,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-@Slf4j
 @SuperBuilder
 @ToString
 @EqualsAndHashCode
@@ -295,7 +293,7 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
             // Apply patch based on strategy
             runContext.logger().info("Patching {} '{}' in namespace '{}' using {} strategy",
                 rResourceType, rResourceName, rNamespace, rStrategy);
-            log.debug("Patch content: {}", rPatchContent);
+            runContext.logger().debug("Patch content: {}", rPatchContent);
 
             var patchedResource = switch (rStrategy) {
                 case STRATEGIC_MERGE -> resourceClient.patch(rPatchContent);
@@ -311,27 +309,24 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
             if (patchedResource == null) {
                 String errorMsg = "Failed to patch resource: resource not found or patch failed";
-                log.error("{} - Type: {}, Name: {}, Namespace: {}", errorMsg, rResourceType, rResourceName, rNamespace);
+                runContext.logger().error("{} - Type: {}, Name: {}, Namespace: {}", errorMsg, rResourceType, rResourceName, rNamespace);
                 throw new IllegalStateException(errorMsg);
             }
 
             runContext.logger().info("Successfully patched {} '{}'", rResourceType, rResourceName);
-            log.debug("Patched resource: {}", patchedResource);
+            runContext.logger().debug("Patched resource: {}", patchedResource);
 
             // Optionally wait for resource to become ready
             if (!rWaitUntilReady.isZero()) {
                 runContext.logger().info("Waiting for resource '{}' to become ready (timeout: {})...",
                     rResourceName, rWaitUntilReady);
-                log.info("Waiting for {} '{}' to become ready (timeout: {})...",
-                    rResourceType, rResourceName, rWaitUntilReady);
-                waitForResourceReady(client, resourceContext, rNamespace, rResourceName, rWaitUntilReady);
+                waitForResourceReady(client, resourceContext, rNamespace, rResourceName, rWaitUntilReady, runContext);
                 runContext.logger().info("Resource '{}' is ready", rResourceName);
-                log.info("{} '{}' is ready", rResourceType, rResourceName);
 
                 // Re-fetch resource after wait to get current status
                 patchedResource = resourceClient.get();
                 if (patchedResource != null) {
-                    log.debug("Refreshed resource status after wait: generation={}, resourceVersion={}",
+                    runContext.logger().debug("Refreshed resource status after wait: generation={}, resourceVersion={}",
                         patchedResource.getMetadata().getGeneration(),
                         patchedResource.getMetadata().getResourceVersion());
                 }
@@ -356,15 +351,17 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
      * @param namespace the namespace of the resource
      * @param resourceName the name of the resource
      * @param timeout the maximum duration to wait
+     * @param runContext the run context for logging
      */
     private void waitForResourceReady(
         KubernetesClient client,
         ResourceDefinitionContext resourceContext,
         String namespace,
         String resourceName,
-        Duration timeout
+        Duration timeout,
+        RunContext runContext
     ) {
-        log.debug("Checking readiness for resource '{}' in namespace '{}'", resourceName, namespace);
+        runContext.logger().debug("Checking readiness for resource '{}' in namespace '{}'", resourceName, namespace);
 
         var resourceClient = client.genericKubernetesResources(resourceContext)
             .inNamespace(namespace)
@@ -373,13 +370,13 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
         try {
             // Use waitUntilCondition with a predicate
             resourceClient.waitUntilCondition(
-                resource -> resource != null && isResourceReady(resource),
+                resource -> resource != null && isResourceReady(resource, runContext),
                 timeout.toSeconds(),
                 TimeUnit.SECONDS
             );
-            log.debug("Resource '{}' readiness confirmed", resourceName);
+            runContext.logger().debug("Resource '{}' readiness confirmed", resourceName);
         } catch (Exception e) {
-            log.error("Failed to wait for resource '{}' to become ready in namespace '{}': {}",
+            runContext.logger().error("Failed to wait for resource '{}' to become ready in namespace '{}': {}",
                 resourceName, namespace, e.getMessage(), e);
             throw e;
         }
@@ -389,17 +386,15 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
      * Checks if a resource has a Ready=True condition (default check).
      */
     @SuppressWarnings("unchecked")
-    private boolean isResourceReady(GenericKubernetesResource resource) {
+    private boolean isResourceReady(GenericKubernetesResource resource, RunContext runContext) {
         try {
             var additionalProperties = resource.getAdditionalProperties();
             if (additionalProperties == null) {
-                log.trace("Resource has no additional properties");
                 return false;
             }
 
             var status = additionalProperties.get("status");
             if (!(status instanceof Map)) {
-                log.trace("Resource status is not a Map");
                 return false;
             }
 
@@ -407,7 +402,6 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
             var conditions = statusMap.get("conditions");
 
             if (!(conditions instanceof List)) {
-                log.trace("Resource conditions is not a List");
                 return false;
             }
 
@@ -418,19 +412,15 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
                     var type = condition.get("type");
                     var conditionStatus = condition.get("status");
 
-                    if ("Ready".equals(type)) {
-                        log.trace("Found Ready condition with status: {}", conditionStatus);
-                        if ("True".equals(conditionStatus)) {
-                            return true;
-                        }
+                    if ("Ready".equals(type) && "True".equals(conditionStatus)) {
+                        return true;
                     }
                 }
             }
 
-            log.trace("No Ready=True condition found in resource");
             return false;
         } catch (Exception e) {
-            log.debug("Exception while checking resource readiness: {}", e.getMessage());
+            runContext.logger().warn("Exception while checking resource readiness: {}", e.getMessage(), e);
             return false;
         }
     }
