@@ -415,11 +415,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private void handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles, KubernetesClient client, PodLogService podLogService) throws Exception {
         Logger logger = runContext.logger();
 
-        // Fetch any remaining logs deterministically after pod termination
-        podLogService.fetchFinalLogs(client, ended);
-
-        // Wait for async queue to process logs
+        // Wait for async log stream (watchLog) to finish processing
         Thread.sleep(runContext.render(this.waitForLogInterval).as(Duration.class).orElseThrow().toMillis());
+
+        // Fetch any remaining logs that the watch stream may have missed
+        podLogService.fetchFinalLogs(client, ended);
 
         // Check for failures based on whether outputFiles are configured
         if (hasOutputFiles) {
