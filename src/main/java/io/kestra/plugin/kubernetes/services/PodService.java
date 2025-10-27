@@ -6,6 +6,7 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.tasks.retrys.Exponential;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.RetryUtils;
 import io.kestra.plugin.kubernetes.models.Connection;
@@ -165,8 +166,19 @@ abstract public class PodService {
             .withName(pod.getMetadata().getName());
     }
 
+    /**
+     * Retry file operations with exponential backoff optimized for freshly provisioned nodes.
+     */
     public static Boolean withRetries(Logger logger, String where, RetryUtils.CheckedSupplier<Boolean> call) throws IOException {
-        Boolean upload = new RetryUtils().<Boolean, IOException>of().run(
+        var retryPolicy = Exponential.builder()
+            .type("exponential")
+            .interval(Duration.ofSeconds(1))
+            .maxInterval(Duration.ofSeconds(10))
+            .maxDuration(Duration.ofSeconds(60))
+            .delayFactor(2.0)
+            .build();
+
+        Boolean upload = new RetryUtils().<Boolean, IOException>of(retryPolicy, logger).run(
             object -> !object,
             () -> {
                 var bool = call.get();
