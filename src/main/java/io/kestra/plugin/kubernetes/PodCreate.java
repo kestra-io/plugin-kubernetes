@@ -248,8 +248,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                 if (runContext.render(this.resume).as(Boolean.class).orElseThrow()) {
                     // try to locate an existing pod for this taskrun and attempt
-                    Map<String, String> taskrun = (Map<String, String>) runContext.getVariables().get("taskrun");
-                    String taskrunId = ScriptService.normalize(taskrun.get("id"));
+                    // Safe cast: runContext.getVariables() returns Map<String, Object> where "taskrun" is always a Map
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> taskrun = (Map<String, Object>) runContext.getVariables().get("taskrun");
+                    String taskrunId = ScriptService.normalize(String.valueOf(taskrun.get("id")));
                     String attempt = ScriptService.normalize(String.valueOf(taskrun.get("attemptsCount")));
                     String labelSelector = "kestra.io/taskrun-id=" + taskrunId + "," + "kestra.io/taskrun-attempt=" + attempt;
                     var existingPods = client.pods().inNamespace(namespace).list(new ListOptionsBuilder().withLabelSelector(labelSelector).build());
@@ -321,8 +323,26 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         return output
                             .build();
                     } finally {
-                        // Always delete the pod, even if an exception occurred during initialization or execution
-                        delete(client, logger, pod, runContext);
+                        // Signal sidecar to exit gracefully before pod deletion
+                        // The sidecar container only exists when outputFiles is configured
+                        boolean hasSidecar = pod.getSpec().getContainers().stream()
+                            .anyMatch(container -> SIDECAR_FILES_CONTAINER_NAME.equals(container.getName()));
+
+                        if (hasSidecar) {
+                            try {
+                                PodService.uploadMarker(runContext, PodService.podRef(client, pod),
+                                                       logger, "ended", SIDECAR_FILES_CONTAINER_NAME);
+                                logger.debug("Signaled sidecar to exit gracefully before pod deletion");
+                            } catch (Exception markerException) {
+                                // Failure is acceptable - pod might already be terminating
+                                logger.debug("Could not signal sidecar (pod may be terminating): {}", markerException.getMessage());
+                            }
+                        }
+
+                        // Delete the pod if not already killed externally (kill() deletes the pod itself)
+                        if (!killed.get()) {
+                            delete(client, logger, pod, runContext);
+                        }
                     }
                 } catch (InterruptedException | InterruptedIOException e) {
                     logger.info("Task was interrupted.");

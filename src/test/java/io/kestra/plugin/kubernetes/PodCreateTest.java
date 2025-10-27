@@ -271,6 +271,111 @@ class PodCreateTest {
     }
 
     @Test
+    void sidecarExitsGracefullyOnFailure() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .outputFiles(Property.ofValue(List.of("results.json")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'echo \"Container failing\" && exit 1'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        Future<?> taskFuture = executorService.submit(() -> {
+            try {
+                task.run(finalRunContext);
+            } catch (Exception e) {
+                log.debug("Task failed as expected.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod creation and completion
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                if (pods.isEmpty()) {
+                    return false;
+                }
+                var pod = pods.get(0);
+                String phase = pod.getStatus() != null ? pod.getStatus().getPhase() : null;
+                return "Failed".equals(phase) || "Succeeded".equals(phase);
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var completedPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().get(0);
+            String podName = completedPod.getMetadata().getName();
+            log.info("Pod {} completed with phase: {}", podName, completedPod.getStatus().getPhase());
+
+            // Verify sidecar container exists and check its status
+            var containerStatuses = completedPod.getStatus().getContainerStatuses();
+            var sidecarStatus = containerStatuses.stream()
+                .filter(status -> status.getName().equals("out-files"))
+                .findFirst();
+
+            assertThat("Sidecar container should exist", sidecarStatus.isPresent(), is(true));
+
+            // Check if sidecar is still running (it shouldn't be if marker was signaled)
+            if (sidecarStatus.get().getState().getRunning() != null) {
+                log.warn("Sidecar is still running - marker may not have been signaled");
+            }
+
+            // Wait for pod deletion and measure time
+            long deletionStartTime = System.currentTimeMillis();
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                if (!pods.isEmpty()) {
+                    var pod = pods.get(0);
+                    var sidecarCurrentStatus = pod.getStatus().getContainerStatuses().stream()
+                        .filter(status -> status.getName().equals("out-files"))
+                        .findFirst();
+
+                    if (sidecarCurrentStatus.isPresent()) {
+                        var state = sidecarCurrentStatus.get().getState();
+                        if (state.getTerminated() != null) {
+                            String reason = state.getTerminated().getReason();
+                            log.info("Sidecar terminated with reason: {}", reason);
+                            // Verify sidecar terminated gracefully (Completed), not force-killed (Error/Killed)
+                            assertThat("Sidecar should exit gracefully with Completed status",
+                                reason, is("Completed"));
+                        }
+                    }
+                }
+                return pods.isEmpty();
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+            long deletionDuration = System.currentTimeMillis() - deletionStartTime;
+
+            // Verify pod deletion was fast (< 15 seconds indicates graceful sidecar exit)
+            assertThat("Pod deletion should be fast when sidecar exits gracefully (< 15s)",
+                deletionDuration, lessThan(15000L));
+
+            log.info("Pod {} deleted in {}ms - sidecar exited gracefully", podName, deletionDuration);
+        } finally {
+            taskFuture.cancel(true);
+            executorService.shutdownNow();
+        }
+    }
+
+    @Test
     void missingInputFilesFailsFastWithValidation() throws Exception {
         // Test for issue #211: validation prevents pod creation when inputFiles are invalid
         PodCreate task = PodCreate.builder()
