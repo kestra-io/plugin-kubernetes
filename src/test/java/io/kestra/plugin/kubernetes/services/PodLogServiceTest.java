@@ -1,30 +1,38 @@
 package io.kestra.plugin.kubernetes.services;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.List;
+
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.slf4j.Logger;
+
+import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.dsl.ContainerResource;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.PodResource;
+import io.fabric8.kubernetes.client.dsl.TimestampBytesLimitTerminateTimeTailPrettyLoggable;
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import jakarta.inject.Inject;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-
-import java.io.IOException;
-import java.lang.reflect.Field;
-import java.util.Collections;
-
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Verifies that {@link PodLogService#close()} cleanly stops the internal listener thread.
@@ -131,5 +139,94 @@ class PodLogServiceTest {
             }
         }
         return !t.isAlive();
+    }
+
+    /**
+     * Verifies that {@link PodLogService} handles pod deletion gracefully.
+     *
+     * <p>When watchLog() throws 404 (pod deleted), the service should catch the exception,
+     * cancel the scheduled task gracefully, and terminate cleanly without ERROR logs.
+     */
+    @Test
+    void podDeletionHandledGracefully() throws Exception {
+        // --- Arrange: Create mock pod with one container ---
+        KubernetesClient client = mock(KubernetesClient.class);
+        Pod pod = mock(Pod.class);
+        PodSpec spec = mock(PodSpec.class);
+        Container container = mock(Container.class);
+
+        when(container.getName()).thenReturn("main");
+        when(pod.getSpec()).thenReturn(spec);
+        when(spec.getContainers()).thenReturn(List.of(container));
+        when(pod.getMetadata()).thenReturn(
+            new ObjectMetaBuilder().withNamespace("default").withName("deleted-pod").build()
+        );
+
+        // Mock the Kubernetes client fluent API: client.pods().inNamespace().withName()
+        @SuppressWarnings("unchecked")
+        MixedOperation<Pod, PodList, PodResource> podsOp = mock(MixedOperation.class);
+        @SuppressWarnings("unchecked")
+        NonNamespaceOperation<Pod, PodList, PodResource> nsOp = mock(NonNamespaceOperation.class);
+        PodResource podResource = mock(PodResource.class);
+
+        when(client.pods()).thenReturn(podsOp);
+        when(podsOp.inNamespace("default")).thenReturn(nsOp);
+        when(nsOp.withName("deleted-pod")).thenReturn(podResource);
+        when(podResource.get()).thenReturn(pod);
+
+        // Mock the log watching chain: inContainer().usingTimestamps().sinceTime().watchLog()
+        // Throw 404 from watchLog() to simulate the pod being deleted during log watching
+        var containerResource = mock(ContainerResource.class);
+        var logBuilder = mock(TimestampBytesLimitTerminateTimeTailPrettyLoggable.class);
+
+        when(podResource.inContainer("main")).thenReturn(containerResource);
+        when(containerResource.usingTimestamps()).thenReturn(logBuilder);
+        when(logBuilder.sinceTime(any())).thenReturn(logBuilder);
+        when(logBuilder.watchLog(any())).thenThrow(
+            new KubernetesClientException("pods \"deleted-pod\" not found", 404, null)
+        );
+
+        RunContext runContext = mock(RunContext.class);
+        when(runContext.logger()).thenReturn(mock(Logger.class));
+        AbstractLogConsumer logConsumer = mock(AbstractLogConsumer.class);
+
+        PodLogService svc = new PodLogService(threadMainFactoryBuilder);
+
+        // --- Act: Start watching - scheduled task executes immediately and hits 404 ---
+        svc.watch(client, pod, logConsumer, runContext);
+
+        Thread listener = getListenerThreadOrFail(svc);
+        assertTrue(listener.isAlive(), "Listener should be running after watch() starts");
+
+        // Wait for scheduled task to execute and handle the 404
+        Thread.sleep(1000);
+
+        // --- Assert: Verify the 404 was encountered and handled correctly ---
+        Mockito.verify(logBuilder, Mockito.atLeastOnce()).watchLog(any());
+
+        var scheduledFuture = getScheduledFutureOrFail(svc);
+        assertTrue(
+            scheduledFuture.isCancelled(),
+            "Scheduled task should be cancelled (not failed) after detecting pod deletion"
+        );
+
+        boolean listenerStopped = waitUntilNotAlive(listener);
+        assertTrue(listenerStopped, "Listener should terminate cleanly");
+
+        svc.close();
+    }
+
+    /** Reflectively obtains the internal scheduledFuture or fails the test with a helpful message. */
+    private static java.util.concurrent.ScheduledFuture<?> getScheduledFutureOrFail(PodLogService svc) {
+        try {
+            Field f = PodLogService.class.getDeclaredField("scheduledFuture");
+            f.setAccessible(true);
+            java.util.concurrent.ScheduledFuture<?> future = (java.util.concurrent.ScheduledFuture<?>) f.get(svc);
+            assertNotNull(future, "scheduledFuture should be initialized by watch()");
+            return future;
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            Assertions.fail("PodLogService should expose a 'scheduledFuture' field for testing", e);
+            return null; // unreachable
+        }
     }
 }
