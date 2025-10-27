@@ -2,6 +2,7 @@ package io.kestra.plugin.kubernetes.services;
 
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.LogWatch;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
@@ -58,20 +59,38 @@ public class PodLogService implements AutoCloseable {
 
                     PodResource podResource = PodService.podRef(client, pod);
 
-                    pod
-                        .getSpec()
-                        .getContainers()
-                        .forEach(container -> {
-                            podLogs.add(podResource
-                                .inContainer(container.getName())
-                                .usingTimestamps()
-                                .sinceTime(lastTimestamp != null ?
-                                    lastTimestamp.plusNanos(1).toString() :
-                                    null
-                                )
-                                .watchLog(outputStream)
-                            );
-                        });
+                    try {
+                        pod
+                            .getSpec()
+                            .getContainers()
+                            .forEach(container -> {
+                                try {
+                                    podLogs.add(podResource
+                                        .inContainer(container.getName())
+                                        .usingTimestamps()
+                                        .sinceTime(lastTimestamp != null ?
+                                            lastTimestamp.plusNanos(1).toString() :
+                                            null
+                                        )
+                                        .watchLog(outputStream)
+                                    );
+                                } catch (KubernetesClientException e) {
+                                    if (e.getCode() == 404) {
+                                        runContext.logger().info("Pod no longer exists, stopping log collection");
+                                        scheduledFuture.cancel(false);
+                                    } else {
+                                        throw e;
+                                    }
+                                }
+                            });
+                    } catch (KubernetesClientException e) {
+                        if (e.getCode() == 404) {
+                            runContext.logger().info("Pod no longer exists, stopping log collection");
+                            scheduledFuture.cancel(false);
+                        } else {
+                            throw e;
+                        }
+                    }
                 }
             },
             0,
