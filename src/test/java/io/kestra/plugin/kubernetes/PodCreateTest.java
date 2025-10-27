@@ -277,6 +277,7 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("results.json")))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(10)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
             .spec(TestUtils.convert(
