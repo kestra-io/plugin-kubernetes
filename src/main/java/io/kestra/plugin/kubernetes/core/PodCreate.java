@@ -57,6 +57,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
     title = "Create a pod on a Kubernetes cluster, wait until the pod stops and collect its logs."
 )
 @Plugin(
+    aliases = {"io.kestra.plugin.kubernetes.PodCreate"},
     examples = {
         @Example(
             title = "Launch a Pod",
