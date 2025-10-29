@@ -99,7 +99,7 @@ class PodCreateTest {
 
         PodCreate.Output runOutput = task.run(runContext);
 
-        assertThat(runOutput.getMetadata().getName(), containsString("iokestrapluginkubernetespodcreatetest-run-podcreate"));
+        assertThat(runOutput.getMetadata().getName(), containsString("iokestrapluginkubernetescorepodcreatetest-run-podcreate"));
 
         // Wait for all logs to be collected (expect 14 INFO logs)
         Await.until(
