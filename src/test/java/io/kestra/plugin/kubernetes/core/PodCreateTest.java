@@ -38,6 +38,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -70,6 +71,25 @@ class PodCreateTest {
         long count = logs.stream()
             .filter(log -> log.getMessage() != null && log.getMessage().equals(expectedMessage))
             .count();
+
+        // Debug: If assertion fails, print all logs and similar messages
+        if (count != 1L) {
+            System.err.println("=== ASSERTION FAILURE DEBUG ===");
+            System.err.println("Expected message: '" + expectedMessage + "'");
+            System.err.println("Count: " + count);
+            System.err.println("Total logs collected: " + logs.size());
+            System.err.println("\nAll collected log messages with timestamps and levels:");
+            logs.forEach(log -> {
+                String msg = log.getMessage();
+                System.err.println("  - [" + log.getTimestamp() + "] [" + log.getLevel() + "] [" + (msg != null ? msg.length() : 0) + " chars] '" + msg + "'");
+            });
+            System.err.println("\nMessages containing '" + expectedMessage.substring(0, Math.min(10, expectedMessage.length())) + "':");
+            logs.stream()
+                .filter(log -> log.getMessage() != null && log.getMessage().contains(expectedMessage.substring(0, Math.min(10, expectedMessage.length()))))
+                .forEach(log -> System.err.println("  - [" + log.getTimestamp() + "] [" + log.getLevel() + "] '" + log.getMessage() + "'"));
+            System.err.println("=== END DEBUG ===\n");
+        }
+
         assertThat("Missing or duplicate log: " + expectedMessage, count, is(1L));
     }
 
@@ -923,13 +943,8 @@ class PodCreateTest {
 
     @Test
     void completeLogCollectionAfterQuickTermination() throws Exception {
-        AtomicInteger expectedLogCounter = new AtomicInteger(0);
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
-            String message = logEntry.getLeft().getMessage();
-            if (message != null && (message.startsWith("Log line ") || message.equals("FINAL"))) {
-                expectedLogCounter.incrementAndGet();
-            }
-        });
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
 
         // Generate exactly 20 identifiable log lines in quick succession, then fail
         PodCreate task = PodCreate.builder()
@@ -946,7 +961,7 @@ class PodCreateTest {
                 "  command:",
                 "    - 'bash'",
                 "    - '-c'",
-                "    - 'for i in {1..20}; do echo \"Log line $i\"; done; echo \"FINAL\" && exit 1'",
+                "    - 'for i in {1..20}; do echo \"Quick termination log line $i\"; done; echo \"FINAL\" && exit 1'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -958,19 +973,20 @@ class PodCreateTest {
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
 
-        // Wait for all logs to be collected with retry mechanism (expect 20 numbered + 1 FINAL = 21 logs)
-        Await.until(
-            () -> expectedLogCounter.get() >= 21,
-            Duration.ofMillis(100),
-            Duration.ofSeconds(5)
-        );
+        // Wait for all 20 numbered logs (ignores DEBUG/system logs from queue)
+        TestsUtils.awaitLogs(logs,
+            log -> log.getMessage() != null && log.getMessage().contains("Quick termination log line"),
+            20);
 
-        List<LogEntry> logs = receive.collectList().block();
+        // Wait for Flux completion (ensures FINAL and any remaining logs are processed)
+        receive.blockLast();
 
-        // Verify all 20 numbered logs + FINAL were collected exactly once (no missing/duplicates)
+        // Verify all 20 log lines are present exactly once (no duplicates, no missing)
         for (int i = 1; i <= 20; i++) {
-            assertLogExactlyOnce(logs, "Log line " + i);
+            assertLogExactlyOnce(logs, "Quick termination log line " + i);
         }
+
+        // Verify 'FINAL' log appears exactly once
         assertLogExactlyOnce(logs, "FINAL");
     }
 

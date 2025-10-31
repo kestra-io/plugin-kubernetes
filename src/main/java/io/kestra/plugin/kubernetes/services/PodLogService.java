@@ -122,19 +122,17 @@ public class PodLogService implements AutoCloseable {
         );
     }
 
-    public void fetchFinalLogs(KubernetesClient client, Pod pod, RunContext runContext, Duration waitForLogInterval) throws IOException {
+    public void fetchFinalLogs(KubernetesClient client, Pod pod, RunContext runContext) throws IOException {
         if (outputStream == null) {
             return;
         }
 
-        // Use time-relative window to catch logs that watchLog() may have missed
-        Instant now = Instant.now();
-        Duration safetyBuffer = Duration.ofSeconds(10);
-        Instant sinceTime = now.minus(waitForLogInterval).minus(safetyBuffer);
-
+        // Fetch logs from last 60 seconds to catch any missed by watchLog()
+        // For short containers: fetches all logs (K8s returns everything if sinceSeconds > pod lifetime)
+        // For long containers: 60s lookback catches queued/delayed logs
         runContext.logger().debug(
-            "Fetching final logs using time-relative window: sinceTime={}, waitInterval={}, lastTimestamp={}",
-            sinceTime, waitForLogInterval, outputStream.getLastTimestamp()
+            "Fetching final logs from last 60 seconds, lastTimestamp={}",
+            outputStream.getLastTimestamp()
         );
 
         PodResource podResource = PodService.podRef(client, pod);
@@ -144,7 +142,7 @@ public class PodLogService implements AutoCloseable {
                 String logs = podResource
                     .inContainer(container.getName())
                     .usingTimestamps()
-                    .sinceTime(sinceTime.toString())
+                    .sinceSeconds(60)
                     .getLog();
 
                 if (logs != null && !logs.isEmpty()) {
