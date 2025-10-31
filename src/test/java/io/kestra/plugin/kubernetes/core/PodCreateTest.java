@@ -1,4 +1,4 @@
-package io.kestra.plugin.kubernetes;
+package io.kestra.plugin.kubernetes.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -21,6 +21,7 @@ import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.Await;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.TestsUtils;
+import io.kestra.plugin.kubernetes.TestUtils;
 import io.kestra.plugin.kubernetes.models.SideCar;
 import io.kestra.plugin.kubernetes.services.PodService;
 import jakarta.inject.Inject;
@@ -98,7 +99,7 @@ class PodCreateTest {
 
         PodCreate.Output runOutput = task.run(runContext);
 
-        assertThat(runOutput.getMetadata().getName(), containsString("iokestrapluginkubernetespodcreatetest-run-podcreate"));
+        assertThat(runOutput.getMetadata().getName(), containsString("iokestrapluginkubernetescorepodcreatetest-run-podcreate"));
 
         // Wait for all logs to be collected (expect 14 INFO logs)
         Await.until(
