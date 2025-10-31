@@ -18,12 +18,22 @@ import java.util.Set;
  * Prevents duplicate logs when both watchLog() streaming and fetchFinalLogs() batch retrieval
  * deliver the same log lines. Uses hash of complete line (timestamp + content) for memory
  * efficiency (~4 bytes per log). Thread-safe for multi-container pods.
+ * <p>
+ * <b>Timestamp Handling:</b> Original Kubernetes log timestamps (RFC3339 format) are parsed and
+ * tracked internally in {@link #lastTimestamp} for reconnection logic, but are stripped from
+ * messages before passing to the log consumer. This means {@link io.kestra.core.models.executions.LogEntry}
+ * timestamps will reflect queue processing time, not the original log generation time from the pod.
+ * For timing analysis, use {@link #getLastTimestamp()} which returns the original Kubernetes timestamp.
  */
 public class LoggingOutputStream extends java.io.OutputStream {
     private final AbstractLogConsumer logConsumer;
     private volatile Instant lastTimestamp;
     private final Set<Integer> writtenLogs = Collections.synchronizedSet(new HashSet<>());
     private final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+    // Rate limiting: track last emission time to prevent overwhelming async queue
+    private volatile long lastEmissionNanos = 0;
+    private static final long MIN_DELAY_BETWEEN_EMISSIONS_NANOS = 2_000_000; // 2ms
 
     /**
      * Creates a new logging output stream.
@@ -36,7 +46,6 @@ public class LoggingOutputStream extends java.io.OutputStream {
 
     /**
      * Returns the most recent timestamp seen in log lines.
-     * Used by fetchFinalLogs() to calculate time-relative window for log retrieval.
      *
      * @return the most recent timestamp, or null if no timestamped logs have been written
      */
@@ -106,8 +115,29 @@ public class LoggingOutputStream extends java.io.OutputStream {
             }
         }
 
+        // Rate limiting: add small delay between emissions to prevent overwhelming async queue
+        long now = System.nanoTime();
+        long timeSinceLastEmission = now - lastEmissionNanos;
+
+        if (lastEmissionNanos > 0 && timeSinceLastEmission < MIN_DELAY_BETWEEN_EMISSIONS_NANOS) {
+            long sleepNanos = MIN_DELAY_BETWEEN_EMISSIONS_NANOS - timeSinceLastEmission;
+            try {
+                Thread.sleep(sleepNanos / 1_000_000, (int)(sleepNanos % 1_000_000));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        lastEmissionNanos = System.nanoTime();
+
         // we have no way to know that a log is from stdErr so with Kubernetes all logs will always be INFO
         logConsumer.accept(message, false);
+    }
+
+    @Override
+    public void flush() throws IOException {
+        this.send();
+        super.flush();
     }
 
     /**
