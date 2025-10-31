@@ -438,10 +438,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         Logger logger = runContext.logger();
 
         // Wait for async log stream (watchLog) to finish processing
-        Thread.sleep(runContext.render(this.waitForLogInterval).as(Duration.class).orElseThrow().toMillis());
+        Duration waitInterval = runContext.render(this.waitForLogInterval).as(Duration.class).orElseThrow();
+        Thread.sleep(waitInterval.toMillis());
 
         // Fetch any remaining logs that the watch stream may have missed
-        podLogService.fetchFinalLogs(client, ended);
+        podLogService.fetchFinalLogs(client, ended, runContext, waitInterval);
 
         // Check for failures based on whether outputFiles are configured
         if (hasOutputFiles) {
