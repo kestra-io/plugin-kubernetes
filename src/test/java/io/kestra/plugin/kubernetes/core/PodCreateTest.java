@@ -63,6 +63,16 @@ class PodCreateTest {
     @Inject
     private RunContextInitializer runContextInitializer;
 
+    /**
+     * Asserts that a log with the exact message appears exactly once (no missing, no duplicates).
+     */
+    private void assertLogExactlyOnce(List<LogEntry> logs, String expectedMessage) {
+        long count = logs.stream()
+            .filter(log -> log.getMessage() != null && log.getMessage().equals(expectedMessage))
+            .count();
+        assertThat("Missing or duplicate log: " + expectedMessage, count, is(1L));
+    }
+
     @Test
     void run() throws Exception {
         AtomicInteger logCounter = new AtomicInteger(0);
@@ -858,7 +868,7 @@ class PodCreateTest {
         AtomicInteger logCounter = new AtomicInteger(0);
         Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
             String message = logEntry.getLeft().getMessage();
-            if (message.contains("First container succeeded") || message.contains("Second container failing")) {
+            if (message != null && (message.equals("First container succeeded") || message.equals("Second container failing"))) {
                 logCounter.incrementAndGet();
             }
         });
@@ -906,15 +916,9 @@ class PodCreateTest {
 
         List<LogEntry> logs = receive.collectList().block();
 
-        // Verify logs from both containers were collected
-        assertThat(logs.stream()
-            .filter(logEntry -> logEntry.getMessage().contains("First container succeeded"))
-            .count(),
-            greaterThan(0L));
-        assertThat(logs.stream()
-            .filter(logEntry -> logEntry.getMessage().contains("Second container failing"))
-            .count(),
-            greaterThan(0L));
+        // Verify logs from both containers were collected exactly once (no duplicates)
+        assertLogExactlyOnce(logs, "First container succeeded");
+        assertLogExactlyOnce(logs, "Second container failing");
     }
 
     @Test
@@ -922,7 +926,7 @@ class PodCreateTest {
         AtomicInteger expectedLogCounter = new AtomicInteger(0);
         Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
             String message = logEntry.getLeft().getMessage();
-            if (message.startsWith("Log line ") || message.equals("FINAL")) {
+            if (message != null && (message.startsWith("Log line ") || message.equals("FINAL"))) {
                 expectedLogCounter.incrementAndGet();
             }
         });
@@ -963,20 +967,11 @@ class PodCreateTest {
 
         List<LogEntry> logs = receive.collectList().block();
 
-        // Verify all 20 numbered logs were collected (no missing logs)
+        // Verify all 20 numbered logs + FINAL were collected exactly once (no missing/duplicates)
         for (int i = 1; i <= 20; i++) {
-            String expected = "Log line " + i;
-            long count = logs.stream()
-                .filter(log -> log.getMessage().equals(expected))
-                .count();
-            assertThat("Missing or duplicate log: " + expected, count, is(1L));
+            assertLogExactlyOnce(logs, "Log line " + i);
         }
-
-        // Verify final log before exit was captured
-        assertThat(logs.stream()
-            .filter(log -> log.getMessage().equals("FINAL"))
-            .count(),
-            is(1L));
+        assertLogExactlyOnce(logs, "FINAL");
     }
 
 }
