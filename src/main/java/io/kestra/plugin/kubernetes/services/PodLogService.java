@@ -1,5 +1,18 @@
 package io.kestra.plugin.kubernetes.services;
 
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
@@ -11,16 +24,6 @@ import io.kestra.core.utils.Await;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.StringReader;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 public class PodLogService implements AutoCloseable {
@@ -36,9 +39,15 @@ public class PodLogService implements AutoCloseable {
         this.threadFactoryBuilder = threadFactoryBuilder;
     }
 
+    public void setLogConsumer(AbstractLogConsumer logConsumer) {
+        if (outputStream == null) {
+            outputStream = new LoggingOutputStream(logConsumer);
+        }
+    }
+
     public final void watch(KubernetesClient client, Pod pod, AbstractLogConsumer logConsumer, RunContext runContext) {
         scheduledExecutor = Executors.newSingleThreadScheduledExecutor(threadFactoryBuilder.build("k8s-log"));
-        outputStream = new LoggingOutputStream(logConsumer);
+        setLogConsumer(logConsumer);
         AtomicBoolean started = new AtomicBoolean(false);
 
         scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
