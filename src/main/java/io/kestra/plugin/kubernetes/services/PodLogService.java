@@ -122,40 +122,42 @@ public class PodLogService implements AutoCloseable {
         );
     }
 
-    public void fetchFinalLogs(KubernetesClient client, Pod pod) throws IOException {
+    public void fetchFinalLogs(KubernetesClient client, Pod pod, RunContext runContext, Duration waitForLogInterval) throws IOException {
         if (outputStream == null) {
             return;
         }
 
-        Instant lastTimestamp = outputStream.getLastTimestamp();
+        // Use time-relative window to catch logs that watchLog() may have missed
+        Instant now = Instant.now();
+        Duration safetyBuffer = Duration.ofSeconds(10);
+        Instant sinceTime = now.minus(waitForLogInterval).minus(safetyBuffer);
+
+        runContext.logger().debug(
+            "Fetching final logs using time-relative window: sinceTime={}, waitInterval={}, lastTimestamp={}",
+            sinceTime, waitForLogInterval, outputStream.getLastTimestamp()
+        );
+
         PodResource podResource = PodService.podRef(client, pod);
 
-        pod.getSpec()
-            .getContainers()
-            .forEach(container -> {
-                try {
-                    String logs = podResource
-                        .inContainer(container.getName())
-                        .usingTimestamps()
-                        .sinceTime(lastTimestamp != null ?
-                            lastTimestamp.plusNanos(1).toString() :
-                            null
-                        )
-                        .getLog();
+        pod.getSpec().getContainers().forEach(container -> {
+            try {
+                String logs = podResource
+                    .inContainer(container.getName())
+                    .usingTimestamps()
+                    .sinceTime(sinceTime.toString())
+                    .getLog();
 
-                    if (logs != null && !logs.isEmpty()) {
-                        // Parse and write each line to outputStream
-                        BufferedReader reader = new BufferedReader(new StringReader(logs));
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            outputStream.write((line + "\n").getBytes());
-                        }
-                        outputStream.flush();
-                    }
-                } catch (IOException e) {
-                    log.error("Error fetching final logs for container {}", container.getName(), e);
+                if (logs != null && !logs.isEmpty()) {
+                    // Write all logs - hash-based deduplication automatically filters duplicates
+                    outputStream.write(logs.getBytes());
+                    outputStream.flush();
+                } else {
+                    runContext.logger().debug("No logs returned for container '{}'", container.getName());
                 }
-            });
+            } catch (IOException e) {
+                runContext.logger().error("Failed to fetch final logs for container '{}'", container.getName(), e);
+            }
+        });
     }
 
     @Override
