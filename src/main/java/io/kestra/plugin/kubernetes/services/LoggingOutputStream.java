@@ -1,7 +1,6 @@
 package io.kestra.plugin.kubernetes.services;
 
 import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
-import lombok.Getter;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -12,8 +11,7 @@ import java.util.Arrays;
 
 public class LoggingOutputStream extends java.io.OutputStream {
     private final AbstractLogConsumer logConsumer;
-    @Getter
-    private Instant lastTimestamp;
+    private volatile Instant lastTimestamp;
 
     private final ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
@@ -21,8 +19,12 @@ public class LoggingOutputStream extends java.io.OutputStream {
         this.logConsumer = logConsumer;
     }
 
+    public synchronized Instant getLastTimestamp() {
+        return lastTimestamp;
+    }
+
     @Override
-    public void write(int b) {
+    public synchronized void write(int b) {
         if (b == '\n') {
             this.send();
         } else {
@@ -30,7 +32,23 @@ public class LoggingOutputStream extends java.io.OutputStream {
         }
     }
 
-    private void send() {
+    /**
+     * Writes a portion of a byte array to the stream.
+     * Ensures atomic line processing to prevent log corruption from concurrent container streams.
+     *
+     * @param b the byte array
+     * @param off the start offset in the data
+     * @param len the number of bytes to write
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    public synchronized void write(byte[] b, int off, int len) throws IOException {
+        for (int i = 0; i < len; i++) {
+            write(b[off + i]);
+        }
+    }
+
+    private synchronized void send() {
         if (baos.size() == 0) {
             return;
         }
@@ -45,7 +63,11 @@ public class LoggingOutputStream extends java.io.OutputStream {
         ArrayList<String> logs = new ArrayList<>(Arrays.asList(line.split("\\s+")));
         if (!logs.isEmpty()) {
             try {
-                lastTimestamp = Instant.parse(logs.get(0));
+                Instant newTimestamp = Instant.parse(logs.get(0));
+                // Only update lastTimestamp if the new timestamp is newer (handles out-of-order log arrivals)
+                if (lastTimestamp == null || newTimestamp.isAfter(lastTimestamp)) {
+                    lastTimestamp = newTimestamp;
+                }
                 logs.remove(0);
             } catch (DateTimeParseException ignored) {
             }
