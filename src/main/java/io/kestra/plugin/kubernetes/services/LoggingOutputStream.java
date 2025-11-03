@@ -103,7 +103,7 @@ public class LoggingOutputStream extends java.io.OutputStream {
 
         if (!logs.isEmpty()) {
             try {
-                Instant newTimestamp = Instant.parse(logs.get(0));
+                Instant newTimestamp = Instant.parse(logs.getFirst());
                 // Only update lastTimestamp if the new timestamp is newer (handles out-of-order log arrivals)
                 if (lastTimestamp == null || newTimestamp.isAfter(lastTimestamp)) {
                     lastTimestamp = newTimestamp;

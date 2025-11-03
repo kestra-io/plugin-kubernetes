@@ -136,12 +136,17 @@ public class PodLogService implements AutoCloseable {
             return;
         }
 
-        // Fetch logs from last 60 seconds to catch any missed by watchLog()
-        // For short containers: fetches all logs (K8s returns everything if sinceSeconds > pod lifetime)
-        // For long containers: 60s lookback catches queued/delayed logs
+        Instant lastTimestamp = outputStream.getLastTimestamp();
+        Instant lookbackTime = lastTimestamp != null ? lastTimestamp.minus(Duration.ofSeconds(60)) : null;
+
+        // Hybrid approach: fetch logs since (lastTimestamp - 60s) to catch any missed by watchLog()
+        // - Provides 60s safety buffer for multi-container out-of-order logs and K8s API delays
+        // - Uses lastTimestamp as anchor for unbounded lookback when watchLog() failures are prolonged
+        // - Hash-based deduplication efficiently handles the increased overlap
         runContext.logger().debug(
-            "Fetching final logs from last 60 seconds, lastTimestamp={}",
-            outputStream.getLastTimestamp()
+            "Fetching final logs since lookbackTime={} (lastTimestamp={} minus 60s)",
+            lookbackTime,
+            lastTimestamp
         );
 
         PodResource podResource = PodService.podRef(client, pod);
@@ -151,7 +156,7 @@ public class PodLogService implements AutoCloseable {
                 String logs = podResource
                     .inContainer(container.getName())
                     .usingTimestamps()
-                    .sinceSeconds(60)
+                    .sinceTime(lookbackTime != null ? lookbackTime.toString() : null)
                     .getLog();
 
                 if (logs != null && !logs.isEmpty()) {
