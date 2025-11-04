@@ -1,0 +1,8 @@
+group: io.kestra.plugin.kubernetes.kubectl
+name: "kubectl"
+title: "Kubectl"
+description: ""
+body: ""
+videos: []
+createdBy: "Kestra Core Team"
+managedBy: "Kestra Core Team"
