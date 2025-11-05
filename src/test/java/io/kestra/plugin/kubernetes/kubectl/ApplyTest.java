@@ -172,7 +172,8 @@ class ApplyTest {
         assertThat(runOutput.getMetadata(), notNullValue());
         assertThat(runOutput.getMetadata().getFirst().getName(), containsString(podName));
 
-        // Verify the pod IS ready (since we waited)
+        // Verify the pod IS ready by fetching immediately after apply returns
+        // Since Apply waited, the pod should be ready immediately
         var getTask = Get.builder()
             .id("check-status")
             .type(Get.class.getName())
@@ -188,7 +189,7 @@ class ApplyTest {
         assertThat(status, notNullValue());
         assertThat(status.containsKey("conditions"), is(true));
 
-        // Pod SHOULD be ready now
+        // Pod SHOULD be ready now (proving Apply waited correctly)
         var conditions = (java.util.List<?>) status.get("conditions");
         boolean isReady = conditions.stream()
             .filter(c -> c instanceof java.util.Map)
@@ -196,6 +197,11 @@ class ApplyTest {
             .anyMatch(c -> "Ready".equals(c.get("type")) && "True".equals(c.get("status")));
 
         assertThat("Pod should be ready after apply with waitUntilReady", isReady, is(true));
-        log.info("Verified pod {} IS ready (as expected after waiting)", podName);
+
+        // Verify additional status details to ensure it's truly running
+        assertThat(status.get("phase"), is("Running"));
+        assertThat(status.containsKey("containerStatuses"), is(true));
+
+        log.info("Verified pod {} IS ready with phase=Running (as expected after waiting)", podName);
     }
 }

@@ -2,6 +2,7 @@ package io.kestra.plugin.kubernetes.kubectl;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
 import java.time.Duration;
@@ -344,20 +345,26 @@ public class GetTest {
         assertThat(output.getMetadataItem(), notNullValue());
         assertThat(output.getMetadataItem().getName(), is(podName));
 
-        // Verify the pod is NOT ready yet (since we didn't wait and it has 10s initialDelay)
+        // IMPORTANT: Verify the OUTPUT's statusItem shows NOT ready state
+        // This proves we returned immediately without waiting
         var status = output.getStatusItem().getStatus();
         assertThat(status, notNullValue());
         assertThat(status.containsKey("conditions"), is(true));
 
-        // Pod should NOT be ready yet
-        var conditions = (java.util.List<?>) status.get("conditions");
-        boolean isReady = conditions.stream()
-            .filter(c -> c instanceof java.util.Map)
-            .map(c -> (java.util.Map<?, ?>) c)
-            .anyMatch(c -> "Ready".equals(c.get("type")) && "True".equals(c.get("status")));
+        // Pod should NOT be ready yet in the output
+        @SuppressWarnings("unchecked")
+        var conditions = (java.util.List<java.util.Map<String, Object>>) status.get("conditions");
+        var readyCondition = conditions.stream()
+            .filter(c -> "Ready".equals(c.get("type")))
+            .findFirst();
 
-        assertThat("Pod should NOT be ready immediately after get with PT0S", isReady, is(false));
-        log.info("Verified pod {} is NOT ready (as expected with PT0S)", podName);
+        // Either no Ready condition yet, or Ready=False
+        if (readyCondition.isPresent()) {
+            assertThat("Ready condition should NOT be True in output",
+                readyCondition.get().get("status"), not(is("True")));
+        }
+
+        log.info("Verified output for pod {} shows NOT ready state (as expected with PT0S)", podName);
     }
 
     @Test
@@ -414,19 +421,31 @@ public class GetTest {
         assertThat(output.getMetadataItem(), notNullValue());
         assertThat(output.getMetadataItem().getName(), is(podName));
 
-        // Verify the pod IS ready (since we waited)
+        // IMPORTANT: Verify the OUTPUT's statusItem reflects the post-wait Ready state
+        // This proves the output was refreshed after waiting, not stale from before
         var status = output.getStatusItem().getStatus();
         assertThat(status, notNullValue());
         assertThat(status.containsKey("conditions"), is(true));
 
-        // Pod SHOULD be ready now
-        var conditions = (java.util.List<?>) status.get("conditions");
-        boolean isReady = conditions.stream()
-            .filter(c -> c instanceof java.util.Map)
-            .map(c -> (java.util.Map<?, ?>) c)
-            .anyMatch(c -> "Ready".equals(c.get("type")) && "True".equals(c.get("status")));
+        // Pod SHOULD be ready in the output
+        @SuppressWarnings("unchecked")
+        var conditions = (java.util.List<java.util.Map<String, Object>>) status.get("conditions");
+        var readyCondition = conditions.stream()
+            .filter(c -> "Ready".equals(c.get("type")))
+            .findFirst();
 
-        assertThat("Pod should be ready after get with waitUntilReady", isReady, is(true));
-        log.info("Verified pod {} IS ready (as expected after waiting)", podName);
+        assertThat("Ready condition should exist in output", readyCondition.isPresent(), is(true));
+        assertThat("Ready condition should be True in output", readyCondition.get().get("status"), is("True"));
+
+        // Verify additional status details to ensure output is truly from ready state
+        assertThat("Phase should be Running in output", status.get("phase"), is("Running"));
+        assertThat("containerStatuses should exist in output", status.containsKey("containerStatuses"), is(true));
+
+        @SuppressWarnings("unchecked")
+        var containerStatuses = (java.util.List<java.util.Map<String, Object>>) status.get("containerStatuses");
+        assertThat(containerStatuses.size(), is(1));
+        assertThat("Container should be ready in output", containerStatuses.get(0).get("ready"), is(true));
+
+        log.info("Verified output for pod {} reflects Ready state with phase=Running and container ready=true", podName);
     }
 }
