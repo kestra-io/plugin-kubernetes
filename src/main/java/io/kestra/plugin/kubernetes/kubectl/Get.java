@@ -15,6 +15,7 @@ import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.ResourceStatus;
 import io.kestra.plugin.kubernetes.services.PodService;
+import io.kestra.plugin.kubernetes.services.ResourceWaitService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -27,6 +28,7 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URI;
+import java.time.Duration;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
@@ -108,6 +110,26 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                     fetchType: FETCH_ONE
                 """
         ),
+        @Example(
+            title = "Get a custom resource and wait for it to become ready.",
+            full = true,
+            code = """
+                id: get_and_wait_for_custom_resource
+                namespace: company.team
+
+                tasks:
+                  - id: get
+                    type: io.kestra.plugin.kubernetes.kubectl.Get
+                    namespace: default
+                    resourceType: myresource
+                    apiGroup: example.com
+                    apiVersion: v1
+                    resourcesNames:
+                      - my-resource
+                    fetchType: FETCH_ONE
+                    waitUntilReady: PT10M
+                """
+        ),
     },
     metrics = {
         @Metric(
@@ -154,6 +176,17 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     @Builder.Default
     protected Property<FetchType> fetchType = Property.ofValue(NONE);
 
+    @Builder.Default
+    @Schema(
+        title = "The maximum duration to wait until the resource becomes ready",
+        description = "When set to a positive duration, waits for the resource to report Ready=True in its status conditions. " +
+            "Set to PT0S (zero, default) to skip waiting. " +
+            "Supports Pods, StatefulSets, and custom resources that use the Ready condition. " +
+            "Note: Deployments are not supported as they use the Available condition instead of Ready. " +
+            "Only applicable when fetching specific resources (resourcesNames must be provided)."
+    )
+    private Property<Duration> waitUntilReady = Property.ofValue(Duration.ZERO);
+
     @Override
     public Output run(RunContext runContext) throws Exception {
         var renderedNamespace = runContext.render(this.namespace).as(String.class)
@@ -164,6 +197,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         var renderedApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("");
         var renderedApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
         var renderedFetchType = runContext.render(this.fetchType).as(FetchType.class).orElse(NONE);
+        var rWaitUntilReady = runContext.render(this.waitUntilReady).as(Duration.class).orElse(Duration.ZERO);
 
         List<Metadata> metadataList = new ArrayList<>();
         List<ResourceStatus> statusList = new ArrayList<>();
@@ -205,6 +239,20 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                             .get();
 
                         if (resource != null && resource.getMetadata() != null) {
+                            // Optionally wait for resource to become ready
+                            if (!rWaitUntilReady.isZero()) {
+                                runContext.logger().info("Waiting for resource '{}' to become ready (timeout: {})...", name, rWaitUntilReady);
+                                resource = ResourceWaitService.waitForReady(
+                                    client,
+                                    resourceDefinitionContext,
+                                    renderedNamespace,
+                                    name,
+                                    rWaitUntilReady,
+                                    runContext.logger()
+                                );
+                                runContext.logger().info("Resource '{}' is ready", name);
+                            }
+
                             metadataList.add(Metadata.from(resource.getMetadata()));
                             statusList.add(ResourceStatus.from(resource));
                             logger.info("Fetched resource of kind '{}' with name '{}' in namespace '{}'",
