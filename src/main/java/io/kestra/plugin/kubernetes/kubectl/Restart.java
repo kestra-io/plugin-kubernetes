@@ -44,6 +44,10 @@ import java.util.Map;
                     resourceType: StatefulSet
                     resourcesNames:
                       - api
+                    connection:
+                      masterUrl: "{{ secret('MASTER_URL') }}"
+                      caCertData: "{{ secret('CA_CERT_DATA') }}"
+                      oauthToken: "{{ secret('OAUTH_TOKEN') }}"
                 """
         )
     }
