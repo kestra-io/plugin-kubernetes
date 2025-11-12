@@ -39,6 +39,7 @@ public class PodLogService implements AutoCloseable {
         scheduledExecutor = Executors.newSingleThreadScheduledExecutor(threadFactoryBuilder.build("k8s-log"));
         outputStream = new LoggingOutputStream(logConsumer);
         AtomicBoolean started = new AtomicBoolean(false);
+        Logger logger = runContext.logger();
 
         scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
             () -> {
@@ -48,7 +49,7 @@ public class PodLogService implements AutoCloseable {
                     if (!started.get()) {
                         started.set(true);
                     } else {
-                        runContext.logger().trace("No log since '{}', reconnecting", lastTimestamp == null ? "unknown" : lastTimestamp.toString());
+                        logger.trace("No log since '{}', reconnecting", lastTimestamp == null ? "unknown" : lastTimestamp.toString());
                     }
 
                     if (podLogs != null) {
@@ -75,7 +76,7 @@ public class PodLogService implements AutoCloseable {
                                     );
                                 } catch (KubernetesClientException e) {
                                     if (e.getCode() == 404) {
-                                        runContext.logger().info("Pod no longer exists, stopping log collection");
+                                        logger.info("Pod no longer exists, stopping log collection");
                                         scheduledFuture.cancel(false);
                                     } else {
                                         throw e;
@@ -84,7 +85,7 @@ public class PodLogService implements AutoCloseable {
                             });
                     } catch (KubernetesClientException e) {
                         if (e.getCode() == 404) {
-                            runContext.logger().info("Pod no longer exists, stopping log collection");
+                            logger.info("Pod no longer exists, stopping log collection");
                             scheduledFuture.cancel(false);
                         } else {
                             throw e;
@@ -104,18 +105,18 @@ public class PodLogService implements AutoCloseable {
                     Await.until(scheduledFuture::isDone);
                 } catch (RuntimeException e) {
                     if (!e.getMessage().contains("Can't sleep")) {
-                        runContext.logger().error("{} exception", this.getClass().getName(), e);
+                        logger.error("{} exception", this.getClass().getName(), e);
                     } else {
-                        runContext.logger().debug("{} exception", this.getClass().getName(), e);
+                        logger.debug("{} exception", this.getClass().getName(), e);
                     }
                 }
 
                 try {
                     scheduledFuture.get();
                 } catch (CancellationException e) {
-                    runContext.logger().debug("{} cancelled", this.getClass().getName(), e);
+                    logger.debug("{} cancelled", this.getClass().getName(), e);
                 } catch (ExecutionException | InterruptedException e) {
-                    runContext.logger().error("{} exception", this.getClass().getName(), e);
+                    logger.error("{} exception", this.getClass().getName(), e);
                 }
             }
         );
