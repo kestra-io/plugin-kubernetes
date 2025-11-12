@@ -8,7 +8,6 @@ import io.kestra.core.utils.Await;
 import io.kestra.plugin.kubernetes.models.PatchStrategy;
 import io.kestra.plugin.kubernetes.services.PodService;
 import jakarta.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +19,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 @KestraTest
-@Slf4j
 class PatchTest {
     @Inject
     private RunContextFactory runContextFactory;
@@ -34,7 +32,7 @@ class PatchTest {
         try (KubernetesClient client = PodService.client(runContext, null)) {
             for (var resource : resourcesToCleanup) {
                 try {
-                    log.info("Cleaning up {} '{}' in namespace '{}'", resource.type, resource.name, resource.namespace);
+                    runContext.logger().info("Cleaning up {} '{}' in namespace '{}'", resource.type, resource.name, resource.namespace);
                     switch (resource.type.toLowerCase()) {
                         case "deployment" -> client.apps().deployments()
                             .inNamespace(resource.namespace)
@@ -44,10 +42,10 @@ class PatchTest {
                             .inNamespace(resource.namespace)
                             .withName(resource.name)
                             .delete();
-                        default -> log.warn("Unknown resource type for cleanup: {}", resource.type);
+                        default -> runContext.logger().warn("Unknown resource type for cleanup: {}", resource.type);
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to cleanup {} '{}': {}", resource.type, resource.name, e.getMessage());
+                    runContext.logger().warn("Failed to cleanup {} '{}': {}", resource.type, resource.name, e.getMessage());
                 }
             }
             resourcesToCleanup.clear();

@@ -26,7 +26,6 @@ import io.kestra.plugin.kubernetes.models.SideCar;
 import io.kestra.plugin.kubernetes.services.PodService;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.junitpioneer.jupiter.RetryingTest;
 import org.slf4j.event.Level;
@@ -48,7 +47,6 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @KestraTest
-@Slf4j
 class PodCreateTest {
     @Inject
     private RunContextFactory runContextFactory;
@@ -243,7 +241,7 @@ class PodCreateTest {
             try {
                 task.run(finalRunContext);
             } catch (Exception e) {
-                log.debug("Task failed as expected.", e);
+                finalRunContext.logger().debug("Task failed as expected.", e);
             }
         });
 
@@ -258,13 +256,13 @@ class PodCreateTest {
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().get(0);
             String podName = createdPod.getMetadata().getName();
-            log.info("Test detected pod creation: {}", podName);
+            finalRunContext.logger().info("Test detected pod creation: {}", podName);
 
             // Wait for pod to be deleted despite the failure
             Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
                 Duration.ofMillis(200), Duration.ofMinutes(2));
 
-            log.info("Pod {} was successfully deleted after failure with outputFiles.", podName);
+            finalRunContext.logger().info("Pod {} was successfully deleted after failure with outputFiles.", podName);
         } finally {
             taskFuture.cancel(true);
             executorService.shutdownNow();
@@ -305,7 +303,7 @@ class PodCreateTest {
             try {
                 task.run(finalRunContext);
             } catch (Exception e) {
-                log.debug("Task failed as expected.", e);
+                finalRunContext.logger().debug("Task failed as expected.", e);
             }
         });
 
@@ -325,7 +323,7 @@ class PodCreateTest {
 
             var completedPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().get(0);
             String podName = completedPod.getMetadata().getName();
-            log.info("Pod {} completed with phase: {}", podName, completedPod.getStatus().getPhase());
+            finalRunContext.logger().info("Pod {} completed with phase: {}", podName, completedPod.getStatus().getPhase());
 
             // Verify sidecar container exists and check its status
             var containerStatuses = completedPod.getStatus().getContainerStatuses();
@@ -337,7 +335,7 @@ class PodCreateTest {
 
             // Check if sidecar is still running (it shouldn't be if marker was signaled)
             if (sidecarStatus.get().getState().getRunning() != null) {
-                log.warn("Sidecar is still running - marker may not have been signaled");
+                finalRunContext.logger().warn("Sidecar is still running - marker may not have been signaled");
             }
 
             // Wait for pod deletion and measure time
@@ -354,7 +352,7 @@ class PodCreateTest {
                         var state = sidecarCurrentStatus.get().getState();
                         if (state.getTerminated() != null) {
                             String reason = state.getTerminated().getReason();
-                            log.info("Sidecar terminated with reason: {}", reason);
+                            finalRunContext.logger().info("Sidecar terminated with reason: {}", reason);
                             // Verify sidecar terminated gracefully (Completed), not force-killed (Error/Killed)
                             assertThat("Sidecar should exit gracefully with Completed status",
                                 reason, is("Completed"));
@@ -369,7 +367,7 @@ class PodCreateTest {
             assertThat("Pod deletion should be fast when sidecar exits gracefully (< 15s)",
                 deletionDuration, lessThan(15000L));
 
-            log.info("Pod {} deleted in {}ms - sidecar exited gracefully", podName, deletionDuration);
+            finalRunContext.logger().info("Pod {} deleted in {}ms - sidecar exited gracefully", podName, deletionDuration);
         } finally {
             taskFuture.cancel(true);
             executorService.shutdownNow();
@@ -426,7 +424,7 @@ class PodCreateTest {
             assertThat(pods, empty());
         }
 
-        log.info("Validation prevented pod creation and failed in {}ms", elapsedTime);
+        finalRunContext.logger().info("Validation prevented pod creation and failed in {}ms", elapsedTime);
     }
 
     @Test
@@ -473,7 +471,7 @@ class PodCreateTest {
             try {
                 task.run(finalRunContext);
             } catch (Exception e) {
-                log.warn("Exception", e);
+                finalRunContext.logger().warn("Exception", e);
             }
         });
 
@@ -636,7 +634,7 @@ class PodCreateTest {
             try {
                 run[0] = task.run(finalRunContext);
             } catch (Exception e) {
-                log.debug("Unexpected error.", e);
+                finalRunContext.logger().debug("Unexpected error.", e);
             }
         });
 
@@ -651,7 +649,7 @@ class PodCreateTest {
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
             assertThat(createdPod.getStatus().getPhase(), is("Running"));
             String podName = createdPod.getMetadata().getName();
-            log.info("Test detected pod creation: {}", podName);
+            finalRunContext.logger().info("Test detected pod creation: {}", podName);
 
             ResourceRequirements initReqs = createdPod.getSpec().getInitContainers().getFirst().getResources();
             assertThat(initReqs.getLimits().get("cpu"), is(Quantity.parse("200m")));
@@ -668,7 +666,7 @@ class PodCreateTest {
             Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
                 Duration.ofMillis(200), Duration.ofMinutes(1));
 
-            log.info("Pod {} has successfully completed.", podName);
+            finalRunContext.logger().info("Pod {} has successfully completed.", podName);
         }
 
         assertThat(run[0].getOutputFiles(), hasKey("out.txt"));
@@ -754,7 +752,7 @@ class PodCreateTest {
             try {
                 task.run(finalRunContext);
             } catch (Exception e) {
-                log.debug("Task run interrupted.", e);
+                finalRunContext.logger().debug("Task run interrupted.", e);
             }
         });
 
@@ -768,7 +766,7 @@ class PodCreateTest {
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().get(0);
             String podName = createdPod.getMetadata().getName();
-            log.info("Test detected pod creation: {}", podName);
+            finalRunContext.logger().info("Test detected pod creation: {}", podName);
             assertThat(createdPod.getStatus().getPhase(), is("Running"));
 
             task.kill();
@@ -776,7 +774,7 @@ class PodCreateTest {
             Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
                 Duration.ofMillis(200), Duration.ofMinutes(1));
 
-            log.info("Pod {} has been successfully deleted after kill.", podName);
+            finalRunContext.logger().info("Pod {} has been successfully deleted after kill.", podName);
         } finally {
             taskFuture.cancel(true);
             executorService.shutdownNow();

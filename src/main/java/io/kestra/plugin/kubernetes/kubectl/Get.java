@@ -19,7 +19,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
@@ -121,7 +120,6 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
 @Schema(
     title = "Get one or many Kubernetes resources of a kind."
 )
-@Slf4j
 public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
     @Schema(

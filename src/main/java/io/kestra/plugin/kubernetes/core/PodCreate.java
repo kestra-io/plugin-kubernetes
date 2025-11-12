@@ -10,13 +10,12 @@ import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.State;
 import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
 import io.kestra.core.models.tasks.runners.DefaultLogConsumer;
 import io.kestra.core.models.tasks.runners.PluginUtilsService;
 import io.kestra.core.models.tasks.runners.ScriptService;
-import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.DefaultRunContext;
-import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
@@ -29,6 +28,7 @@ import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.watchers.PodWatcher;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
@@ -42,8 +42,6 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-
-import jakarta.validation.constraints.NotNull;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
@@ -441,7 +439,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         Thread.sleep(runContext.render(this.waitForLogInterval).as(Duration.class).orElseThrow().toMillis());
 
         // Fetch any remaining logs that the watch stream may have missed
-        podLogService.fetchFinalLogs(client, ended);
+        podLogService.fetchFinalLogs(client, ended, logger);
 
         // Check for failures based on whether outputFiles are configured
         if (hasOutputFiles) {

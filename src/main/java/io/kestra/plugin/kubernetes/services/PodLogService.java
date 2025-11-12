@@ -10,7 +10,7 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.Await;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-@Slf4j
 public class PodLogService implements AutoCloseable {
     private final ThreadMainFactoryBuilder threadFactoryBuilder;
     private List<LogWatch> podLogs = new ArrayList<>();
@@ -105,24 +104,24 @@ public class PodLogService implements AutoCloseable {
                     Await.until(scheduledFuture::isDone);
                 } catch (RuntimeException e) {
                     if (!e.getMessage().contains("Can't sleep")) {
-                        log.error("{} exception", this.getClass().getName(), e);
+                        runContext.logger().error("{} exception", this.getClass().getName(), e);
                     } else {
-                        log.debug("{} exception", this.getClass().getName(), e);
+                        runContext.logger().debug("{} exception", this.getClass().getName(), e);
                     }
                 }
 
                 try {
                     scheduledFuture.get();
                 } catch (CancellationException e) {
-                    log.debug("{} cancelled", this.getClass().getName(), e);
+                    runContext.logger().debug("{} cancelled", this.getClass().getName(), e);
                 } catch (ExecutionException | InterruptedException e) {
-                    log.error("{} exception", this.getClass().getName(), e);
+                    runContext.logger().error("{} exception", this.getClass().getName(), e);
                 }
             }
         );
     }
 
-    public void fetchFinalLogs(KubernetesClient client, Pod pod) throws IOException {
+    public void fetchFinalLogs(KubernetesClient client, Pod pod, Logger logger) throws IOException {
         if (outputStream == null) {
             return;
         }
@@ -153,7 +152,7 @@ public class PodLogService implements AutoCloseable {
                         outputStream.flush();
                     }
                 } catch (IOException e) {
-                    log.error("Error fetching final logs for container {}", container.getName(), e);
+                    logger.error("Error fetching final logs for container {}", container.getName(), e);
                 }
             });
     }
