@@ -128,10 +128,7 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
     )
     private Property<String> spec;
 
-    @Schema(
-        title = "The Kubernetes namespace"
-    )
-    private Property<String> namespace;
+    
 
     @Override
     public Apply.Output run(RunContext runContext) throws Exception {

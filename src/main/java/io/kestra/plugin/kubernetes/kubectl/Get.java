@@ -123,11 +123,7 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
 )
 public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
-    @Schema(
-        title = "The Kubernetes namespace"
-    )
-    @NotNull
-    private Property<String> namespace;
+    
 
     @Schema(
         title = "The Kubernetes resource type (= kind) (e.g., pod, service)"
@@ -140,15 +136,6 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     )
     private Property<List<String>> resourcesNames;
 
-    @Schema(
-        title = "The Kubernetes resource apiGroup"
-    )
-    private Property<String> apiGroup;
-
-    @Schema(
-        title = "The Kubernetes resource apiVersion"
-    )
-    private Property<String> apiVersion;
 
     @NotNull
     @Builder.Default

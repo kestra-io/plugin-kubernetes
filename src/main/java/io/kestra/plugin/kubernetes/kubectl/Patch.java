@@ -198,11 +198,6 @@ import java.util.concurrent.TimeUnit;
 )
 public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
-    @NotNull
-    @Schema(
-        title = "The Kubernetes namespace"
-    )
-    private Property<String> namespace;
 
     @NotNull
     @Schema(
@@ -236,19 +231,7 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
     )
     private Property<PatchStrategy> patchStrategy = Property.ofValue(PatchStrategy.STRATEGIC_MERGE);
 
-    @Schema(
-        title = "The Kubernetes resource apiGroup",
-        description = "Required for custom resources. For core resources (pods, services, etc.), leave empty."
-    )
-    private Property<String> apiGroup;
-
-    @Schema(
-        title = "The Kubernetes resource API version",
-        description = "The version part of the API (e.g., 'v1', 'v1beta1'). Default is 'v1'. " +
-            "Note: This is just the version, not the full group/version. Use apiGroup for the group part."
-    )
-    private Property<String> apiVersion;
-
+    
     @Builder.Default
     @Schema(
         title = "The maximum duration to wait until the patched resource becomes ready",

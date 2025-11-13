@@ -51,11 +51,7 @@ import java.util.List;
 )
 public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
 
-    @Schema(
-        title = "The Kubernetes namespace"
-    )
-    @NotNull
-    private Property<String> namespace;
+    
 
     @Schema(
         title = "The Kubernetes resource type (= kind) (e.g., pod, service)"
@@ -69,15 +65,7 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
     @NotNull
     private Property<List<String>> resourcesNames;
 
-    @Schema(
-        title = "The Kubernetes resource apiGroup"
-    )
-    private Property<String> apiGroup;
-
-    @Schema(
-        title = "The Kubernetes resource apiVersion"
-    )
-    private Property<String> apiVersion;
+   
 
     @Override
     public VoidOutput run(RunContext runContext) throws Exception {

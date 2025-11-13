@@ -54,11 +54,7 @@ import java.util.Map;
 )
 public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
 
-    @Schema(
-        title = "The Kubernetes namespace"
-    )
-    @NotNull
-    private Property<String> namespace;
+
 
     @Schema(title = "The Kubernetes resource type (Deployment, DaemonSet, StatefulSet).")
     @NotNull
@@ -70,17 +66,7 @@ public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
     @NotNull
     private Property<List<String>> resourcesNames;
 
-    @Schema(
-        title = "The Kubernetes resource apiGroup"
-    )
-    @Builder.Default
-    private Property<String> apiGroup = Property.ofValue("apps");
-
-    @Schema(
-        title = "The Kubernetes resource apiVersion"
-    )
-    @Builder.Default
-    private Property<String> apiVersion = Property.ofValue("v1");
+    
 
     @Override
     public VoidOutput run(RunContext runContext) throws Exception {
