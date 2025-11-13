@@ -12,7 +12,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -120,7 +120,6 @@ import java.util.List;
 @Schema(
     title = "Apply a Kubernetes resource (e.g., a Kubernetes deployment)."
 )
-@Slf4j
 public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 
     @NotNull
@@ -140,7 +139,8 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 
         try (var client = PodService.client(runContext, this.getConnection())) {
             var resources = parseSpec(runContext.render(this.spec).as(String.class).orElseThrow());
-            log.debug("Parsed resources: {}", resources);
+            Logger logger = runContext.logger();
+            logger.debug("Parsed resources: {}", resources);
 
             List<Metadata> metadataList = new ArrayList<>();
             for (var resource : resources) {
@@ -149,9 +149,9 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
                 try {
                     var hasMetadata = resourceClient.unlock().serverSideApply();
                     metadataList.add(Metadata.from(hasMetadata.getMetadata()));
-                    log.info("Applied resource: {}", hasMetadata);
+                    logger.info("Applied resource: {}", hasMetadata);
                 } catch (Exception exception) {
-                    log.error("Failed to apply resource: {}", resource, exception);
+                    logger.error("Failed to apply resource: {}", resource, exception);
                     throw new Exception("Failed to apply resource: " + resource, exception);
                 }
             }

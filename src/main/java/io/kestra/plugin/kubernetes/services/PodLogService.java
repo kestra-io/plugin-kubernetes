@@ -1,18 +1,5 @@
 package io.kestra.plugin.kubernetes.services;
 
-import java.io.IOException;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
@@ -23,9 +10,16 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.Await;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
-@Slf4j
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class PodLogService implements AutoCloseable {
     private final ThreadMainFactoryBuilder threadFactoryBuilder;
     private List<LogWatch> podLogs = new ArrayList<>();
@@ -49,6 +43,7 @@ public class PodLogService implements AutoCloseable {
         scheduledExecutor = Executors.newSingleThreadScheduledExecutor(threadFactoryBuilder.build("k8s-log"));
         setLogConsumer(logConsumer);
         AtomicBoolean started = new AtomicBoolean(false);
+        Logger logger = runContext.logger();
 
         scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
             () -> {
@@ -58,7 +53,7 @@ public class PodLogService implements AutoCloseable {
                     if (!started.get()) {
                         started.set(true);
                     } else {
-                        runContext.logger().trace("No log since '{}', reconnecting", lastTimestamp == null ? "unknown" : lastTimestamp.toString());
+                        logger.trace("No log since '{}', reconnecting", lastTimestamp == null ? "unknown" : lastTimestamp.toString());
                     }
 
                     if (podLogs != null) {
@@ -85,7 +80,7 @@ public class PodLogService implements AutoCloseable {
                                     );
                                 } catch (KubernetesClientException e) {
                                     if (e.getCode() == 404) {
-                                        runContext.logger().info("Pod no longer exists, stopping log collection");
+                                        logger.info("Pod no longer exists, stopping log collection");
                                         scheduledFuture.cancel(false);
                                     } else {
                                         throw e;
@@ -94,7 +89,7 @@ public class PodLogService implements AutoCloseable {
                             });
                     } catch (KubernetesClientException e) {
                         if (e.getCode() == 404) {
-                            runContext.logger().info("Pod no longer exists, stopping log collection");
+                            logger.info("Pod no longer exists, stopping log collection");
                             scheduledFuture.cancel(false);
                         } else {
                             throw e;
@@ -114,18 +109,18 @@ public class PodLogService implements AutoCloseable {
                     Await.until(scheduledFuture::isDone);
                 } catch (RuntimeException e) {
                     if (!e.getMessage().contains("Can't sleep")) {
-                        log.error("{} exception", this.getClass().getName(), e);
+                        logger.error("{} exception", this.getClass().getName(), e);
                     } else {
-                        log.debug("{} exception", this.getClass().getName(), e);
+                        logger.debug("{} exception", this.getClass().getName(), e);
                     }
                 }
 
                 try {
                     scheduledFuture.get();
                 } catch (CancellationException e) {
-                    log.debug("{} cancelled", this.getClass().getName(), e);
+                    logger.debug("{} cancelled", this.getClass().getName(), e);
                 } catch (ExecutionException | InterruptedException e) {
-                    log.error("{} exception", this.getClass().getName(), e);
+                    logger.error("{} exception", this.getClass().getName(), e);
                 }
             }
         );
@@ -138,12 +133,13 @@ public class PodLogService implements AutoCloseable {
 
         Instant lastTimestamp = outputStream.getLastTimestamp();
         Instant lookbackTime = lastTimestamp != null ? lastTimestamp.minus(Duration.ofSeconds(60)) : null;
+        Logger logger = runContext.logger();
 
         // Hybrid approach: fetch logs since (lastTimestamp - 60s) to catch any missed by watchLog()
         // - Provides 60s safety buffer for multi-container out-of-order logs and K8s API delays
         // - Uses lastTimestamp as anchor for unbounded lookback when watchLog() failures are prolonged
         // - Hash-based deduplication efficiently handles the increased overlap
-        runContext.logger().debug(
+        logger.debug(
             "Fetching final logs since lookbackTime={} (lastTimestamp={} minus 60s)",
             lookbackTime,
             lastTimestamp
@@ -164,10 +160,10 @@ public class PodLogService implements AutoCloseable {
                     outputStream.write(logs.getBytes());
                     outputStream.flush();
                 } else {
-                    runContext.logger().debug("No logs returned for container '{}'", container.getName());
+                    logger.debug("No logs returned for container '{}'", container.getName());
                 }
             } catch (IOException e) {
-                runContext.logger().error("Failed to fetch final logs for container '{}'", container.getName(), e);
+                logger.error("Failed to fetch final logs for container '{}'", container.getName(), e);
             }
         });
     }
