@@ -10,11 +10,9 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.Await;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.StringReader;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -22,7 +20,6 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-@Slf4j
 public class PodLogService implements AutoCloseable {
     private final ThreadMainFactoryBuilder threadFactoryBuilder;
     private List<LogWatch> podLogs = new ArrayList<>();
@@ -36,10 +33,17 @@ public class PodLogService implements AutoCloseable {
         this.threadFactoryBuilder = threadFactoryBuilder;
     }
 
+    public void setLogConsumer(AbstractLogConsumer logConsumer) {
+        if (outputStream == null) {
+            outputStream = new LoggingOutputStream(logConsumer);
+        }
+    }
+
     public final void watch(KubernetesClient client, Pod pod, AbstractLogConsumer logConsumer, RunContext runContext) {
         scheduledExecutor = Executors.newSingleThreadScheduledExecutor(threadFactoryBuilder.build("k8s-log"));
-        outputStream = new LoggingOutputStream(logConsumer);
+        setLogConsumer(logConsumer);
         AtomicBoolean started = new AtomicBoolean(false);
+        Logger logger = runContext.logger();
 
         scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
             () -> {
@@ -49,7 +53,7 @@ public class PodLogService implements AutoCloseable {
                     if (!started.get()) {
                         started.set(true);
                     } else {
-                        runContext.logger().trace("No log since '{}', reconnecting", lastTimestamp == null ? "unknown" : lastTimestamp.toString());
+                        logger.trace("No log since '{}', reconnecting", lastTimestamp == null ? "unknown" : lastTimestamp.toString());
                     }
 
                     if (podLogs != null) {
@@ -76,7 +80,7 @@ public class PodLogService implements AutoCloseable {
                                     );
                                 } catch (KubernetesClientException e) {
                                     if (e.getCode() == 404) {
-                                        runContext.logger().info("Pod no longer exists, stopping log collection");
+                                        logger.info("Pod no longer exists, stopping log collection");
                                         scheduledFuture.cancel(false);
                                     } else {
                                         throw e;
@@ -85,7 +89,7 @@ public class PodLogService implements AutoCloseable {
                             });
                     } catch (KubernetesClientException e) {
                         if (e.getCode() == 404) {
-                            runContext.logger().info("Pod no longer exists, stopping log collection");
+                            logger.info("Pod no longer exists, stopping log collection");
                             scheduledFuture.cancel(false);
                         } else {
                             throw e;
@@ -105,57 +109,63 @@ public class PodLogService implements AutoCloseable {
                     Await.until(scheduledFuture::isDone);
                 } catch (RuntimeException e) {
                     if (!e.getMessage().contains("Can't sleep")) {
-                        log.error("{} exception", this.getClass().getName(), e);
+                        logger.error("{} exception", this.getClass().getName(), e);
                     } else {
-                        log.debug("{} exception", this.getClass().getName(), e);
+                        logger.debug("{} exception", this.getClass().getName(), e);
                     }
                 }
 
                 try {
                     scheduledFuture.get();
                 } catch (CancellationException e) {
-                    log.debug("{} cancelled", this.getClass().getName(), e);
+                    logger.debug("{} cancelled", this.getClass().getName(), e);
                 } catch (ExecutionException | InterruptedException e) {
-                    log.error("{} exception", this.getClass().getName(), e);
+                    logger.error("{} exception", this.getClass().getName(), e);
                 }
             }
         );
     }
 
-    public void fetchFinalLogs(KubernetesClient client, Pod pod) throws IOException {
+    public void fetchFinalLogs(KubernetesClient client, Pod pod, RunContext runContext) throws IOException {
         if (outputStream == null) {
             return;
         }
 
         Instant lastTimestamp = outputStream.getLastTimestamp();
+        Instant lookbackTime = lastTimestamp != null ? lastTimestamp.minus(Duration.ofSeconds(60)) : null;
+        Logger logger = runContext.logger();
+
+        // Hybrid approach: fetch logs since (lastTimestamp - 60s) to catch any missed by watchLog()
+        // - Provides 60s safety buffer for multi-container out-of-order logs and K8s API delays
+        // - Uses lastTimestamp as anchor for unbounded lookback when watchLog() failures are prolonged
+        // - Hash-based deduplication efficiently handles the increased overlap
+        logger.debug(
+            "Fetching final logs since lookbackTime={} (lastTimestamp={} minus 60s)",
+            lookbackTime,
+            lastTimestamp
+        );
+
         PodResource podResource = PodService.podRef(client, pod);
 
-        pod.getSpec()
-            .getContainers()
-            .forEach(container -> {
-                try {
-                    String logs = podResource
-                        .inContainer(container.getName())
-                        .usingTimestamps()
-                        .sinceTime(lastTimestamp != null ?
-                            lastTimestamp.plusNanos(1).toString() :
-                            null
-                        )
-                        .getLog();
+        pod.getSpec().getContainers().forEach(container -> {
+            try {
+                String logs = podResource
+                    .inContainer(container.getName())
+                    .usingTimestamps()
+                    .sinceTime(lookbackTime != null ? lookbackTime.toString() : null)
+                    .getLog();
 
-                    if (logs != null && !logs.isEmpty()) {
-                        // Parse and write each line to outputStream
-                        BufferedReader reader = new BufferedReader(new StringReader(logs));
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            outputStream.write((line + "\n").getBytes());
-                        }
-                        outputStream.flush();
-                    }
-                } catch (IOException e) {
-                    log.error("Error fetching final logs for container {}", container.getName(), e);
+                if (logs != null && !logs.isEmpty()) {
+                    // Write all logs - hash-based deduplication automatically filters duplicates
+                    outputStream.write(logs.getBytes());
+                    outputStream.flush();
+                } else {
+                    logger.debug("No logs returned for container '{}'", container.getName());
                 }
-            });
+            } catch (IOException e) {
+                logger.error("Failed to fetch final logs for container '{}'", container.getName(), e);
+            }
+        });
     }
 
     @Override
