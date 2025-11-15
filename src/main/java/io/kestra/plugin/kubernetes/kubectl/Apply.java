@@ -158,16 +158,6 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
     )
     private Property<String> namespace;
 
-    @Builder.Default
-    @Schema(
-        title = "The maximum duration to wait until the applied resource becomes ready",
-        description = "When set to a positive duration, waits for the resource to report Ready=True in its status conditions. " +
-            "Set to PT0S (zero, default) to skip waiting. " +
-            "Supports Pods, StatefulSets, and custom resources that use the Ready condition. " +
-            "Note: Deployments are not supported as they use the Available condition instead of Ready."
-    )
-    private Property<Duration> waitUntilReady = Property.ofValue(Duration.ZERO);
-
     @Override
     public Apply.Output run(RunContext runContext) throws Exception {
         var namespace = runContext.render(this.namespace).as(String.class).orElseThrow();

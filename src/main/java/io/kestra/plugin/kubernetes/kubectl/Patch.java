@@ -245,16 +245,6 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
     )
     private Property<String> apiVersion;
 
-    @Builder.Default
-    @Schema(
-        title = "The maximum duration to wait until the patched resource becomes ready",
-        description = "When set to a positive duration, waits for the resource to report Ready=True in its status conditions. " +
-            "Set to PT0S (zero) to skip waiting. " +
-            "Supports Pods, StatefulSets, and custom resources that use the Ready condition. " +
-            "Note: Deployments are not supported as they use the Available condition instead of Ready."
-    )
-    private Property<Duration> waitUntilReady = Property.ofValue(Duration.ZERO);
-
     @Override
     public Output run(RunContext runContext) throws Exception {
         // Render all properties

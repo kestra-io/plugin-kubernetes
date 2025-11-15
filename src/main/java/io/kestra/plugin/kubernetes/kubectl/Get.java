@@ -176,17 +176,6 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     @Builder.Default
     protected Property<FetchType> fetchType = Property.ofValue(NONE);
 
-    @Builder.Default
-    @Schema(
-        title = "The maximum duration to wait until the resource becomes ready",
-        description = "When set to a positive duration, waits for the resource to report Ready=True in its status conditions. " +
-            "Set to PT0S (zero, default) to skip waiting. " +
-            "Supports Pods, StatefulSets, and custom resources that use the Ready condition. " +
-            "Note: Deployments are not supported as they use the Available condition instead of Ready. " +
-            "Only applicable when fetching specific resources (resourcesNames must be provided)."
-    )
-    private Property<Duration> waitUntilReady = Property.ofValue(Duration.ZERO);
-
     @Override
     public Output run(RunContext runContext) throws Exception {
         var renderedNamespace = runContext.render(this.namespace).as(String.class)
