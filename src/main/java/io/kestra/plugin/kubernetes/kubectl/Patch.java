@@ -1,7 +1,5 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
-import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.base.PatchContext;
 import io.fabric8.kubernetes.client.dsl.base.PatchType;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
@@ -15,15 +13,13 @@ import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.PatchStrategy;
 import io.kestra.plugin.kubernetes.models.ResourceStatus;
 import io.kestra.plugin.kubernetes.services.PodService;
+import io.kestra.plugin.kubernetes.services.ResourceWaitService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 @SuperBuilder
 @ToString
@@ -249,16 +245,6 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
     )
     private Property<String> apiVersion;
 
-    @Builder.Default
-    @Schema(
-        title = "The maximum duration to wait until the patched resource becomes ready",
-        description = "When set to a positive duration, waits for the resource to report Ready=True in its status conditions. " +
-            "Set to PT0S (zero) to skip waiting. " +
-            "Supports Pods, StatefulSets, and custom resources that use the Ready condition. " +
-            "Note: Deployments are not supported as they use the Available condition instead of Ready."
-    )
-    private Property<Duration> waitUntilReady = Property.ofValue(Duration.ZERO);
-
     @Override
     public Output run(RunContext runContext) throws Exception {
         // Render all properties
@@ -320,108 +306,21 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
             if (!rWaitUntilReady.isZero()) {
                 runContext.logger().info("Waiting for resource '{}' to become ready (timeout: {})...",
                     rResourceName, rWaitUntilReady);
-                waitForResourceReady(client, resourceContext, rNamespace, rResourceName, rWaitUntilReady, runContext);
+                patchedResource = ResourceWaitService.waitForReady(
+                    client,
+                    resourceContext,
+                    rNamespace,
+                    rResourceName,
+                    rWaitUntilReady,
+                    runContext.logger()
+                );
                 runContext.logger().info("Resource '{}' is ready", rResourceName);
-
-                // Re-fetch resource after wait to get current status
-                patchedResource = resourceClient.get();
-                if (patchedResource != null) {
-                    runContext.logger().debug("Refreshed resource status after wait: generation={}, resourceVersion={}",
-                        patchedResource.getMetadata().getGeneration(),
-                        patchedResource.getMetadata().getResourceVersion());
-                }
             }
 
             return Output.builder()
                 .metadata(Metadata.from(patchedResource.getMetadata()))
                 .status(ResourceStatus.from(patchedResource))
                 .build();
-        }
-    }
-
-    /**
-     * Waits for a Kubernetes resource to become ready after patching.
-     * <p>
-     * This method checks for a Ready=True condition in the resource status.
-     * Works with Pods, StatefulSets, and custom resources that use the Ready condition.
-     * Does not work with Deployments (which use the Available condition).
-     *
-     * @param client the Kubernetes client
-     * @param resourceContext the resource definition context
-     * @param namespace the namespace of the resource
-     * @param resourceName the name of the resource
-     * @param timeout the maximum duration to wait
-     * @param runContext the run context for logging
-     */
-    private void waitForResourceReady(
-        KubernetesClient client,
-        ResourceDefinitionContext resourceContext,
-        String namespace,
-        String resourceName,
-        Duration timeout,
-        RunContext runContext
-    ) {
-        runContext.logger().debug("Checking readiness for resource '{}' in namespace '{}'", resourceName, namespace);
-
-        var resourceClient = client.genericKubernetesResources(resourceContext)
-            .inNamespace(namespace)
-            .withName(resourceName);
-
-        try {
-            // Use waitUntilCondition with a predicate
-            resourceClient.waitUntilCondition(
-                resource -> resource != null && isResourceReady(resource, runContext),
-                timeout.toSeconds(),
-                TimeUnit.SECONDS
-            );
-            runContext.logger().debug("Resource '{}' readiness confirmed", resourceName);
-        } catch (Exception e) {
-            runContext.logger().error("Failed to wait for resource '{}' to become ready in namespace '{}': {}",
-                resourceName, namespace, e.getMessage(), e);
-            throw e;
-        }
-    }
-
-    /**
-     * Checks if a resource has a Ready=True condition (default check).
-     */
-    @SuppressWarnings("unchecked")
-    private boolean isResourceReady(GenericKubernetesResource resource, RunContext runContext) {
-        try {
-            var additionalProperties = resource.getAdditionalProperties();
-            if (additionalProperties == null) {
-                return false;
-            }
-
-            var status = additionalProperties.get("status");
-            if (!(status instanceof Map)) {
-                return false;
-            }
-
-            var statusMap = (Map<String, Object>) status;
-            var conditions = statusMap.get("conditions");
-
-            if (!(conditions instanceof List)) {
-                return false;
-            }
-
-            var conditionsList = (List<Object>) conditions;
-            for (var conditionObj : conditionsList) {
-                if (conditionObj instanceof Map) {
-                    var condition = (Map<String, Object>) conditionObj;
-                    var type = condition.get("type");
-                    var conditionStatus = condition.get("status");
-
-                    if ("Ready".equals(type) && "True".equals(conditionStatus)) {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        } catch (Exception e) {
-            runContext.logger().warn("Exception while checking resource readiness: {}", e.getMessage(), e);
-            return false;
         }
     }
 
