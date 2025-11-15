@@ -15,6 +15,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -95,6 +96,12 @@ public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
             var rResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
             var rApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("apps");
             var rApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
+
+            // Check if waitUntilReady is set and warn that it's not yet supported
+            var rWaitUntilReady = runContext.render(this.waitUntilReady).as(Duration.class).orElse(Duration.ZERO);
+            if (!rWaitUntilReady.isZero()) {
+                logger.warn("waitUntilReady parameter is not yet supported by Restart task and will be ignored. The task will return immediately after triggering the restart.");
+            }
 
             logger.info("Triggering rolling restart for '{}' resources '{}' in namespace '{}'",
                 rKind, rResourcesNames, rNamespace);
