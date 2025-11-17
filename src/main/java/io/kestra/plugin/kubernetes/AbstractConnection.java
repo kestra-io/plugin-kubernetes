@@ -34,7 +34,8 @@ public abstract class AbstractConnection extends Task {
 
     @Schema(
         title = "The maximum duration to wait until the pod is running",
-        description = "Maximum time to wait for the pod to reach Running state, including scheduler assignment, image pull, and container startup. Only used by PodCreate task."
+        description = "Maximum time to wait for the pod to reach Running state, including scheduler assignment, image pull, and container startup.\n" +
+            "Only used by PodCreate task."
     )
     @NotNull
     @Builder.Default
@@ -42,7 +43,9 @@ public abstract class AbstractConnection extends Task {
 
     @Schema(
         title = "The maximum duration to wait for pod completion",
-        description = "Maximum time to wait for pod containers to complete execution. Only used by PodCreate task."
+        description = "Maximum duration allowed for the pod to complete after reaching Running state.\n" +
+            "If the pod does not complete within this time, the task will fail and the pod will be deleted.\n" +
+            "Only used by PodCreate task."
     )
     @NotNull
     @Builder.Default
