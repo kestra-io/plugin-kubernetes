@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Stream;
 
@@ -60,6 +61,16 @@ abstract public class AbstractPod extends AbstractConnection {
     @PluginProperty
     @Builder.Default
     protected SideCar fileSidecar = SideCar.builder().build();
+
+    @Builder.Default
+    @Schema(
+        title = "The maximum duration to wait until the resource becomes ready",
+        description = "When set to a positive duration, waits for the resource to report Ready=True in its status conditions. " +
+            "Set to PT0S (zero, default) to skip waiting. " +
+            "Supports Pods, StatefulSets, and custom resources that use the Ready condition. " +
+            "Note: Deployments are not supported as they use the Available condition instead of Ready."
+    )
+    protected Property<Duration> waitUntilReady = Property.ofValue(Duration.ZERO);
 
     @SuppressWarnings("ResultOfMethodCallIgnored")
     protected void init(RunContext runContext) {

@@ -1,5 +1,6 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
+import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.property.Property;
@@ -8,14 +9,17 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.services.PodService;
+import io.kestra.plugin.kubernetes.services.ResourceWaitService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @SuperBuilder
 @ToString
@@ -114,13 +118,33 @@ import java.util.List;
                                     # message:
                                     #   type: string
                 """
+        ),
+        @Example(
+            title = "Apply a custom resource and wait for it to become ready.",
+            full = true,
+            code = """
+                id: apply_and_wait_for_custom_resource
+                namespace: company.team
+
+                tasks:
+                  - id: apply
+                    type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    namespace: default
+                    waitUntilReady: PT10M
+                    spec: |-
+                      apiVersion: example.com/v1
+                      kind: MyResource
+                      metadata:
+                        name: my-resource
+                      spec:
+                        foo: bar
+                """
         )
     }
 )
 @Schema(
     title = "Apply a Kubernetes resource (e.g., a Kubernetes deployment)."
 )
-@Slf4j
 public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 
     @NotNull
@@ -137,10 +161,12 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
     @Override
     public Apply.Output run(RunContext runContext) throws Exception {
         var namespace = runContext.render(this.namespace).as(String.class).orElseThrow();
+        var rWaitUntilReady = runContext.render(this.waitUntilReady).as(Duration.class).orElse(Duration.ZERO);
 
         try (var client = PodService.client(runContext, this.getConnection())) {
             var resources = parseSpec(runContext.render(this.spec).as(String.class).orElseThrow());
-            log.debug("Parsed resources: {}", resources);
+            Logger logger = runContext.logger();
+            logger.debug("Parsed resources: {}", resources);
 
             List<Metadata> metadataList = new ArrayList<>();
             for (var resource : resources) {
@@ -149,9 +175,37 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
                 try {
                     var hasMetadata = resourceClient.unlock().serverSideApply();
                     metadataList.add(Metadata.from(hasMetadata.getMetadata()));
-                    log.info("Applied resource: {}", hasMetadata);
+                    logger.info("Applied resource: {}", hasMetadata);
+
+                    // Optionally wait for resource to become ready
+                    if (!rWaitUntilReady.isZero()) {
+                        var resourceMetadata = hasMetadata.getMetadata();
+                        var resourceName = resourceMetadata.getName();
+                        var apiVersion = hasMetadata.getApiVersion();
+                        var kind = hasMetadata.getKind();
+
+                        // Parse apiVersion to extract group and version
+                        String group = "";
+                        String version = apiVersion;
+                        if (apiVersion != null && apiVersion.contains("/")) {
+                            String[] parts = apiVersion.split("/", 2);
+                            group = parts[0];
+                            version = parts[1];
+                        }
+
+                        var resourceContext = new ResourceDefinitionContext.Builder()
+                            .withGroup(group)
+                            .withVersion(version)
+                            .withKind(kind)
+                            .withNamespaced(true)
+                            .build();
+
+                        logger.info("Waiting for resource '{}' to become ready (timeout: {})...", resourceName, rWaitUntilReady);
+                        ResourceWaitService.waitForReady(client, resourceContext, namespace, resourceName, rWaitUntilReady, logger);
+                        logger.info("Resource '{}' is ready", resourceName);
+                    }
                 } catch (Exception exception) {
-                    log.error("Failed to apply resource: {}", resource, exception);
+                    logger.error("Failed to apply resource: {}", resource, exception);
                     throw new Exception("Failed to apply resource: " + resource, exception);
                 }
             }

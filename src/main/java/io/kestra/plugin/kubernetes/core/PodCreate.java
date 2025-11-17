@@ -16,7 +16,6 @@ import io.kestra.core.models.tasks.runners.PluginUtilsService;
 import io.kestra.core.models.tasks.runners.ScriptService;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.DefaultRunContext;
-import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.ThreadMainFactoryBuilder;
@@ -293,9 +292,19 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                             throw PodService.failedMessage(pod);
                         }
 
-                        // watch log
+                        // Wait for containers to start (Running) or pod to reach terminal state (Succeeded/Failed/Unknown)
+                        // This ensures we proceed with log collection regardless of pod outcome
+                        pod = PodService.waitForContainersStartedOrCompleted(client, pod, runContext.render(this.waitUntilRunning).as(Duration.class).orElseThrow());
+
+                        // Set up log consumer for output parsing (used by both watch and fetchFinalLogs)
                         AbstractLogConsumer logConsumer = new DefaultLogConsumer(runContext);
-                        podLogService.watch(client, pod, logConsumer, runContext);
+                        podLogService.setLogConsumer(logConsumer);
+
+                        // Only start log streaming if pod is actually running
+                        // For pods that complete quickly, fetchFinalLogs will handle log collection
+                        if (pod.getStatus() != null && "Running".equals(pod.getStatus().getPhase())) {
+                            podLogService.watch(client, pod, logConsumer, runContext);
+                        }
 
                         // wait until completion of the pods
                         Pod ended;
@@ -427,9 +436,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         if (runContext.render(delete).as(Boolean.class).orElseThrow()) {
             try {
                 PodService.podRef(client, pod).delete();
-                logger.info("Pod '{}' is deleted ", pod.getMetadata().getName());
+                logger.info("Pod '{}' is deleted", pod.getMetadata().getName());
             } catch (Throwable e) {
-                logger.warn("Unable to delete pod {}", pod.getFullResourceName(), e);
+                logger.warn("Unable to delete pod '{}'", pod.getMetadata().getName(), e);
             }
         }
     }
@@ -441,7 +450,13 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         Thread.sleep(runContext.render(this.waitForLogInterval).as(Duration.class).orElseThrow().toMillis());
 
         // Fetch any remaining logs that the watch stream may have missed
-        podLogService.fetchFinalLogs(client, ended);
+        // Check if pod still exists after sleep (may have been deleted during sleep window)
+        Pod currentPod = PodService.podRef(client, ended).get();
+        if (currentPod != null) {
+            podLogService.fetchFinalLogs(client, ended, runContext);
+        } else {
+            logger.debug("Pod '{}' was already deleted, skipping fetchFinalLogs", ended.getMetadata().getName());
+        }
 
         // Check for failures based on whether outputFiles are configured
         if (hasOutputFiles) {
