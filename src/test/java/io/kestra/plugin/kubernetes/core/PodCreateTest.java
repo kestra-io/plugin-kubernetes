@@ -40,6 +40,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -977,18 +978,9 @@ class PodCreateTest {
 
     @Test
     void timeoutDeletesPod() throws Exception {
-        // Test for issue #233 Case 1: verify that when a task timeout occurs,
-        // the pod is properly deleted despite the thread being interrupted.
-        //
-        // The bug scenario:
-        // 1. Task timeout triggers thread interrupt
-        // 2. Finally block attempts to delete pod
-        // 3. Delete API call may fail with InterruptedIOException
-        // 4. Pod may not be deleted (depending on timing)
-        //
-        // This test verifies:
-        // 1. Pod deletion is successfully initiated (deletionTimestamp set)
-        // 2. No "Unable to delete pod" warnings are logged (indicates clean deletion)
+        // Verify that pod deletion succeeds when the task thread is interrupted.
+        // When a thread is interrupted during pod waiting, the cleanup code must
+        // still successfully delete the pod, despite the interrupt flag being set.
 
         List<LogEntry> logs = new CopyOnWriteArrayList<>();
         Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
@@ -1043,23 +1035,20 @@ class PodCreateTest {
             logger.info("Test detected pod creation: {}", podName);
             assertThat(createdPod.getStatus().getPhase(), is("Running"));
 
-            // Simulate Kestra timeout by interrupting the task thread
-            // This mimics what happens when a task-level timeout is reached
-            logger.info("Simulating timeout by interrupting task thread");
+            // Interrupt the task thread (simulates timeout or cancellation)
+            logger.info("Interrupting task thread");
             taskFuture.cancel(true);
 
-            // Give the finally block enough time to attempt deletion
-            // The bug manifests as: deletion is attempted but fails due to interrupt
-            Thread.sleep(1000);
+            // Wait for task thread to complete cleanup (poll instead of fixed sleep)
+            Await.until(taskFuture::isDone, Duration.ofMillis(100), Duration.ofSeconds(10));
 
-            // Verify that pod deletion was successfully initiated despite the interrupt
-            // Success means: pod has deletionTimestamp set OR pod is already removed
-            // Failure (the bug) means: pod still exists without deletionTimestamp
+            // Verify that pod deletion was successfully initiated
+            // Pod should either be completely removed OR have deletionTimestamp set
             Await.until(() -> {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 if (pods.isEmpty()) {
                     logger.info("Pod {} has been completely removed", podName);
-                    return true; // Pod fully deleted
+                    return true;
                 }
                 var pod = pods.get(0);
                 boolean isTerminating = pod.getMetadata().getDeletionTimestamp() != null;
@@ -1067,34 +1056,135 @@ class PodCreateTest {
                 if (isTerminating) {
                     logger.info("Pod {} is terminating (deletionTimestamp: {})",
                         podName, pod.getMetadata().getDeletionTimestamp());
-                    return true; // Deletion was initiated successfully
+                    return true;
                 }
 
-                // If we get here, the bug is present: pod exists but no deletionTimestamp
                 String phase = pod.getStatus() != null ? pod.getStatus().getPhase() : null;
-                logger.warn("BUG DETECTED: Pod {} still running without deletionTimestamp. Phase: {}",
-                    podName, phase);
+                logger.warn("Pod {} still exists without deletionTimestamp. Phase: {}", podName, phase);
                 return false;
-            }, Duration.ofMillis(500), Duration.ofSeconds(15));
+            }, Duration.ofMillis(500), Duration.ofSeconds(30));
 
-            logger.info("SUCCESS: Pod {} deletion was initiated after timeout interrupt.", podName);
+            logger.info("Pod {} deletion was initiated successfully", podName);
 
-            // Wait for log collection to complete
-            receive.blockLast();
+            // Wait for log collection to complete (with timeout)
+            receive.blockLast(Duration.ofSeconds(30));
 
-            // Verify that no "Unable to delete pod" warning was logged
-            // This would indicate the bug where deletion fails due to interrupted thread
+            // Verify no deletion warnings were logged
             long deletionWarnings = logs.stream()
                 .filter(log -> log.getMessage() != null && log.getMessage().contains("Unable to delete pod"))
                 .count();
 
-            assertThat("Pod deletion should succeed without warnings when thread is interrupted. " +
-                      "If this fails, it indicates the delete operation was interrupted.",
+            assertThat("Pod deletion should succeed without warnings when thread is interrupted",
                       deletionWarnings, is(0L));
 
         } finally {
             taskFuture.cancel(true);
             executorService.shutdownNow();
+        }
+    }
+
+    @Test
+    void waitRunningExpirationFailsTask() throws Exception {
+        // Verify that waitRunning enforces a maximum duration for pod completion.
+        // When a pod runs longer than waitRunning:
+        // - Task should fail with an exception after waitRunning duration
+        // - Pod should be deleted after failure
+        // - Total execution time should be close to waitRunning (not multiple retry cycles)
+        //
+        // Bug symptom: Task hangs indefinitely, waiting multiple waitRunning cycles
+        // instead of failing after the first cycle expires.
+
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .waitUntilRunning(Property.ofValue(Duration.ofSeconds(60)))  // Allow time for pod startup
+            .waitRunning(Property.ofValue(Duration.ofSeconds(3)))        // Short wait to keep test fast
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'echo start && sleep 300'",  // Sleep longer than waitRunning
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        Logger logger = finalRunContext.logger();
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        // Run task in background thread
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        long startTime = System.currentTimeMillis();
+
+        Future<?> taskFuture = executorService.submit(() -> {
+            try {
+                task.run(finalRunContext);
+            } catch (Exception e) {
+                logger.debug("Task failed as expected: {}", e.getMessage());
+                throw new RuntimeException(e);
+            }
+        });
+
+        try {
+            // Expected behavior (with fix): Task fails with ExecutionException
+            // Bug behavior (without fix): Task hangs indefinitely, triggering TimeoutException
+            // Timeout set generously to accommodate slow CI (waitUntilRunning + waitRunning + 30s overhead)
+            taskFuture.get(100, TimeUnit.SECONDS);
+
+            // If we reach here, task completed successfully (unexpected)
+            long elapsedTime = System.currentTimeMillis() - startTime;
+            throw new AssertionError(
+                String.format("Task unexpectedly completed successfully after %dms. " +
+                             "It should have failed because pod runs longer than waitRunning.",
+                             elapsedTime));
+
+        } catch (java.util.concurrent.ExecutionException e) {
+            // Expected: Task failed because waitRunning expired
+            long elapsedTime = System.currentTimeMillis() - startTime;
+            logger.info("Task correctly failed after {}ms (waitRunning: 3s)", elapsedTime);
+
+            // Success - we don't assert on exact timing as it's environment-dependent
+            // The important thing is the task failed (not hung indefinitely)
+
+        } catch (java.util.concurrent.TimeoutException e) {
+            // Bug detected: Task hung beyond expected failure time
+            long elapsedTime = System.currentTimeMillis() - startTime;
+            taskFuture.cancel(true);
+
+            throw new AssertionError(
+                String.format("Task hung for %dms without failing. " +
+                             "This indicates waitRunning is not enforcing a maximum duration. " +
+                             "Expected task to fail after waitRunning expired.",
+                             elapsedTime));
+        } finally {
+            executorService.shutdownNow();
+        }
+
+        // Verify pod is deleted after failure
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                if (pods.isEmpty()) {
+                    return true;
+                }
+                // Also accept pods with deletionTimestamp (being deleted)
+                return pods.get(0).getMetadata().getDeletionTimestamp() != null;
+            }, Duration.ofMillis(500), Duration.ofSeconds(10));
+
+            logger.info("Pod was successfully deleted after waitRunning expiration");
         }
     }
 

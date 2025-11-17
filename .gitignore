@@ -16,3 +16,4 @@ out/
 src/test/resources/application-test.yml
 kind
 kubectl
+bin/
