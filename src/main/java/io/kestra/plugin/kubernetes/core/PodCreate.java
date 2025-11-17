@@ -352,7 +352,17 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                         // Delete the pod if not already killed externally (kill() deletes the pod itself)
                         if (!killed.get()) {
-                            delete(client, logger, pod, runContext);
+                            // Clear interrupt status before deletion to ensure the delete operation can complete
+                            // When a task timeout occurs, the thread is interrupted, but we still need to clean up resources
+                            boolean wasInterrupted = Thread.interrupted();
+                            try {
+                                delete(client, logger, pod, runContext);
+                            } finally {
+                                // Restore interrupt status after cleanup
+                                if (wasInterrupted) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }
                         }
                     }
                 } catch (InterruptedException | InterruptedIOException e) {

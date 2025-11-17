@@ -975,4 +975,127 @@ class PodCreateTest {
         assertLogExactlyOnce(logs, "FINAL");
     }
 
+    @Test
+    void timeoutDeletesPod() throws Exception {
+        // Test for issue #233 Case 1: verify that when a task timeout occurs,
+        // the pod is properly deleted despite the thread being interrupted.
+        //
+        // The bug scenario:
+        // 1. Task timeout triggers thread interrupt
+        // 2. Finally block attempts to delete pod
+        // 3. Delete API call may fail with InterruptedIOException
+        // 4. Pod may not be deleted (depending on timing)
+        //
+        // This test verifies:
+        // 1. Pod deletion is successfully initiated (deletionTimestamp set)
+        // 2. No "Unable to delete pod" warnings are logged (indicates clean deletion)
+
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
+
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: unittest",
+                "  image: debian:stable-slim",
+                "  command: ",
+                "    - 'bash' ",
+                "    - '-c'",
+                "    - 'echo start && sleep 120 && echo end'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        Logger logger = finalRunContext.logger();
+
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        Future<?> taskFuture = executorService.submit(() -> {
+            try {
+                task.run(finalRunContext);
+            } catch (Exception e) {
+                logger.debug("Task interrupted as expected.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod to be running
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                return !pods.isEmpty() && pods.get(0).getStatus().getPhase().equals("Running");
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().get(0);
+            String podName = createdPod.getMetadata().getName();
+            logger.info("Test detected pod creation: {}", podName);
+            assertThat(createdPod.getStatus().getPhase(), is("Running"));
+
+            // Simulate Kestra timeout by interrupting the task thread
+            // This mimics what happens when a task-level timeout is reached
+            logger.info("Simulating timeout by interrupting task thread");
+            taskFuture.cancel(true);
+
+            // Give the finally block enough time to attempt deletion
+            // The bug manifests as: deletion is attempted but fails due to interrupt
+            Thread.sleep(1000);
+
+            // Verify that pod deletion was successfully initiated despite the interrupt
+            // Success means: pod has deletionTimestamp set OR pod is already removed
+            // Failure (the bug) means: pod still exists without deletionTimestamp
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                if (pods.isEmpty()) {
+                    logger.info("Pod {} has been completely removed", podName);
+                    return true; // Pod fully deleted
+                }
+                var pod = pods.get(0);
+                boolean isTerminating = pod.getMetadata().getDeletionTimestamp() != null;
+
+                if (isTerminating) {
+                    logger.info("Pod {} is terminating (deletionTimestamp: {})",
+                        podName, pod.getMetadata().getDeletionTimestamp());
+                    return true; // Deletion was initiated successfully
+                }
+
+                // If we get here, the bug is present: pod exists but no deletionTimestamp
+                String phase = pod.getStatus() != null ? pod.getStatus().getPhase() : null;
+                logger.warn("BUG DETECTED: Pod {} still running without deletionTimestamp. Phase: {}",
+                    podName, phase);
+                return false;
+            }, Duration.ofMillis(500), Duration.ofSeconds(15));
+
+            logger.info("SUCCESS: Pod {} deletion was initiated after timeout interrupt.", podName);
+
+            // Wait for log collection to complete
+            receive.blockLast();
+
+            // Verify that no "Unable to delete pod" warning was logged
+            // This would indicate the bug where deletion fails due to interrupted thread
+            long deletionWarnings = logs.stream()
+                .filter(log -> log.getMessage() != null && log.getMessage().contains("Unable to delete pod"))
+                .count();
+
+            assertThat("Pod deletion should succeed without warnings when thread is interrupted. " +
+                      "If this fails, it indicates the delete operation was interrupted.",
+                      deletionWarnings, is(0L));
+
+        } finally {
+            taskFuture.cancel(true);
+            executorService.shutdownNow();
+        }
+    }
+
 }
