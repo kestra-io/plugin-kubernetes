@@ -210,44 +210,58 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Output> {
     @Schema(
-        title = "The namespace where the pod will be created"
+        title = "The namespace where the pod will be created",
+        description = "The Kubernetes namespace in which to create the pod. Defaults to 'default' if not specified."
     )
     @NotNull
     @Builder.Default
     private Property<String> namespace = Property.ofValue("default");
 
     @Schema(
-        title = "The YAML metadata of the pod"
+        title = "The pod metadata configuration",
+        description = "Kubernetes metadata for the pod, including labels, annotations, and name.\n" +
+            "If name is not specified, it will be auto-generated based on the task execution context.\n" +
+            "Supports dynamic template expressions."
     )
     @PluginProperty(dynamic = true)
     private Map<String, Object> metadata;
 
     @Schema(
-        title = "The YAML spec of the pod"
+        title = "The pod specification",
+        description = "Kubernetes pod specification defining containers, volumes, restart policy, and other pod settings.\n" +
+            "Must include at least one container. Supports dynamic template expressions including the special\n" +
+            "{{workingDir}} variable which resolves to '/kestra/working-dir' when inputFiles or outputFiles are used."
     )
     @PluginProperty(dynamic = true)
     @NotNull
     private Map<String, Object> spec;
 
     @Schema(
-        title = "Whether the pod should be deleted upon completion"
+        title = "Whether to delete the pod after task completion",
+        description = "When true (default), the pod is automatically deleted after successful completion or failure.\n" +
+            "Set to false to keep the pod for debugging purposes. Note that pods are always deleted when the task is killed."
     )
     @NotNull
     @Builder.Default
     private final Property<Boolean> delete = Property.ofValue(true);
 
     @Schema(
-        title = "Whether to reconnect to the current pod if it already exists"
+        title = "Whether to resume execution of an existing pod",
+        description = "When true (default), attempts to reconnect to an existing pod with matching taskrun ID and attempt count\n" +
+            "instead of creating a new pod. This enables recovery from interrupted executions.\n" +
+            "If no matching pod exists or multiple matching pods are found, a new pod is created."
     )
     @NotNull
     @Builder.Default
     private final Property<Boolean> resume = Property.ofValue(true);
 
     @Schema(
-        title = "Additional time after the pod ends to wait for late logs",
-        description = "After deterministic log collection completes, wait this duration to allow any remaining logs " +
-                     "to arrive through the async queue. Useful as a safety net for high-throughput scenarios."
+        title = "Additional time to wait for late-arriving logs after pod completion",
+        description = "After the pod completes and initial log collection finishes, wait this duration to capture any\n" +
+            "remaining logs that may still be in transit. Defaults to 30 seconds.\n" +
+            "Useful as a safety net for high-throughput scenarios where logs may arrive slightly delayed."
     )
+    @NotNull
     @Builder.Default
     private Property<Duration> waitForLogInterval = Property.ofValue(Duration.ofSeconds(30));
 
@@ -340,31 +354,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
             try (KubernetesClient client = PodService.client(runContext, this.getConnection());
                  PodLogService podLogService = new PodLogService(((DefaultRunContext) runContext).getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
-                Pod pod = null;
 
-                if (runContext.render(this.resume).as(Boolean.class).orElseThrow()) {
-                    // try to locate an existing pod for this taskrun and attempt
-                    // Safe cast: runContext.getVariables() returns Map<String, Object> where "taskrun" is always a Map
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> taskrun = (Map<String, Object>) runContext.getVariables().get("taskrun");
-                    String taskrunId = ScriptService.normalize(String.valueOf(taskrun.get("id")));
-                    String attempt = ScriptService.normalize(String.valueOf(taskrun.get("attemptsCount")));
-                    String labelSelector = "kestra.io/taskrun-id=" + taskrunId + "," + "kestra.io/taskrun-attempt=" + attempt;
-                    var existingPods = client.pods().inNamespace(namespace).list(new ListOptionsBuilder().withLabelSelector(labelSelector).build());
-                    if (existingPods.getItems().size() == 1) {
-                        pod = existingPods.getItems().get(0);
-                        logger.info("Pod '{}' is resumed from an already running pod ", pod.getMetadata().getName());
-
-                    } else if (!existingPods.getItems().isEmpty()) {
-                        logger.warn("More than one pod exists for the label selector {}, no pods will be resumed.", labelSelector);
-                    }
-                }
-
-                if (pod == null) {
-                    pod = createPod(runContext, client, namespace, additionalVars);
-                    logger.info("Pod '{}' is created ", pod.getMetadata().getName());
-                }
-
+                Pod pod = findOrCreatePod(runContext, client, namespace, additionalVars, logger);
                 currentPodName.set(pod.getMetadata().getName());
 
                 try (Watch ignored = PodService.podRef(client, pod).watch(listOptions(runContext), new PodWatcher(logger))) {
@@ -472,6 +463,56 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             currentNamespace = null;
             currentConnection = null;
         }
+    }
+
+    /**
+     * Finds an existing pod to resume or creates a new pod.
+     *
+     * <p>When {@code resume=true}, this method searches for an existing pod matching the current
+     * taskrun ID and attempt count. If exactly one matching pod is found, it is returned for resumption.
+     * If no pod or multiple pods are found, a new pod is created.
+     *
+     * @param runContext execution context for rendering properties and accessing variables
+     * @param client Kubernetes client for pod operations
+     * @param namespace namespace to search for or create the pod in
+     * @param additionalVars additional variables to use for pod template rendering
+     * @param logger logger for diagnostic messages
+     * @return the pod to use (either found for resumption or newly created)
+     * @throws Exception if pod creation fails or label selector construction fails
+     */
+    private Pod findOrCreatePod(
+        RunContext runContext,
+        KubernetesClient client,
+        String namespace,
+        Map<String, Object> additionalVars,
+        Logger logger
+    ) throws Exception {
+        if (runContext.render(this.resume).as(Boolean.class).orElseThrow()) {
+            // Try to locate an existing pod for this taskrun and attempt
+            // Safe cast: runContext.getVariables() returns Map<String, Object> where "taskrun" is always a Map
+            @SuppressWarnings("unchecked")
+            Map<String, Object> taskrun = (Map<String, Object>) runContext.getVariables().get("taskrun");
+            String taskrunId = ScriptService.normalize(String.valueOf(taskrun.get("id")));
+            String attempt = ScriptService.normalize(String.valueOf(taskrun.get("attemptsCount")));
+            String labelSelector = "kestra.io/taskrun-id=" + taskrunId + "," + "kestra.io/taskrun-attempt=" + attempt;
+
+            var existingPods = client.pods()
+                .inNamespace(namespace)
+                .list(new ListOptionsBuilder().withLabelSelector(labelSelector).build());
+
+            if (existingPods.getItems().size() == 1) {
+                Pod pod = existingPods.getItems().get(0);
+                logger.info("Pod '{}' is resumed from an already running pod", pod.getMetadata().getName());
+                return pod;
+            } else if (!existingPods.getItems().isEmpty()) {
+                logger.warn("More than one pod exists for the label selector {}, no pods will be resumed.", labelSelector);
+            }
+        }
+
+        // Create new pod if resume is disabled or no suitable pod was found
+        Pod pod = createPod(runContext, client, namespace, additionalVars);
+        logger.info("Pod '{}' is created", pod.getMetadata().getName());
+        return pod;
     }
 
     /**
