@@ -19,7 +19,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
@@ -121,7 +121,6 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
 @Schema(
     title = "Get one or many Kubernetes resources of a kind."
 )
-@Slf4j
 public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
     
@@ -155,6 +154,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
         List<Metadata> metadataList = new ArrayList<>();
         List<ResourceStatus> statusList = new ArrayList<>();
+        Logger logger = runContext.logger();
 
         try (var client = PodService.client(runContext, this.getConnection())) {
 
@@ -167,7 +167,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                 .build();
 
             if (renderedResourcesNames.isEmpty()) {
-                runContext.logger().debug("Fetching all resources of kind '{}' in namespace '{}'", renderedResourceType, renderedNamespace);
+                logger.debug("Fetching all resources of kind '{}' in namespace '{}'", renderedResourceType, renderedNamespace);
                 var resources = client.genericKubernetesResources(resourceDefinitionContext)
                     .inNamespace(renderedNamespace)
                     .list()
@@ -179,11 +179,11 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                         statusList.add(ResourceStatus.from(resource));
                     }
                 }
-                runContext.logger().info("Fetched {} resource(s) of kind '{}' in namespace '{}'", metadataList.size(), renderedResourceType, renderedNamespace);
+                logger.info("Fetched {} resource(s) of kind '{}' in namespace '{}'", metadataList.size(), renderedResourceType, renderedNamespace);
 
             } else {
                 renderedResourcesNames.forEach(name -> {
-                        runContext.logger().debug("Fetching resource of kind '{}' with name '{}' in namespace '{}'",
+                        logger.debug("Fetching resource of kind '{}' with name '{}' in namespace '{}'",
                             renderedResourceType, name, renderedNamespace);
 
                         var resource = client.genericKubernetesResources(resourceDefinitionContext)
@@ -194,10 +194,10 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                         if (resource != null && resource.getMetadata() != null) {
                             metadataList.add(Metadata.from(resource.getMetadata()));
                             statusList.add(ResourceStatus.from(resource));
-                            runContext.logger().info("Fetched resource of kind '{}' with name '{}' in namespace '{}'",
+                            logger.info("Fetched resource of kind '{}' with name '{}' in namespace '{}'",
                                 renderedResourceType, name, renderedNamespace);
                         } else {
-                            runContext.logger().warn("Resource of kind '{}' with name '{}' not found in namespace '{}'",
+                            logger.warn("Resource of kind '{}' with name '{}' not found in namespace '{}'",
                                 renderedResourceType, name, renderedNamespace);
                         }
                     }
@@ -205,10 +205,10 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
             }
 
         } catch (KubernetesClientException e) {
-            runContext.logger().error("Kubernetes API error while fetching kind '{}' in namespace '{}': {}", renderedResourceType, renderedNamespace, e.getMessage(), e);
+            logger.error("Kubernetes API error while fetching kind '{}' in namespace '{}': {}", renderedResourceType, renderedNamespace, e.getMessage(), e);
             throw new Exception("Failed to interact with Kubernetes API: " + e.getMessage(), e);
         } catch (IllegalArgumentException e) {
-            runContext.logger().error("Configuration error: {}", e.getMessage(), e);
+            logger.error("Configuration error: {}", e.getMessage(), e);
             throw e;
         }
 
