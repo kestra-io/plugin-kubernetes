@@ -129,7 +129,6 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
     )
     private Property<String> spec;
 
-    
 
     @Override
     public Apply.Output run(RunContext runContext) throws Exception {

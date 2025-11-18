@@ -36,25 +36,7 @@ abstract public class AbstractPod extends AbstractConnection {
     protected static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
     protected static final String FILES_VOLUME_NAME = "kestra-files";
     
-    //Add New Property
-    @Schema(
-    title = "The Kubernetes namespace"
-      )
-    @PluginProperty
-    protected Property<String> namespace;
-
-    @Schema(
-    title = "The Kubernetes resource apiGroup"
-      )
-    @PluginProperty
-    protected Property<String> apiGroup;
-
-    @Schema(
-    title = "The Kubernetes resource apiVersion"
-      )
-    @PluginProperty
-    protected Property<String> apiVersion;
-
+   
 
     @Schema(
         title = "The files from the container filesystem to send to Kestra's internal storage",
