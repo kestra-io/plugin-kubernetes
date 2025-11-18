@@ -1,7 +1,6 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.property.Property;
@@ -12,14 +11,14 @@ import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
-import lombok.*;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
 import java.time.Duration;
-import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @SuperBuilder
 @ToString
@@ -55,9 +54,7 @@ import java.util.Map;
 )
 public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
 
-    @Schema(
-        title = "The Kubernetes namespace"
-    )
+    @Schema(title = "The Kubernetes namespace.")
     @NotNull
     private Property<String> namespace;
 
@@ -65,23 +62,9 @@ public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
     @NotNull
     private Property<ResourceType> resourceType;
 
-    @Schema(
-        title = "The Kubernetes resources names"
-    )
+    @Schema(title = "The Kubernetes resource names to restart.")
     @NotNull
     private Property<List<String>> resourcesNames;
-
-    @Schema(
-        title = "The Kubernetes resource apiGroup"
-    )
-    @Builder.Default
-    private Property<String> apiGroup = Property.ofValue("apps");
-
-    @Schema(
-        title = "The Kubernetes resource apiVersion"
-    )
-    @Builder.Default
-    private Property<String> apiVersion = Property.ofValue("v1");
 
     @Override
     public VoidOutput run(RunContext runContext) throws Exception {
@@ -94,10 +77,7 @@ public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
             var rKind = runContext.render(this.resourceType).as(ResourceType.class)
                 .orElseThrow(() -> new IllegalArgumentException("resourceType must be provided and rendered."));
             var rResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
-            var rApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("apps");
-            var rApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
 
-            // Check if waitUntilReady is set and warn that it's not yet supported
             var rWaitUntilReady = runContext.render(this.waitUntilReady).as(Duration.class).orElse(Duration.ZERO);
             if (!rWaitUntilReady.isZero()) {
                 logger.warn("waitUntilReady parameter is not yet supported by Restart task and will be ignored. The task will return immediately after triggering the restart.");
@@ -106,54 +86,38 @@ public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
             logger.info("Triggering rolling restart for '{}' resources '{}' in namespace '{}'",
                 rKind, rResourcesNames, rNamespace);
 
-            var resourceDefinitionContext = new ResourceDefinitionContext.Builder()
-                .withGroup(rApiGroup)
-                .withVersion(rApiVersion)
-                .withKind(rKind.name())
-                .withNamespaced(true)
-                .build();
+            for (String name : rResourcesNames) {
+                logger.info("Restarting {} '{}'", rKind, name);
 
-            rResourcesNames.forEach(name -> {
-                var resource = client.genericKubernetesResources(resourceDefinitionContext)
-                    .inNamespace(rNamespace)
-                    .withName(name)
-                    .get();
+                switch (rKind) {
+                    case Deployment -> client.apps()
+                        .deployments()
+                        .inNamespace(rNamespace)
+                        .withName(name)
+                        .rolling()
+                        .restart();
 
-                if (resource == null) {
-                    logger.warn("Resource '{}' of kind '{}' not found in namespace '{}'",
-                        name, rKind, rNamespace);
-                    return;
+                    case StatefulSet -> client.apps()
+                        .statefulSets()
+                        .inNamespace(rNamespace)
+                        .withName(name)
+                        .rolling()
+                        .restart();
+
+                    default -> throw new IllegalStateException("Unsupported resource type: " + rKind);
                 }
+            }
 
-                // Ensure annotations map exists
-                Map<String, String> annotations = resource.getMetadata().getAnnotations();
-                if (annotations == null) {
-                    annotations = new HashMap<>();
-                }
-
-                // Add the restart annotation (same behavior as kubectl rollout restart)
-                annotations.put("kubectl.kubernetes.io/restartedAt", Instant.now().toString());
-                resource.getMetadata().setAnnotations(annotations);
-
-                // Update the resource on the cluster
-                client.genericKubernetesResources(resourceDefinitionContext)
-                    .inNamespace(rNamespace)
-                    .withName(name)
-                    .edit(r -> {
-                        r.setMetadata(resource.getMetadata());
-                        return r;
-                    });
-
-                logger.info("Rolling restart triggered for {} '{}'", rKind, name);
-            });
         }
 
         return null;
     }
 
+    /**
+     * Enum representing supported resource types for rolling restart.
+     */
     public enum ResourceType {
         Deployment,
-        DaemonSet,
         StatefulSet
     }
 }
