@@ -310,6 +310,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
      */
     @Override
     public PodCreate.Output run(RunContext runContext) throws Exception {
+
+        Duration rWaitUntilRunning = runContext.render(this.waitUntilRunning).as(Duration.class).orElseThrow();
+
         try {
             this.currentConnection = this.getConnection();
 
@@ -366,12 +369,12 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                             if (validatedInputFiles != null) {
                                 // Files already validated and created before pod creation
                                 // Just need to wait for init container and upload them
-                                pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, runContext.render(this.waitUntilRunning).as(Duration.class).orElseThrow());
+                                pod = PodService.waitForInitContainerRunning(client, pod, INIT_FILES_CONTAINER_NAME, rWaitUntilRunning);
                                 this.uploadInputFiles(runContext, PodService.podRef(client, pod), logger, validatedInputFiles.keySet());
                             }
 
                             // wait for pods ready
-                            pod = PodService.waitForPodReady(client, pod, runContext.render(this.waitUntilRunning).as(Duration.class).orElseThrow());
+                            pod = PodService.waitForPodReady(client, pod, rWaitUntilRunning);
                         }
 
                         if (pod.getStatus() != null && pod.getStatus().getPhase().equals("Failed")) {
@@ -380,7 +383,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                         // Wait for containers to start (Running) or pod to reach terminal state (Succeeded/Failed/Unknown)
                         // This ensures we proceed with log collection regardless of pod outcome
-                        pod = PodService.waitForContainersStartedOrCompleted(client, pod, runContext.render(this.waitUntilRunning).as(Duration.class).orElseThrow());
+                        pod = PodService.waitForContainersStartedOrCompleted(client, pod, rWaitUntilRunning);
 
                         // Set up log consumer for output parsing (used by both watch and fetchFinalLogs)
                         AbstractLogConsumer logConsumer = new DefaultLogConsumer(runContext);
