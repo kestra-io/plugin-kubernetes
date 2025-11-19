@@ -113,20 +113,44 @@ abstract public class PodService {
     public static Pod waitForCompletion(KubernetesClient client, Logger logger, Pod pod, Duration waitRunning, Predicate<Pod> condition) {
         Pod ended = null;
         PodResource podResource = podRef(client, pod);
+        long startTime = System.currentTimeMillis();
+        long maxWaitMillis = waitRunning.toMillis();
 
         while (ended == null) {
+            // Calculate elapsed and remaining time
+            long elapsed = System.currentTimeMillis() - startTime;
+            long remaining = maxWaitMillis - elapsed;
+
+            // Fail if maximum duration exceeded
+            if (remaining <= 0) {
+                throw new IllegalStateException(
+                    String.format("Pod did not complete within waitRunning duration of %s", waitRunning)
+                );
+            }
+
             try {
+                // Wait for REMAINING time, not full duration
                 ended = podResource
                     .waitUntilCondition(
                         condition,
-                        waitRunning.toSeconds(),
-                        TimeUnit.SECONDS
+                        remaining,
+                        TimeUnit.MILLISECONDS
                     );
             } catch (KubernetesClientException e) {
-                podResource = podRef(client, pod);
+                // Check if we've exceeded the maximum duration after the failed wait
+                elapsed = System.currentTimeMillis() - startTime;
+                if (elapsed >= maxWaitMillis) {
+                    throw new IllegalStateException(
+                        String.format("Pod did not complete within waitRunning duration of %s", waitRunning),
+                        e
+                    );
+                }
 
+                // Retry with remaining time
+                podResource = podRef(client, pod);
                 if (podResource.get() != null) {
-                    logger.debug("Pod is still alive, refreshing and trying to wait longer", e);
+                    long remainingSeconds = (maxWaitMillis - elapsed) / 1000;
+                    logger.debug("Pod is still alive, waiting for remaining {}s", remainingSeconds);
                 } else {
                     logger.warn("Unable to refresh pods, no pods were found!", e);
                     throw e;
