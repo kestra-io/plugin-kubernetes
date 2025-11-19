@@ -37,6 +37,10 @@ abstract public class AbstractPod extends AbstractConnection {
     protected static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
     protected static final String FILES_VOLUME_NAME = "kestra-files";
 
+    // Constants for marker files used in file transfer coordination
+    protected static final String READY_MARKER = "ready";
+    protected static final String ENDED_MARKER = "ended";
+
     @Schema(
         title = "The files from the container filesystem to send to Kestra's internal storage",
         description = "Only files created inside the `kestra/working-dir` directory of the container can be retrieved.\n" +
@@ -95,7 +99,7 @@ abstract public class AbstractPod extends AbstractConnection {
             ))
         );
 
-        PodService.uploadMarker(runContext, podResource, logger, "ready", INIT_FILES_CONTAINER_NAME);
+        PodService.uploadMarker(runContext, podResource, logger, READY_MARKER, INIT_FILES_CONTAINER_NAME);
     }
 
     protected Map<Path, Path> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {
@@ -231,7 +235,7 @@ abstract public class AbstractPod extends AbstractConnection {
     }
 
     private Container filesContainer(RunContext runContext, VolumeMount volumeMount, boolean finished) throws IllegalVariableEvaluationException {
-        String s = finished ? "ended" : "ready";
+        String status = finished ? ENDED_MARKER : READY_MARKER;
 
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .withName(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
@@ -240,13 +244,13 @@ abstract public class AbstractPod extends AbstractConnection {
             .withCommand(Arrays.asList(
                 "sh",
                 "-c",
-                "echo 'waiting to be " + s + "!'\n" +
-                    "while [ ! -f /kestra/" + s + " ]\n" +
+                "echo 'waiting to be " + status + "!'\n" +
+                    "while [ ! -f /kestra/" + status + " ]\n" +
                     "do\n" +
                     "  sleep 0.5\n" +
                     (finished ? "" : "echo '* still waiting!'\n") +
                     "done\n" +
-                    "echo '" + s + " successfully'\n"
+                    "echo '" + status + " successfully'\n"
             ));
 
         if (!finished) {

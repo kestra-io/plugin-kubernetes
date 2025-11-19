@@ -270,10 +270,6 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private static final String WORKING_DIR_VAR = "workingDir";
     private static final String OUTPUT_FILES_VAR = "outputFiles";
 
-    // Constants for marker files used in file transfer coordination
-    private static final String READY_MARKER = "ready";
-    private static final String ENDED_MARKER = "ended";
-
     // Kill handling state
     private final AtomicBoolean killed = new AtomicBoolean(false);
     private final AtomicReference<String> currentPodName = new AtomicReference<>();
