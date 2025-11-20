@@ -52,12 +52,6 @@ import java.util.List;
 public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
 
     @Schema(
-        title = "The Kubernetes namespace"
-    )
-    @NotNull
-    private Property<String> namespace;
-
-    @Schema(
         title = "The Kubernetes resource type (= kind) (e.g., pod, service)"
     )
     @NotNull
@@ -84,26 +78,26 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
 
         try (KubernetesClient client = PodService.client(runContext, this.getConnection())) {
 
-            var renderedNamespace = runContext.render(this.namespace).as(String.class)
+            var rNamespace = runContext.render(this.namespace).as(String.class)
                 .orElseThrow(() -> new IllegalArgumentException("namespace must be provided and rendered."));
-            var renderedKind = runContext.render(this.resourceType).as(String.class)
+            var rResourceType = runContext.render(this.resourceType).as(String.class)
                 .orElseThrow(() -> new IllegalArgumentException("resourceType must be provided and rendered."));
-            var renderedResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
-            var renderedApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("");
-            var renderedApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
+            var rResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
+            var rApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("");
+            var rApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
 
-            runContext.logger().debug("Deleting resource(s) '{}' of kind '{}' in namespace '{}'", renderedResourcesNames, renderedKind, renderedNamespace);
+            runContext.logger().debug("Deleting resource(s) '{}' of kind '{}' in namespace '{}'", rResourcesNames, rResourceType, rNamespace);
 
             var resourceDefinitionContext = new ResourceDefinitionContext.Builder()
-                .withGroup(renderedApiGroup)
-                .withVersion(renderedApiVersion)
-                .withKind(renderedKind)
+                .withGroup(rApiGroup)
+                .withVersion(rApiVersion)
+                .withKind(rResourceType)
                 .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
                 .build();
 
-            renderedResourcesNames.forEach(name ->
+            rResourcesNames.forEach(name ->
                 client.genericKubernetesResources(resourceDefinitionContext)
-                    .inNamespace(renderedNamespace)
+                    .inNamespace(rNamespace)
                     .withName(name)
                     .delete()
             );

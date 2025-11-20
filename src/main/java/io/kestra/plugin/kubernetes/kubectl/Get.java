@@ -146,12 +146,6 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
 public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
     @Schema(
-        title = "The Kubernetes namespace"
-    )
-    @NotNull
-    private Property<String> namespace;
-
-    @Schema(
         title = "The Kubernetes resource type (= kind) (e.g., pod, service)"
     )
     @NotNull
@@ -178,14 +172,14 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        var renderedNamespace = runContext.render(this.namespace).as(String.class)
+        var rNamespace = runContext.render(this.namespace).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("namespace must be provided and rendered."));
-        var renderedResourceType = runContext.render(this.resourceType).as(String.class)
+        var rResourceType = runContext.render(this.resourceType).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("resourceType must be provided and rendered."));
-        var renderedResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
-        var renderedApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("");
-        var renderedApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
-        var renderedFetchType = runContext.render(this.fetchType).as(FetchType.class).orElse(NONE);
+        var rResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
+        var rApiGroup = runContext.render(this.apiGroup).as(String.class).orElse("");
+        var rApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
+        var rFetchType = runContext.render(this.fetchType).as(FetchType.class).orElse(NONE);
         var rWaitUntilReady = runContext.render(this.waitUntilReady).as(Duration.class).orElse(Duration.ZERO);
 
         List<Metadata> metadataList = new ArrayList<>();
@@ -196,16 +190,16 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
             var resourceDefinitionContext = new ResourceDefinitionContext.Builder()
                 // See: https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-uris
-                .withGroup(renderedApiGroup)
-                .withVersion(renderedApiVersion)
-                .withKind(renderedResourceType)
+                .withGroup(rApiGroup)
+                .withVersion(rApiVersion)
+                .withKind(rResourceType)
                 .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
                 .build();
 
-            if (renderedResourcesNames.isEmpty()) {
-                logger.debug("Fetching all resources of kind '{}' in namespace '{}'", renderedResourceType, renderedNamespace);
+            if (rResourcesNames.isEmpty()) {
+                logger.debug("Fetching all resources of kind '{}' in namespace '{}'", rResourceType, rNamespace);
                 var resources = client.genericKubernetesResources(resourceDefinitionContext)
-                    .inNamespace(renderedNamespace)
+                    .inNamespace(rNamespace)
                     .list()
                     .getItems();
 
@@ -215,15 +209,15 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                         statusList.add(ResourceStatus.from(resource));
                     }
                 }
-                logger.info("Fetched {} resource(s) of kind '{}' in namespace '{}'", metadataList.size(), renderedResourceType, renderedNamespace);
+                logger.info("Fetched {} resource(s) of kind '{}' in namespace '{}'", metadataList.size(), rResourceType, rNamespace);
 
             } else {
-                renderedResourcesNames.forEach(name -> {
+                rResourcesNames.forEach(name -> {
                         logger.debug("Fetching resource of kind '{}' with name '{}' in namespace '{}'",
-                            renderedResourceType, name, renderedNamespace);
+                            rResourceType, name, rNamespace);
 
                         var resource = client.genericKubernetesResources(resourceDefinitionContext)
-                            .inNamespace(renderedNamespace)
+                            .inNamespace(rNamespace)
                             .withName(name)
                             .get();
 
@@ -234,7 +228,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                                 resource = ResourceWaitService.waitForReady(
                                     client,
                                     resourceDefinitionContext,
-                                    renderedNamespace,
+                                    rNamespace,
                                     name,
                                     rWaitUntilReady,
                                     runContext.logger()
@@ -245,17 +239,17 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                             metadataList.add(Metadata.from(resource.getMetadata()));
                             statusList.add(ResourceStatus.from(resource));
                             logger.info("Fetched resource of kind '{}' with name '{}' in namespace '{}'",
-                                renderedResourceType, name, renderedNamespace);
+                                rResourceType, name, rNamespace);
                         } else {
                             logger.warn("Resource of kind '{}' with name '{}' not found in namespace '{}'",
-                                renderedResourceType, name, renderedNamespace);
+                                rResourceType, name, rNamespace);
                         }
                     }
                 );
             }
 
         } catch (KubernetesClientException e) {
-            logger.error("Kubernetes API error while fetching kind '{}' in namespace '{}': {}", renderedResourceType, renderedNamespace, e.getMessage(), e);
+            logger.error("Kubernetes API error while fetching kind '{}' in namespace '{}': {}", rResourceType, rNamespace, e.getMessage(), e);
             throw new Exception("Failed to interact with Kubernetes API: " + e.getMessage(), e);
         } catch (IllegalArgumentException e) {
             logger.error("Configuration error: {}", e.getMessage(), e);
@@ -265,7 +259,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         Output output;
 
         int fetchedItemsCount = metadataList.size();
-        switch (renderedFetchType) {
+        switch (rFetchType) {
             case NONE:
                 output = Output.builder().build();
                 runContext.metric(Counter.of("fetch.size", 0, "fetch", "false", "store", "false"));
@@ -302,11 +296,8 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         return output;
     }
 
-    @Getter
     @Builder
-    public static class ResourceInfo {
-        private final Metadata metadata;
-        private final ResourceStatus status;
+    public record ResourceInfo(Metadata metadata, ResourceStatus status) {
     }
 
     @Getter

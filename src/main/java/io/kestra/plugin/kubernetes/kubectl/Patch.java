@@ -196,12 +196,6 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
     @NotNull
     @Schema(
-        title = "The Kubernetes namespace"
-    )
-    private Property<String> namespace;
-
-    @NotNull
-    @Schema(
         title = "The Kubernetes resource type (e.g., deployment, statefulset, pod)",
         description = "Note: Currently only namespaced resources are supported. Cluster-scoped resources (e.g., ClusterRole, Node) are not supported."
     )
@@ -247,6 +241,7 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
     @Override
     public Output run(RunContext runContext) throws Exception {
+
         // Render all properties
         var rNamespace = runContext.render(this.namespace).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("namespace must be provided"));

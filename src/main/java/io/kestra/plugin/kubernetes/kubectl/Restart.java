@@ -54,10 +54,6 @@ import java.util.List;
 )
 public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
 
-    @Schema(title = "The Kubernetes namespace.")
-    @NotNull
-    private Property<String> namespace;
-
     @Schema(title = "The Kubernetes resource type (Deployment, DaemonSet, StatefulSet).")
     @NotNull
     private Property<ResourceType> resourceType;
@@ -74,7 +70,7 @@ public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
 
             var rNamespace = runContext.render(this.namespace).as(String.class)
                 .orElseThrow(() -> new IllegalArgumentException("namespace must be provided and rendered."));
-            var rKind = runContext.render(this.resourceType).as(ResourceType.class)
+            var rResourceType = runContext.render(this.resourceType).as(ResourceType.class)
                 .orElseThrow(() -> new IllegalArgumentException("resourceType must be provided and rendered."));
             var rResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
 
@@ -84,12 +80,12 @@ public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
             }
 
             logger.info("Triggering rolling restart for '{}' resources '{}' in namespace '{}'",
-                rKind, rResourcesNames, rNamespace);
+                rResourceType, rResourcesNames, rNamespace);
 
             for (String name : rResourcesNames) {
-                logger.info("Restarting {} '{}'", rKind, name);
+                logger.info("Restarting {} '{}'", rResourceType, name);
 
-                switch (rKind) {
+                switch (rResourceType) {
                     case Deployment -> client.apps()
                         .deployments()
                         .inNamespace(rNamespace)
@@ -104,7 +100,7 @@ public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
                         .rolling()
                         .restart();
 
-                    default -> throw new IllegalStateException("Unsupported resource type: " + rKind);
+                    default -> throw new IllegalStateException("Unsupported resource type: " + rResourceType);
                 }
             }
 
