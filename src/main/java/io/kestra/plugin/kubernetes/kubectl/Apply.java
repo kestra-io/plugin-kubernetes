@@ -153,14 +153,9 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
     )
     private Property<String> spec;
 
-    @Schema(
-        title = "The Kubernetes namespace"
-    )
-    private Property<String> namespace;
-
     @Override
     public Apply.Output run(RunContext runContext) throws Exception {
-        var namespace = runContext.render(this.namespace).as(String.class).orElseThrow();
+        var rNamespace = runContext.render(this.namespace).as(String.class).orElseThrow();
         var rWaitUntilReady = runContext.render(this.waitUntilReady).as(Duration.class).orElse(Duration.ZERO);
 
         try (var client = PodService.client(runContext, this.getConnection())) {
@@ -170,7 +165,7 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 
             List<Metadata> metadataList = new ArrayList<>();
             for (var resource : resources) {
-                var resourceClient = client.resource(resource).inNamespace(namespace);
+                var resourceClient = client.resource(resource).inNamespace(rNamespace);
 
                 try {
                     var hasMetadata = resourceClient.unlock().serverSideApply();
@@ -201,7 +196,7 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
                             .build();
 
                         logger.info("Waiting for resource '{}' to become ready (timeout: {})...", resourceName, rWaitUntilReady);
-                        ResourceWaitService.waitForReady(client, resourceContext, namespace, resourceName, rWaitUntilReady, logger);
+                        ResourceWaitService.waitForReady(client, resourceContext, rNamespace, resourceName, rWaitUntilReady, logger);
                         logger.info("Resource '{}' is ready", resourceName);
                     }
                 } catch (Exception exception) {

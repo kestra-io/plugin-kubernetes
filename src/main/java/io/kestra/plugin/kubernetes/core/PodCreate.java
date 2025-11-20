@@ -209,13 +209,6 @@ import lombok.extern.slf4j.Slf4j;
 )
 @Slf4j
 public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Output> {
-    @Schema(
-        title = "The namespace where the pod will be created",
-        description = "The Kubernetes namespace in which to create the pod. Defaults to 'default' if not specified."
-    )
-    @NotNull
-    @Builder.Default
-    private Property<String> namespace = Property.ofValue("default");
 
     @Schema(
         title = "The pod metadata configuration",

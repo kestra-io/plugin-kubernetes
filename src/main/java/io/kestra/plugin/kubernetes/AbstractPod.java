@@ -10,6 +10,7 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.models.SideCar;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.slf4j.Logger;
@@ -32,7 +33,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
 @EqualsAndHashCode
 @Getter
 @NoArgsConstructor
-abstract public class AbstractPod extends AbstractConnection {
+public abstract class AbstractPod extends AbstractConnection {
     protected static final String INIT_FILES_CONTAINER_NAME = "init-files";
     protected static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
     protected static final String FILES_VOLUME_NAME = "kestra-files";
@@ -40,6 +41,14 @@ abstract public class AbstractPod extends AbstractConnection {
     // Constants for marker files used in file transfer coordination
     protected static final String READY_MARKER = "ready";
     protected static final String ENDED_MARKER = "ended";
+
+    @Schema(
+        title = "The namespace where the operation will be done",
+        description = "The Kubernetes namespace in which to execute the operation. Defaults to 'default' if not specified."
+    )
+    @NotNull
+    @Builder.Default
+    protected Property<String> namespace = Property.ofValue("default");
 
     @Schema(
         title = "The files from the container filesystem to send to Kestra's internal storage",
@@ -57,7 +66,6 @@ abstract public class AbstractPod extends AbstractConnection {
         dynamic = true
     )
     protected Object inputFiles;
-
 
     @Schema(
         title = "The configuration of the file sidecar container that handles the download and upload of files"
