@@ -36,6 +36,25 @@ abstract public class AbstractPod extends AbstractConnection {
     protected static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
     protected static final String FILES_VOLUME_NAME = "kestra-files";
     
+    @Schema(
+    title = "The Kubernetes namespace"
+)
+@PluginProperty(dynamic = true)
+protected Property<String> namespace;
+
+@Schema(
+    title = "The Kubernetes resource apiGroup",
+    description = "Required for custom resources. For core resources (pods, services, etc.), leave empty."
+)
+@PluginProperty(dynamic = true)
+protected Property<String> apiGroup;
+
+@Schema(
+    title = "The Kubernetes resource API version",
+    description = "The version part of the API (e.g., 'v1', 'v1beta1'). Default is 'v1'. Note: This is just the version, not the full group/version. Use apiGroup for the group part."
+)
+@PluginProperty(dynamic = true)
+protected Property<String> apiVersion;
    
 
     @Schema(
