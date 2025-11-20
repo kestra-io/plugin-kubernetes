@@ -1,0 +1,8 @@
+group: io.kestra.plugin.kubernetes.core
+name: "core"
+title: "Core"
+description: "This subgroup of plugins contains core tasks for interacting with a Kubernetes cluster."
+body: ""
+videos: []
+createdBy: "Kestra Core Team"
+managedBy: "Kestra Core Team"
