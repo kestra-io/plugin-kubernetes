@@ -1,0 +1,8 @@
+group: io.kestra.plugin.kubernetes.kubectl
+name: "kubectl"
+title: "Kubectl"
+description: "This subgroup of plugins contains core tasks for interacting with a Kubernetes cluster through kubectl commands."
+body: ""
+videos: []
+createdBy: "Kestra Core Team"
+managedBy: "Kestra Core Team"
