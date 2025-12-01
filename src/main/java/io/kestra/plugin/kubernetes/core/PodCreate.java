@@ -206,7 +206,7 @@ import lombok.extern.slf4j.Slf4j;
                 """
         ),
         @Example(
-            title = "Launch a Pod with security context on init/sidecar containers for restrictive environments.",
+            title = "Launch a Pod with security context applied to all containers for restrictive environments.",
             full = true,
             code = """
                 id: kubernetes_pod_create_secure
@@ -219,15 +219,14 @@ import lombok.extern.slf4j.Slf4j;
                 tasks:
                   - id: pod_create
                     type: io.kestra.plugin.kubernetes.core.PodCreate
-                    fileSidecar:
-                      securityContext:
-                        allowPrivilegeEscalation: false
-                        capabilities:
-                          drop:
-                            - ALL
-                        readOnlyRootFilesystem: true
-                        seccompProfile:
-                          type: RuntimeDefault
+                    containerSecurityContext:
+                      allowPrivilegeEscalation: false
+                      capabilities:
+                        drop:
+                          - ALL
+                      readOnlyRootFilesystem: true
+                      seccompProfile:
+                        type: RuntimeDefault
                     spec:
                       containers:
                       - name: main
@@ -236,14 +235,6 @@ import lombok.extern.slf4j.Slf4j;
                           - cp
                           - "{{workingDir}}/data.txt"
                           - "{{workingDir}}/out.txt"
-                        securityContext:
-                          allowPrivilegeEscalation: false
-                          capabilities:
-                            drop:
-                              - ALL
-                          readOnlyRootFilesystem: true
-                          seccompProfile:
-                            type: RuntimeDefault
                       restartPolicy: Never
                     waitUntilRunning: PT3M
                     inputFiles:
@@ -621,6 +612,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             this.spec
         );
 
+        // Apply default security context to user-defined containers before adding file handling containers
+        this.applyContainerSecurityContext(runContext, spec);
 
         this.handleFiles(runContext, spec);
 
