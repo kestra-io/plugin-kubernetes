@@ -3,6 +3,7 @@ package io.kestra.plugin.kubernetes;
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
+import io.kestra.plugin.kubernetes.services.InstanceService;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
@@ -242,6 +243,23 @@ public abstract class AbstractPod extends AbstractConnection {
         return resourceRequirements;
     }
 
+    private static SecurityContext mapSidecarSecurityContext(RunContext runContext, SideCar sideCar) throws IllegalVariableEvaluationException {
+        if (sideCar == null || sideCar.getSecurityContext() == null) {
+            return null;
+        }
+
+        Map<String, Object> securityContextMap = runContext.render(sideCar.getSecurityContext()).asMap(String.class, Object.class);
+        if (securityContextMap == null || securityContextMap.isEmpty()) {
+            return null;
+        }
+
+        try {
+            return InstanceService.fromMap(SecurityContext.class, runContext, Map.of(), securityContextMap);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to parse sidecar security context: " + e.getMessage(), e);
+        }
+    }
+
     private Container filesContainer(RunContext runContext, VolumeMount volumeMount, boolean finished) throws IllegalVariableEvaluationException {
         String status = finished ? ENDED_MARKER : READY_MARKER;
 
@@ -249,6 +267,7 @@ public abstract class AbstractPod extends AbstractConnection {
             .withName(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
             .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
+            .withSecurityContext(fileSidecar != null ? mapSidecarSecurityContext(runContext, fileSidecar) : null)
             .withCommand(Arrays.asList(
                 "sh",
                 "-c",
@@ -273,6 +292,7 @@ public abstract class AbstractPod extends AbstractConnection {
             .withName(INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
             .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
+            .withSecurityContext(fileSidecar != null ? mapSidecarSecurityContext(runContext, fileSidecar) : null)
             .withCommand(Arrays.asList(
                 "sh",
                 "-c",
