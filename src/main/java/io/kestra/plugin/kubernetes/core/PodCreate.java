@@ -39,10 +39,8 @@ import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
 import io.kestra.core.models.tasks.runners.DefaultLogConsumer;
 import io.kestra.core.models.tasks.runners.PluginUtilsService;
 import io.kestra.core.models.tasks.runners.ScriptService;
-import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.IdUtils;
-import io.kestra.core.utils.ThreadMainFactoryBuilder;
 import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Connection;
 import io.kestra.plugin.kubernetes.models.Metadata;
@@ -345,7 +343,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             }
 
             try (KubernetesClient client = PodService.client(runContext, this.getConnection());
-                 PodLogService podLogService = new PodLogService(((DefaultRunContext) runContext).getApplicationContext().getBean(ThreadMainFactoryBuilder.class))) {
+                 PodLogService podLogService = new PodLogService()) {
 
                 Pod pod = findOrCreatePod(runContext, client, namespace, additionalVars, logger);
                 currentPodName.set(pod.getMetadata().getName());
