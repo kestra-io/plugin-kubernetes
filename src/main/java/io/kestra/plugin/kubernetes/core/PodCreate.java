@@ -204,6 +204,44 @@ import lombok.extern.slf4j.Slf4j;
                     outputFiles:
                       - out.txt
                 """
+        ),
+        @Example(
+            title = "Launch a Pod with security context applied to all containers for restrictive environments.",
+            full = true,
+            code = """
+                id: kubernetes_pod_create_secure
+                namespace: company.team
+
+                inputs:
+                  - id: file
+                    type: FILE
+
+                tasks:
+                  - id: pod_create
+                    type: io.kestra.plugin.kubernetes.core.PodCreate
+                    containerSecurityContext:
+                      allowPrivilegeEscalation: false
+                      capabilities:
+                        drop:
+                          - ALL
+                      readOnlyRootFilesystem: true
+                      seccompProfile:
+                        type: RuntimeDefault
+                    spec:
+                      containers:
+                      - name: main
+                        image: centos
+                        command:
+                          - cp
+                          - "{{workingDir}}/data.txt"
+                          - "{{workingDir}}/out.txt"
+                      restartPolicy: Never
+                    waitUntilRunning: PT3M
+                    inputFiles:
+                      data.txt: "{{inputs.file}}"
+                    outputFiles:
+                      - out.txt
+                """
         )
     }
 )
@@ -574,6 +612,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             this.spec
         );
 
+        // Apply default security context to user-defined containers before adding file handling containers
+        this.applyContainerSecurityContext(runContext, spec);
 
         this.handleFiles(runContext, spec);
 

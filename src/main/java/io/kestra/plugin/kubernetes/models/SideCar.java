@@ -22,4 +22,24 @@ public class SideCar {
         title = "The resource requirements applied to the file sidecar container"
     )
     private Property<Map<String, Object>> resources;
+
+    @Schema(
+        title = "The security context applied to the file sidecar and init containers",
+        description = """
+            Kubernetes security context configuration for the init and sidecar containers used for file transfer.
+            This allows setting security policies required by restrictive environments like GovCloud.
+            Example configuration:
+            ```yaml
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              readOnlyRootFilesystem: true
+              seccompProfile:
+                type: RuntimeDefault
+            ```
+            """
+    )
+    private Property<Map<String, Object>> securityContext;
 }
