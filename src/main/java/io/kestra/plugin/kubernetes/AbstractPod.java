@@ -3,6 +3,7 @@ package io.kestra.plugin.kubernetes;
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
+import io.kestra.plugin.kubernetes.services.InstanceService;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
@@ -84,6 +85,31 @@ public abstract class AbstractPod extends AbstractConnection {
     )
     protected Property<Duration> waitUntilReady = Property.ofValue(Duration.ZERO);
 
+    @Schema(
+        title = "Default security context applied to all containers in the pod",
+        description = """
+            When set, this security context is applied to all containers including:
+            - User-defined containers in the spec (unless they already have a securityContext)
+            - Init and sidecar containers for file transfer (unless fileSidecar.securityContext is set)
+
+            This provides a convenient way to apply uniform security policies across all containers,
+            which is especially useful in restrictive environments like GovCloud.
+
+            Example configuration:
+            ```yaml
+            containerSecurityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              readOnlyRootFilesystem: true
+              seccompProfile:
+                type: RuntimeDefault
+            ```
+            """
+    )
+    protected Property<Map<String, Object>> containerSecurityContext;
+
     @SuppressWarnings("ResultOfMethodCallIgnored")
     protected void init(RunContext runContext) {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
@@ -148,6 +174,44 @@ public abstract class AbstractPod extends AbstractConnection {
             Files.createDirectories(to.getParent());
         }
         Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /**
+     * Applies the containerSecurityContext to all user-defined containers that don't already have a security context.
+     * This should be called after the spec is created but before file handling containers are added.
+     */
+    protected void applyContainerSecurityContext(RunContext runContext, PodSpec spec) throws IllegalVariableEvaluationException {
+        if (this.containerSecurityContext == null) {
+            return;
+        }
+
+        Map<String, Object> securityContextMap = runContext.render(this.containerSecurityContext).asMap(String.class, Object.class);
+        if (securityContextMap == null || securityContextMap.isEmpty()) {
+            return;
+        }
+
+        SecurityContext defaultSecurityContext;
+        try {
+            defaultSecurityContext = InstanceService.fromMap(SecurityContext.class, runContext, Map.of(), securityContextMap);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to parse container security context: " + e.getMessage(), e);
+        }
+
+        // Apply to all containers that don't already have a security context
+        spec.getContainers().forEach(container -> {
+            if (container.getSecurityContext() == null) {
+                container.setSecurityContext(defaultSecurityContext);
+            }
+        });
+
+        // Apply to all init containers that don't already have a security context
+        if (spec.getInitContainers() != null) {
+            spec.getInitContainers().forEach(container -> {
+                if (container.getSecurityContext() == null) {
+                    container.setSecurityContext(defaultSecurityContext);
+                }
+            });
+        }
     }
 
     protected void handleFiles(RunContext runContext, PodSpec spec) throws IllegalVariableEvaluationException {
@@ -242,6 +306,34 @@ public abstract class AbstractPod extends AbstractConnection {
         return resourceRequirements;
     }
 
+    private SecurityContext mapSidecarSecurityContext(RunContext runContext, SideCar sideCar) throws IllegalVariableEvaluationException {
+        // First try fileSidecar.securityContext
+        if (sideCar != null && sideCar.getSecurityContext() != null) {
+            Map<String, Object> securityContextMap = runContext.render(sideCar.getSecurityContext()).asMap(String.class, Object.class);
+            if (securityContextMap != null && !securityContextMap.isEmpty()) {
+                try {
+                    return InstanceService.fromMap(SecurityContext.class, runContext, Map.of(), securityContextMap);
+                } catch (Exception e) {
+                    throw new IllegalArgumentException("Failed to parse sidecar security context: " + e.getMessage(), e);
+                }
+            }
+        }
+
+        // Fall back to containerSecurityContext if set
+        if (this.containerSecurityContext != null) {
+            Map<String, Object> securityContextMap = runContext.render(this.containerSecurityContext).asMap(String.class, Object.class);
+            if (securityContextMap != null && !securityContextMap.isEmpty()) {
+                try {
+                    return InstanceService.fromMap(SecurityContext.class, runContext, Map.of(), securityContextMap);
+                } catch (Exception e) {
+                    throw new IllegalArgumentException("Failed to parse container security context: " + e.getMessage(), e);
+                }
+            }
+        }
+
+        return null;
+    }
+
     private Container filesContainer(RunContext runContext, VolumeMount volumeMount, boolean finished) throws IllegalVariableEvaluationException {
         String status = finished ? ENDED_MARKER : READY_MARKER;
 
@@ -249,6 +341,7 @@ public abstract class AbstractPod extends AbstractConnection {
             .withName(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
             .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
+            .withSecurityContext(fileSidecar != null ? mapSidecarSecurityContext(runContext, fileSidecar) : null)
             .withCommand(Arrays.asList(
                 "sh",
                 "-c",
@@ -273,6 +366,7 @@ public abstract class AbstractPod extends AbstractConnection {
             .withName(INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
             .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
+            .withSecurityContext(fileSidecar != null ? mapSidecarSecurityContext(runContext, fileSidecar) : null)
             .withCommand(Arrays.asList(
                 "sh",
                 "-c",
