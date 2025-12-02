@@ -24,22 +24,34 @@ public class SideCar {
     private Property<Map<String, Object>> resources;
 
     @Schema(
-        title = "The security context applied to the file sidecar and init containers",
+        title = "Default container spec for the file sidecar and init containers",
         description = """
-            Kubernetes security context configuration for the init and sidecar containers used for file transfer.
-            This allows setting security policies required by restrictive environments like GovCloud.
+            Default container spec fields applied to the init and sidecar containers used for file transfer.
+            When set, this overrides containerDefaultSpec for file transfer containers only.
+
+            Supports the same fields as containerDefaultSpec:
+            - securityContext: Security settings for file transfer containers
+            - volumeMounts: Volume mounts to add to file transfer containers
+            - resources: Resource limits/requests (note: also available as top-level 'resources' property)
+            - env: Environment variables for file transfer containers
+
             Example configuration:
             ```yaml
-            securityContext:
-              allowPrivilegeEscalation: false
-              capabilities:
-                drop:
-                - ALL
-              readOnlyRootFilesystem: true
-              seccompProfile:
-                type: RuntimeDefault
+            fileSidecar:
+              defaultSpec:
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
+                  readOnlyRootFilesystem: true
+                  seccompProfile:
+                    type: RuntimeDefault
+                volumeMounts:
+                  - name: tmp
+                    mountPath: /tmp
             ```
             """
     )
-    private Property<Map<String, Object>> securityContext;
+    private Property<Map<String, Object>> defaultSpec;
 }
