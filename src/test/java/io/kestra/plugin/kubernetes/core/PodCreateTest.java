@@ -1395,6 +1395,7 @@ class PodCreateTest {
     @Test
     void containerDefaultSpecContainerOverridesDefaults() throws Exception {
         // Test that container-specific values override containerDefaultSpec defaults
+        // Use allowPrivilegeEscalation as the override field since it doesn't affect pod scheduling
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
@@ -1405,7 +1406,8 @@ class PodCreateTest {
             .containerDefaultSpec(Property.ofValue(Map.of(
                 "securityContext", Map.of(
                     "runAsUser", 1000,
-                    "runAsGroup", 1000
+                    "runAsGroup", 1000,
+                    "allowPrivilegeEscalation", false
                 )
             )))
             .spec(TestUtils.convert(
@@ -1414,7 +1416,7 @@ class PodCreateTest {
                 "- name: main",
                 "  image: debian:stable-slim",
                 "  securityContext:",
-                "    runAsUser: 2000",  // Override the default runAsUser
+                "    allowPrivilegeEscalation: true",  // Override the default allowPrivilegeEscalation
                 "  command: [\"/bin/sh\"]",
                 "  args:",
                 "    - -c",
@@ -1443,23 +1445,26 @@ class PodCreateTest {
         String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
 
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
-            // Wait for pod to be running
+            // Wait for pod to be running or completed
             Await.until(() -> {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+                if (pods.isEmpty()) return false;
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
             logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
 
-            // Verify container-specific runAsUser overrides the default
+            // Verify container-specific allowPrivilegeEscalation overrides the default
             var mainContainer = createdPod.getSpec().getContainers().stream()
                 .filter(c -> c.getName().equals("main"))
                 .findFirst()
                 .orElseThrow();
             assertThat("Main container should have security context", mainContainer.getSecurityContext(), notNullValue());
-            assertThat("Container-specific runAsUser should override default", mainContainer.getSecurityContext().getRunAsUser(), is(2000L));
-            // runAsGroup should come from defaults (deep merge)
+            assertThat("Container-specific allowPrivilegeEscalation should override default", mainContainer.getSecurityContext().getAllowPrivilegeEscalation(), is(true));
+            // runAsUser and runAsGroup should come from defaults (deep merge)
+            assertThat("Default runAsUser should be preserved", mainContainer.getSecurityContext().getRunAsUser(), is(1000L));
             assertThat("Default runAsGroup should be preserved", mainContainer.getSecurityContext().getRunAsGroup(), is(1000L));
 
             // Wait for pod deletion
@@ -1473,14 +1478,14 @@ class PodCreateTest {
     @Test
     void fileSidecarDefaultSpecOverridesContainerDefaultSpec() throws Exception {
         // Test that fileSidecar.defaultSpec overrides containerDefaultSpec for sidecar containers
-        ObjectMapper mapper = new ObjectMapper(new YAMLFactory()).findAndRegisterModules();
-        SideCar sidecar = mapper.readValue(
-            """
-                defaultSpec:
-                  securityContext:
-                    runAsUser: 3000
-                    runAsGroup: 3000""",
-            SideCar.class);
+        SideCar sidecar = SideCar.builder()
+            .defaultSpec(Property.ofValue(Map.of(
+                "securityContext", Map.of(
+                    "runAsUser", 3000,
+                    "runAsGroup", 3000
+                )
+            )))
+            .build();
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -1525,7 +1530,7 @@ class PodCreateTest {
             try {
                 run[0] = task.run(finalRunContext);
             } catch (Exception e) {
-                logger.debug("Unexpected error.", e);
+                logger.error("Unexpected error.", e);
             }
         });
 
