@@ -1,8 +1,8 @@
 group: io.kestra.plugin.kubernetes
 name: "kubernetes"
 title: "Kubernetes"
-description: "This subgroup of plugins contains tasks for interacting with a Kubernetes cluster."
-body: ""
+description: "Tasks that run workloads and kubectl operations against Kubernetes clusters."
+body: "Provide cluster connection details (in-cluster, kubeconfig, or explicit server/token/certs) to create pods and stream logs or wait for completion, and run kubectl-style apply/get/patch/delete/restart commands with namespace, context, and resource selectors."
 videos: []
 createdBy: "Kestra Core Team"
 managedBy: "Kestra Core Team"
