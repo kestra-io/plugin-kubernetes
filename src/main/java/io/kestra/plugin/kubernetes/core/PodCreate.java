@@ -206,7 +206,7 @@ import lombok.extern.slf4j.Slf4j;
                 """
         ),
         @Example(
-            title = "Launch a Pod with security context applied to all containers for restrictive environments.",
+            title = "Launch a Pod with default container spec applied to all containers for restrictive environments.",
             full = true,
             code = """
                 id: kubernetes_pod_create_secure
@@ -219,15 +219,22 @@ import lombok.extern.slf4j.Slf4j;
                 tasks:
                   - id: pod_create
                     type: io.kestra.plugin.kubernetes.core.PodCreate
-                    containerSecurityContext:
-                      allowPrivilegeEscalation: false
-                      capabilities:
-                        drop:
-                          - ALL
-                      readOnlyRootFilesystem: true
-                      seccompProfile:
-                        type: RuntimeDefault
+                    containerDefaultSpec:
+                      securityContext:
+                        allowPrivilegeEscalation: false
+                        capabilities:
+                          drop:
+                            - ALL
+                        readOnlyRootFilesystem: true
+                        seccompProfile:
+                          type: RuntimeDefault
+                      volumeMounts:
+                        - name: tmp
+                          mountPath: /tmp
                     spec:
+                      volumes:
+                        - name: tmp
+                          emptyDir: {}
                       containers:
                       - name: main
                         image: centos
@@ -612,8 +619,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             this.spec
         );
 
-        // Apply default security context to user-defined containers before adding file handling containers
-        this.applyContainerSecurityContext(runContext, spec);
+        // Apply default container spec to user-defined containers before adding file handling containers
+        this.applyContainerDefaultSpec(runContext, spec);
 
         this.handleFiles(runContext, spec);
 

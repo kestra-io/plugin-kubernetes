@@ -1188,4 +1188,392 @@ class PodCreateTest {
         }
     }
 
+    @Test
+    void containerDefaultSpecSecurityContext() throws Exception {
+        // Test that containerDefaultSpec.securityContext is applied to all containers
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .containerDefaultSpec(Property.ofValue(Map.of(
+                "securityContext", Map.of(
+                    "runAsUser", 1000,
+                    "runAsGroup", 1000,
+                    "allowPrivilegeEscalation", false
+                )
+            )))
+            .inputFiles(Map.of("in.txt", "test content"))
+            .outputFiles(Property.ofValue(List.of("out.txt")))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: main",
+                "  image: debian:stable-slim",
+                "  command: [\"/bin/sh\"]",
+                "  args:",
+                "    - -c",
+                "    - >-",
+                "      cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        Logger logger = finalRunContext.logger();
+
+        final PodCreate.Output[] run = new PodCreate.Output[1];
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        executorService.submit(() -> {
+            try {
+                run[0] = task.run(finalRunContext);
+            } catch (Exception e) {
+                logger.debug("Unexpected error.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod to be running
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
+            logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
+
+            // Verify security context on main container
+            var mainContainer = createdPod.getSpec().getContainers().stream()
+                .filter(c -> c.getName().equals("main"))
+                .findFirst()
+                .orElseThrow();
+            assertThat("Main container should have security context", mainContainer.getSecurityContext(), notNullValue());
+            assertThat(mainContainer.getSecurityContext().getRunAsUser(), is(1000L));
+            assertThat(mainContainer.getSecurityContext().getRunAsGroup(), is(1000L));
+            assertThat(mainContainer.getSecurityContext().getAllowPrivilegeEscalation(), is(false));
+
+            // Verify security context on init container
+            var initContainer = createdPod.getSpec().getInitContainers().stream()
+                .filter(c -> c.getName().equals("init-files"))
+                .findFirst()
+                .orElseThrow();
+            assertThat("Init container should have security context", initContainer.getSecurityContext(), notNullValue());
+            assertThat(initContainer.getSecurityContext().getRunAsUser(), is(1000L));
+            assertThat(initContainer.getSecurityContext().getAllowPrivilegeEscalation(), is(false));
+
+            // Verify security context on sidecar container
+            var sidecarContainer = createdPod.getSpec().getContainers().stream()
+                .filter(c -> c.getName().equals("out-files"))
+                .findFirst()
+                .orElseThrow();
+            assertThat("Sidecar container should have security context", sidecarContainer.getSecurityContext(), notNullValue());
+            assertThat(sidecarContainer.getSecurityContext().getRunAsUser(), is(1000L));
+            assertThat(sidecarContainer.getSecurityContext().getAllowPrivilegeEscalation(), is(false));
+
+            // Wait for pod deletion
+            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            logger.info("containerDefaultSpec securityContext test passed");
+        }
+
+        assertThat(run[0].getOutputFiles(), hasKey("out.txt"));
+    }
+
+    @Test
+    void containerDefaultSpecVolumeMounts() throws Exception {
+        // Test that containerDefaultSpec.volumeMounts is applied to all containers
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .containerDefaultSpec(Property.ofValue(Map.of(
+                "volumeMounts", List.of(
+                    Map.of("name", "shared-tmp", "mountPath", "/tmp")
+                )
+            )))
+            .inputFiles(Map.of("in.txt", "test content"))
+            .outputFiles(Property.ofValue(List.of("out.txt")))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "volumes:",
+                "  - name: shared-tmp",
+                "    emptyDir: {}",
+                "containers:",
+                "- name: main",
+                "  image: debian:stable-slim",
+                "  command: [\"/bin/sh\"]",
+                "  args:",
+                "    - -c",
+                "    - >-",
+                "      echo 'temp file' > /tmp/test.txt && cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        Logger logger = finalRunContext.logger();
+
+        final PodCreate.Output[] run = new PodCreate.Output[1];
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        executorService.submit(() -> {
+            try {
+                run[0] = task.run(finalRunContext);
+            } catch (Exception e) {
+                logger.debug("Unexpected error.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod to be running
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
+            logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
+
+            // Verify volume mount on main container
+            var mainContainer = createdPod.getSpec().getContainers().stream()
+                .filter(c -> c.getName().equals("main"))
+                .findFirst()
+                .orElseThrow();
+            var tmpMount = mainContainer.getVolumeMounts().stream()
+                .filter(vm -> vm.getMountPath().equals("/tmp"))
+                .findFirst();
+            assertThat("Main container should have /tmp volume mount", tmpMount.isPresent(), is(true));
+            assertThat(tmpMount.get().getName(), is("shared-tmp"));
+
+            // Verify volume mount on init container
+            var initContainer = createdPod.getSpec().getInitContainers().stream()
+                .filter(c -> c.getName().equals("init-files"))
+                .findFirst()
+                .orElseThrow();
+            var initTmpMount = initContainer.getVolumeMounts().stream()
+                .filter(vm -> vm.getMountPath().equals("/tmp"))
+                .findFirst();
+            assertThat("Init container should have /tmp volume mount", initTmpMount.isPresent(), is(true));
+
+            // Verify volume mount on sidecar container
+            var sidecarContainer = createdPod.getSpec().getContainers().stream()
+                .filter(c -> c.getName().equals("out-files"))
+                .findFirst()
+                .orElseThrow();
+            var sidecarTmpMount = sidecarContainer.getVolumeMounts().stream()
+                .filter(vm -> vm.getMountPath().equals("/tmp"))
+                .findFirst();
+            assertThat("Sidecar container should have /tmp volume mount", sidecarTmpMount.isPresent(), is(true));
+
+            // Wait for pod deletion
+            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            logger.info("containerDefaultSpec volumeMounts test passed");
+        }
+
+        assertThat(run[0].getOutputFiles(), hasKey("out.txt"));
+    }
+
+    @Test
+    void containerDefaultSpecContainerOverridesDefaults() throws Exception {
+        // Test that container-specific values override containerDefaultSpec defaults
+        // Use allowPrivilegeEscalation as the override field since it doesn't affect pod scheduling
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .containerDefaultSpec(Property.ofValue(Map.of(
+                "securityContext", Map.of(
+                    "runAsUser", 1000,
+                    "runAsGroup", 1000,
+                    "allowPrivilegeEscalation", false
+                )
+            )))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "containers:",
+                "- name: main",
+                "  image: debian:stable-slim",
+                "  securityContext:",
+                "    allowPrivilegeEscalation: true",  // Override the default allowPrivilegeEscalation
+                "  command: [\"/bin/sh\"]",
+                "  args:",
+                "    - -c",
+                "    - 'id && echo done'",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        Logger logger = finalRunContext.logger();
+
+        final PodCreate.Output[] run = new PodCreate.Output[1];
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        executorService.submit(() -> {
+            try {
+                run[0] = task.run(finalRunContext);
+            } catch (Exception e) {
+                logger.debug("Unexpected error.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod to be running or completed
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                if (pods.isEmpty()) return false;
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
+            logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
+
+            // Verify container-specific allowPrivilegeEscalation overrides the default
+            var mainContainer = createdPod.getSpec().getContainers().stream()
+                .filter(c -> c.getName().equals("main"))
+                .findFirst()
+                .orElseThrow();
+            assertThat("Main container should have security context", mainContainer.getSecurityContext(), notNullValue());
+            assertThat("Container-specific allowPrivilegeEscalation should override default", mainContainer.getSecurityContext().getAllowPrivilegeEscalation(), is(true));
+            // runAsUser and runAsGroup should come from defaults (deep merge)
+            assertThat("Default runAsUser should be preserved", mainContainer.getSecurityContext().getRunAsUser(), is(1000L));
+            assertThat("Default runAsGroup should be preserved", mainContainer.getSecurityContext().getRunAsGroup(), is(1000L));
+
+            // Wait for pod deletion
+            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            logger.info("containerDefaultSpec override test passed");
+        }
+    }
+
+    @Test
+    void containerDefaultSpecMultipleFields() throws Exception {
+        // Test that multiple fields (securityContext + volumeMounts + resources) work together
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .containerDefaultSpec(Property.ofValue(Map.of(
+                "securityContext", Map.of(
+                    "runAsUser", 1000,
+                    "allowPrivilegeEscalation", false
+                ),
+                "volumeMounts", List.of(
+                    Map.of("name", "shared-tmp", "mountPath", "/tmp")
+                ),
+                "resources", Map.of(
+                    "limits", Map.of("memory", "128Mi"),
+                    "requests", Map.of("memory", "64Mi")
+                )
+            )))
+            .inputFiles(Map.of("in.txt", "test content"))
+            .outputFiles(Property.ofValue(List.of("out.txt")))
+            .spec(TestUtils.convert(
+                ObjectMeta.class,
+                "volumes:",
+                "  - name: shared-tmp",
+                "    emptyDir: {}",
+                "containers:",
+                "- name: main",
+                "  image: debian:stable-slim",
+                "  command: [\"/bin/sh\"]",
+                "  args:",
+                "    - -c",
+                "    - >-",
+                "      cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
+                "restartPolicy: Never"
+            ))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        Logger logger = finalRunContext.logger();
+
+        final PodCreate.Output[] run = new PodCreate.Output[1];
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        executorService.submit(() -> {
+            try {
+                run[0] = task.run(finalRunContext);
+            } catch (Exception e) {
+                logger.debug("Unexpected error.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod to be running
+            Await.until(() -> {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
+            logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
+
+            // Verify all fields on main container
+            var mainContainer = createdPod.getSpec().getContainers().stream()
+                .filter(c -> c.getName().equals("main"))
+                .findFirst()
+                .orElseThrow();
+
+            // Security context
+            assertThat(mainContainer.getSecurityContext().getRunAsUser(), is(1000L));
+            assertThat(mainContainer.getSecurityContext().getAllowPrivilegeEscalation(), is(false));
+
+            // Volume mounts
+            var tmpMount = mainContainer.getVolumeMounts().stream()
+                .filter(vm -> vm.getMountPath().equals("/tmp"))
+                .findFirst();
+            assertThat("Main container should have /tmp volume mount", tmpMount.isPresent(), is(true));
+
+            // Resources
+            assertThat(mainContainer.getResources().getLimits().get("memory"), is(Quantity.parse("128Mi")));
+            assertThat(mainContainer.getResources().getRequests().get("memory"), is(Quantity.parse("64Mi")));
+
+            // Wait for pod deletion
+            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            logger.info("containerDefaultSpec multiple fields test passed");
+        }
+
+        assertThat(run[0].getOutputFiles(), hasKey("out.txt"));
+    }
+
 }
