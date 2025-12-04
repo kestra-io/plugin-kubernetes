@@ -26,7 +26,6 @@ import io.kestra.plugin.kubernetes.models.SideCar;
 import io.kestra.plugin.kubernetes.services.PodService;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import reactor.core.publisher.Flux;
@@ -1474,110 +1473,6 @@ class PodCreateTest {
 
             logger.info("containerDefaultSpec override test passed");
         }
-    }
-
-    @Test
-    @Disabled("Requires pod create permissions in default namespace")
-    void fileSidecarDefaultSpecOverridesContainerDefaultSpec() throws Exception {
-        // Test that fileSidecar.defaultSpec overrides containerDefaultSpec for sidecar containers
-        SideCar sidecar = SideCar.builder()
-            .defaultSpec(Property.ofValue(Map.of(
-                "securityContext", Map.of(
-                    "runAsUser", 3000,
-                    "runAsGroup", 3000
-                )
-            )))
-            .build();
-
-        PodCreate task = PodCreate.builder()
-            .id(PodCreate.class.getSimpleName())
-            .type(PodCreate.class.getName())
-            .namespace(Property.ofValue("default"))
-            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .delete(Property.ofValue(true))
-            .resume(Property.ofValue(false))
-            .containerDefaultSpec(Property.ofValue(Map.of(
-                "securityContext", Map.of(
-                    "runAsUser", 1000,  // This should be overridden by fileSidecar.defaultSpec for sidecar
-                    "runAsGroup", 1000
-                )
-            )))
-            .fileSidecar(sidecar)
-            .inputFiles(Map.of("in.txt", "test content"))
-            .outputFiles(Property.ofValue(List.of("out.txt")))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: main",
-                "  image: debian:stable-slim",
-                "  command: [\"/bin/sh\"]",
-                "  args:",
-                "    - -c",
-                "    - >-",
-                "      cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
-                "restartPolicy: Never"
-            ))
-            .build();
-
-        Flow flow = TestsUtils.mockFlow();
-        Execution execution = TestsUtils.mockExecution(flow, Map.of());
-        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
-        Logger logger = finalRunContext.logger();
-
-        final PodCreate.Output[] run = new PodCreate.Output[1];
-        ExecutorService executorService = Executors.newSingleThreadExecutor();
-        executorService.submit(() -> {
-            try {
-                run[0] = task.run(finalRunContext);
-            } catch (Exception e) {
-                logger.error("Unexpected error.", e);
-            }
-        });
-
-        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
-
-        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
-            // Wait for pod to be running
-            Await.until(() -> {
-                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
-            }, Duration.ofMillis(200), Duration.ofMinutes(1));
-
-            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
-            logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
-
-            // Main container should use containerDefaultSpec
-            var mainContainer = createdPod.getSpec().getContainers().stream()
-                .filter(c -> c.getName().equals("main"))
-                .findFirst()
-                .orElseThrow();
-            assertThat("Main container should use containerDefaultSpec runAsUser", mainContainer.getSecurityContext().getRunAsUser(), is(1000L));
-
-            // Init container should use fileSidecar.defaultSpec (overrides containerDefaultSpec)
-            var initContainer = createdPod.getSpec().getInitContainers().stream()
-                .filter(c -> c.getName().equals("init-files"))
-                .findFirst()
-                .orElseThrow();
-            assertThat("Init container should use fileSidecar.defaultSpec runAsUser", initContainer.getSecurityContext().getRunAsUser(), is(3000L));
-            assertThat("Init container should use fileSidecar.defaultSpec runAsGroup", initContainer.getSecurityContext().getRunAsGroup(), is(3000L));
-
-            // Sidecar container should use fileSidecar.defaultSpec (overrides containerDefaultSpec)
-            var sidecarContainer = createdPod.getSpec().getContainers().stream()
-                .filter(c -> c.getName().equals("out-files"))
-                .findFirst()
-                .orElseThrow();
-            assertThat("Sidecar container should use fileSidecar.defaultSpec runAsUser", sidecarContainer.getSecurityContext().getRunAsUser(), is(3000L));
-
-            // Wait for pod deletion
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(1));
-
-            logger.info("fileSidecar.defaultSpec override test passed");
-        }
-
-        assertThat(run[0].getOutputFiles(), hasKey("out.txt"));
     }
 
     @Test
