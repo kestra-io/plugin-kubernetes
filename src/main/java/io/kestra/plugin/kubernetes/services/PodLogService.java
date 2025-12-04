@@ -21,17 +21,12 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class PodLogService implements AutoCloseable {
-    private final ThreadMainFactoryBuilder threadFactoryBuilder;
     private List<LogWatch> podLogs = new ArrayList<>();
     private ScheduledExecutorService scheduledExecutor;
     private ScheduledFuture<?> scheduledFuture;
     @Getter
     private LoggingOutputStream outputStream;
     private Thread thread;
-
-    public PodLogService(ThreadMainFactoryBuilder threadFactoryBuilder) {
-        this.threadFactoryBuilder = threadFactoryBuilder;
-    }
 
     public void setLogConsumer(AbstractLogConsumer logConsumer) {
         if (outputStream == null) {
@@ -40,7 +35,7 @@ public class PodLogService implements AutoCloseable {
     }
 
     public final void watch(KubernetesClient client, Pod pod, AbstractLogConsumer logConsumer, RunContext runContext) {
-        scheduledExecutor = Executors.newSingleThreadScheduledExecutor(threadFactoryBuilder.build("k8s-log"));
+        scheduledExecutor = Executors.newSingleThreadScheduledExecutor(ThreadMainFactoryBuilder.build("k8s-log"));
         setLogConsumer(logConsumer);
         AtomicBoolean started = new AtomicBoolean(false);
         Logger logger = runContext.logger();
