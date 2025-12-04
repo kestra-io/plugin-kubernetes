@@ -1,8 +1,8 @@
 group: io.kestra.plugin.kubernetes.kubectl
 name: "kubectl"
 title: "Kubectl"
-description: "This subgroup of plugins contains core tasks for interacting with a Kubernetes cluster through kubectl commands."
-body: ""
+description: "Tasks that perform kubectl-style apply, get, delete, patch, and restart operations."
+body: "Supply connection info plus manifests or resource identifiers to apply YAML, fetch resources, delete them, patch with merge/strategic/JSON patches, or restart deployments/statefulsets; supports namespace, context, label selectors, and dry-run flags."
 videos: []
 createdBy: "Kestra Core Team"
 managedBy: "Kestra Core Team"
