@@ -1,6 +1,7 @@
 package io.kestra.plugin.kubernetes;
 
 import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.client.dsl.ContainerResource;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
 import io.kestra.plugin.kubernetes.services.InstanceService;
@@ -24,6 +25,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
@@ -117,21 +119,49 @@ public abstract class AbstractPod extends AbstractConnection {
     }
 
     protected void uploadInputFiles(RunContext runContext, PodResource podResource, Logger logger, Set<String> inputFiles) throws IOException {
-        inputFiles.forEach(
-            throwConsumer(file -> withRetries(
-                logger,
-                "uploadInputFiles",
-                () -> {
-                    try (var fileInputStream = new FileInputStream(PodService.tempDir(runContext).resolve(file).toFile())) {
-                        return podResource
-                            .inContainer(INIT_FILES_CONTAINER_NAME)
-                            .withReadyWaitTimeout(0)
-                            .file("/kestra/working-dir/" + file)
-                            .upload(fileInputStream);
-                    }
+        Path tempDir = PodService.tempDir(runContext);
+
+        Map<String, List<String>> grouped = inputFiles.stream()
+            .collect(Collectors.groupingBy(file -> {
+                Path p = Path.of(file);
+                return p.getNameCount() > 0 ? p.getName(0).toString() : file;
+            }));
+
+        ContainerResource container = podResource
+            .inContainer(INIT_FILES_CONTAINER_NAME)
+            .withReadyWaitTimeout(0);
+
+        for (Map.Entry<String, List<String>> entry : grouped.entrySet()) {
+
+            String top = entry.getKey();
+            Path topAbsolute = tempDir.resolve(top);
+            String containerTop = "/kestra/working-dir/" + top;
+
+            if (Files.isDirectory(topAbsolute)) {
+                try {
+                    withRetries(logger, "uploadInputFilesBulk",
+                        () -> container
+                            .dir(containerTop)
+                            .upload(topAbsolute)
+                    );
+                    continue;
+                } catch (Exception e) {
+                    logger.info("Bulk upload failed for '{}', falling back to per-file upload. Reason: {}", top, e.getMessage());
                 }
-            ))
-        );
+            }
+
+            for (String file : entry.getValue()) {
+                withRetries(logger, "uploadInputFiles",
+                    () -> {
+                        try (var fileInputStream = new FileInputStream(tempDir.resolve(file).toFile())) {
+                            return container
+                                .file("/kestra/working-dir/" + file)
+                                .upload(fileInputStream);
+                        }
+                    }
+                );
+            }
+        }
 
         PodService.uploadMarker(runContext, podResource, logger, READY_MARKER, INIT_FILES_CONTAINER_NAME);
     }
