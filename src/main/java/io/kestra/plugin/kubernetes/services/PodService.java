@@ -52,14 +52,17 @@ abstract public class PodService {
             .waitUntilCondition(
                 j -> j != null &&
                     j.getStatus() != null && (
-                    j.getStatus().getPhase().equals("Failed") ||
-                    j.getStatus()
-                        .getConditions()
-                        .stream()
-                        .anyMatch(podCondition -> podCondition.getType().equals("ContainersReady") ||
-                                (podCondition.getReason() != null && podCondition.getReason().equals("PodCompleted"))
-                        )
-                ),
+                        "Failed".equals(j.getStatus().getPhase()) ||
+                        j.getStatus()
+                            .getConditions()
+                            .stream()
+                            .anyMatch(podCondition ->
+                                ("ContainersReady".equals(podCondition.getType()) &&
+                                    "True".equals(podCondition.getStatus())) ||
+                                (podCondition.getReason() != null &&
+                                    "PodCompleted".equals(podCondition.getReason()))
+                            )
+                    ),
                 waitUntilRunning.toSeconds(),
                 TimeUnit.SECONDS
             );
