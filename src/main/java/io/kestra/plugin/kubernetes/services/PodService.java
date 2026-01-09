@@ -219,7 +219,7 @@ abstract public class PodService {
             .delayFactor(2.0)
             .build();
 
-        Boolean upload = new RetryUtils().<Boolean, IOException>of(retryPolicy, logger).run(
+        Boolean upload = RetryUtils.<Boolean, IOException>of(retryPolicy, logger).run(
             object -> !object,
             () -> {
                 var bool = call.get();

@@ -1,4 +1,6 @@
 kestra:
+  repository:
+    type: memory
   queue:
     type: memory
   storage:
