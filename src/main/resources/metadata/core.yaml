@@ -1,8 +1,8 @@
 group: io.kestra.plugin.kubernetes.core
 name: "core"
 title: "Core"
-description: "This subgroup of plugins contains core tasks for interacting with a Kubernetes cluster."
-body: ""
+description: "Tasks that create pods and manage core workload execution on Kubernetes."
+body: "Use PodCreate with connection settings, namespace, image, command, env, and volume mounts to launch jobs, stream logs, and wait for completion with configurable timeouts; ideal for running containerized steps inside workflows."
 videos: []
 createdBy: "Kestra Core Team"
 managedBy: "Kestra Core Team"

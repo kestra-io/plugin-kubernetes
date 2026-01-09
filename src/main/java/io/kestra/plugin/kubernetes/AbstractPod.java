@@ -1,13 +1,16 @@
 package io.kestra.plugin.kubernetes;
 
 import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.client.dsl.ContainerResource;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.kubernetes.models.SideCar;
+import io.kestra.plugin.kubernetes.services.InstanceService;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -23,6 +26,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
@@ -84,6 +88,49 @@ public abstract class AbstractPod extends AbstractConnection {
     )
     protected Property<Duration> waitUntilReady = Property.ofValue(Duration.ZERO);
 
+    @Schema(
+        title = "Default container spec applied to all containers in the pod",
+        description = """
+            When set, these container spec fields are merged into all containers including:
+            - User-defined containers in the spec
+            - Init and sidecar containers for file transfer (unless fileSidecar.defaultSpec is set)
+
+            This provides a convenient way to apply uniform container settings across all containers,
+            which is especially useful in restrictive environments like GovCloud.
+
+            Supports any valid Kubernetes container spec fields such as:
+            - securityContext: Security settings for all containers
+            - volumeMounts: Volume mounts to add to all containers
+            - resources: Resource limits/requests for all containers
+            - env: Environment variables for all containers
+
+            Merge behavior:
+            - For nested objects (like securityContext): deep merge, container-specific values take precedence
+            - For lists (like volumeMounts, env): concatenated, with defaults added first
+            - Container-specific values always override defaults
+
+            Example configuration:
+            ```yaml
+            containerDefaultSpec:
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                  - ALL
+                readOnlyRootFilesystem: true
+                seccompProfile:
+                  type: RuntimeDefault
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                limits:
+                  memory: "256Mi"
+            ```
+            """
+    )
+    protected Property<Map<String, Object>> containerDefaultSpec;
+
     @SuppressWarnings("ResultOfMethodCallIgnored")
     protected void init(RunContext runContext) {
         Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
@@ -91,21 +138,49 @@ public abstract class AbstractPod extends AbstractConnection {
     }
 
     protected void uploadInputFiles(RunContext runContext, PodResource podResource, Logger logger, Set<String> inputFiles) throws IOException {
-        inputFiles.forEach(
-            throwConsumer(file -> withRetries(
-                logger,
-                "uploadInputFiles",
-                () -> {
-                    try (var fileInputStream = new FileInputStream(PodService.tempDir(runContext).resolve(file).toFile())) {
-                        return podResource
-                            .inContainer(INIT_FILES_CONTAINER_NAME)
-                            .withReadyWaitTimeout(0)
-                            .file("/kestra/working-dir/" + file)
-                            .upload(fileInputStream);
-                    }
+        Path tempDir = PodService.tempDir(runContext);
+
+        Map<String, List<String>> grouped = inputFiles.stream()
+            .collect(Collectors.groupingBy(file -> {
+                Path p = Path.of(file);
+                return p.getNameCount() > 0 ? p.getName(0).toString() : file;
+            }));
+
+        ContainerResource container = podResource
+            .inContainer(INIT_FILES_CONTAINER_NAME)
+            .withReadyWaitTimeout(0);
+
+        for (Map.Entry<String, List<String>> entry : grouped.entrySet()) {
+
+            String top = entry.getKey();
+            Path topAbsolute = tempDir.resolve(top);
+            String containerTop = "/kestra/working-dir/" + top;
+
+            if (Files.isDirectory(topAbsolute)) {
+                try {
+                    withRetries(logger, "uploadInputFilesBulk",
+                        () -> container
+                            .dir(containerTop)
+                            .upload(topAbsolute)
+                    );
+                    continue;
+                } catch (Exception e) {
+                    logger.info("Bulk upload failed for '{}', falling back to per-file upload. Reason: {}", top, e.getMessage());
                 }
-            ))
-        );
+            }
+
+            for (String file : entry.getValue()) {
+                withRetries(logger, "uploadInputFiles",
+                    () -> {
+                        try (var fileInputStream = new FileInputStream(tempDir.resolve(file).toFile())) {
+                            return container
+                                .file("/kestra/working-dir/" + file)
+                                .upload(fileInputStream);
+                        }
+                    }
+                );
+            }
+        }
 
         PodService.uploadMarker(runContext, podResource, logger, READY_MARKER, INIT_FILES_CONTAINER_NAME);
     }
@@ -148,6 +223,156 @@ public abstract class AbstractPod extends AbstractConnection {
             Files.createDirectories(to.getParent());
         }
         Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /**
+     * Applies the containerDefaultSpec to all user-defined containers.
+     * The default spec is deep-merged with each container's existing spec, with container values taking precedence.
+     * This should be called after the spec is created but before file handling containers are added.
+     */
+    protected void applyContainerDefaultSpec(RunContext runContext, PodSpec spec) throws IllegalVariableEvaluationException {
+        if (this.containerDefaultSpec == null) {
+            return;
+        }
+
+        Map<String, Object> defaultSpecMap = runContext.render(this.containerDefaultSpec).asMap(String.class, Object.class);
+        if (defaultSpecMap == null || defaultSpecMap.isEmpty()) {
+            return;
+        }
+
+        // Apply to all containers
+        spec.getContainers().forEach(container -> {
+            try {
+                mergeContainerDefaults(runContext, container, defaultSpecMap);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to apply container default spec: " + e.getMessage(), e);
+            }
+        });
+
+        // Apply to all init containers
+        if (spec.getInitContainers() != null) {
+            spec.getInitContainers().forEach(container -> {
+                try {
+                    mergeContainerDefaults(runContext, container, defaultSpecMap);
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to apply container default spec to init container: " + e.getMessage(), e);
+                }
+            });
+        }
+    }
+
+    /**
+     * Merges default container spec fields into a container.
+     * Container-specific values take precedence over defaults.
+     * For lists (volumeMounts, env, etc.), defaults are prepended to existing values.
+     * For objects (securityContext, resources), deep merge is performed.
+     */
+    @SuppressWarnings("unchecked")
+    private void mergeContainerDefaults(RunContext runContext, Container container, Map<String, Object> defaultSpecMap) throws Exception {
+        // Handle securityContext - deep merge
+        if (defaultSpecMap.containsKey("securityContext")) {
+            Map<String, Object> defaultSecurityContext = (Map<String, Object>) defaultSpecMap.get("securityContext");
+            if (container.getSecurityContext() == null) {
+                container.setSecurityContext(InstanceService.fromMap(SecurityContext.class, runContext, Map.of(), defaultSecurityContext));
+            } else {
+                // Deep merge: container values take precedence
+                Map<String, Object> mergedSecurityContext = deepMerge(defaultSecurityContext, containerToMap(container.getSecurityContext()));
+                container.setSecurityContext(InstanceService.fromMap(SecurityContext.class, runContext, Map.of(), mergedSecurityContext));
+            }
+        }
+
+        // Handle volumeMounts - concatenate lists
+        if (defaultSpecMap.containsKey("volumeMounts")) {
+            List<Map<String, Object>> defaultVolumeMounts = (List<Map<String, Object>>) defaultSpecMap.get("volumeMounts");
+            List<VolumeMount> defaultMounts = defaultVolumeMounts.stream()
+                .map(vm -> {
+                    try {
+                        return InstanceService.fromMap(VolumeMount.class, runContext, Map.of(), vm);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to parse default volumeMount: " + e.getMessage(), e);
+                    }
+                })
+                .toList();
+
+            List<VolumeMount> existingMounts = container.getVolumeMounts();
+            if (existingMounts == null) {
+                existingMounts = new ArrayList<>();
+            }
+            // Prepend defaults, then add existing (allows container to override by having same mountPath)
+            List<VolumeMount> mergedMounts = new ArrayList<>(defaultMounts);
+            mergedMounts.addAll(existingMounts);
+            container.setVolumeMounts(mergedMounts);
+        }
+
+        // Handle resources - deep merge
+        if (defaultSpecMap.containsKey("resources")) {
+            Map<String, Object> defaultResources = (Map<String, Object>) defaultSpecMap.get("resources");
+            if (container.getResources() == null) {
+                container.setResources(InstanceService.fromMap(ResourceRequirements.class, runContext, Map.of(), defaultResources));
+            } else {
+                Map<String, Object> mergedResources = deepMerge(defaultResources, containerToMap(container.getResources()));
+                container.setResources(InstanceService.fromMap(ResourceRequirements.class, runContext, Map.of(), mergedResources));
+            }
+        }
+
+        // Handle env - concatenate lists
+        if (defaultSpecMap.containsKey("env")) {
+            List<Map<String, Object>> defaultEnv = (List<Map<String, Object>>) defaultSpecMap.get("env");
+            List<EnvVar> defaultEnvVars = defaultEnv.stream()
+                .map(ev -> {
+                    try {
+                        return InstanceService.fromMap(EnvVar.class, runContext, Map.of(), ev);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to parse default env var: " + e.getMessage(), e);
+                    }
+                })
+                .toList();
+
+            List<EnvVar> existingEnv = container.getEnv();
+            if (existingEnv == null) {
+                existingEnv = new ArrayList<>();
+            }
+            // Prepend defaults, then add existing (allows container to override by having same name)
+            List<EnvVar> mergedEnv = new ArrayList<>(defaultEnvVars);
+            mergedEnv.addAll(existingEnv);
+            container.setEnv(mergedEnv);
+        }
+    }
+
+    /**
+     * Converts a Kubernetes object to a Map for merging purposes.
+     */
+    private Map<String, Object> containerToMap(Object obj) {
+        if (obj == null) {
+            return new HashMap<>();
+        }
+        try {
+            String yaml = JacksonMapper.ofYaml().writeValueAsString(obj);
+            return JacksonMapper.ofYaml().readValue(yaml, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            return new HashMap<>();
+        }
+    }
+
+    /**
+     * Deep merges two maps. Values from the override map take precedence.
+     * For nested maps, recursively merges. For other values, override wins.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> deepMerge(Map<String, Object> base, Map<String, Object> override) {
+        Map<String, Object> result = new HashMap<>(base);
+        for (Map.Entry<String, Object> entry : override.entrySet()) {
+            String key = entry.getKey();
+            Object overrideValue = entry.getValue();
+            Object baseValue = result.get(key);
+
+            if (overrideValue instanceof Map && baseValue instanceof Map) {
+                result.put(key, deepMerge((Map<String, Object>) baseValue, (Map<String, Object>) overrideValue));
+            } else if (overrideValue != null) {
+                result.put(key, overrideValue);
+            }
+        }
+        return result;
     }
 
     protected void handleFiles(RunContext runContext, PodSpec spec) throws IllegalVariableEvaluationException {
@@ -242,6 +467,99 @@ public abstract class AbstractPod extends AbstractConnection {
         return resourceRequirements;
     }
 
+    /**
+     * Gets the default spec to apply to sidecar/init containers.
+     * Priority: fileSidecar.defaultSpec > containerDefaultSpec
+     * @return the default spec map or null if none configured
+     */
+    private Map<String, Object> getSidecarDefaultSpec(RunContext runContext, SideCar sideCar) throws IllegalVariableEvaluationException {
+        // First try fileSidecar.defaultSpec
+        if (sideCar != null && sideCar.getDefaultSpec() != null) {
+            Map<String, Object> defaultSpecMap = runContext.render(sideCar.getDefaultSpec()).asMap(String.class, Object.class);
+            if (defaultSpecMap != null && !defaultSpecMap.isEmpty()) {
+                return defaultSpecMap;
+            }
+        }
+
+        // Fall back to containerDefaultSpec if set
+        if (this.containerDefaultSpec != null) {
+            Map<String, Object> defaultSpecMap = runContext.render(this.containerDefaultSpec).asMap(String.class, Object.class);
+            if (defaultSpecMap != null && !defaultSpecMap.isEmpty()) {
+                return defaultSpecMap;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Applies default spec to a sidecar/init container.
+     * This applies containerDefaultSpec (or fileSidecar.defaultSpec if set) to file transfer containers.
+     */
+    @SuppressWarnings("unchecked")
+    private void applySidecarDefaultSpec(RunContext runContext, Container container, SideCar sideCar) throws Exception {
+        Map<String, Object> defaultSpecMap = getSidecarDefaultSpec(runContext, sideCar);
+        if (defaultSpecMap == null || defaultSpecMap.isEmpty()) {
+            return;
+        }
+
+        // Apply security context
+        if (defaultSpecMap.containsKey("securityContext")) {
+            Map<String, Object> securityContextMap = (Map<String, Object>) defaultSpecMap.get("securityContext");
+            container.setSecurityContext(InstanceService.fromMap(SecurityContext.class, runContext, Map.of(), securityContextMap));
+        }
+
+        // Apply volume mounts - prepend to existing
+        if (defaultSpecMap.containsKey("volumeMounts")) {
+            List<Map<String, Object>> defaultVolumeMounts = (List<Map<String, Object>>) defaultSpecMap.get("volumeMounts");
+            List<VolumeMount> defaultMounts = defaultVolumeMounts.stream()
+                .map(vm -> {
+                    try {
+                        return InstanceService.fromMap(VolumeMount.class, runContext, Map.of(), vm);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to parse default volumeMount for sidecar: " + e.getMessage(), e);
+                    }
+                })
+                .toList();
+
+            List<VolumeMount> existingMounts = container.getVolumeMounts();
+            if (existingMounts == null) {
+                existingMounts = new ArrayList<>();
+            }
+            List<VolumeMount> mergedMounts = new ArrayList<>(defaultMounts);
+            mergedMounts.addAll(existingMounts);
+            container.setVolumeMounts(mergedMounts);
+        }
+
+        // Apply resources
+        if (defaultSpecMap.containsKey("resources")) {
+            Map<String, Object> resourcesMap = (Map<String, Object>) defaultSpecMap.get("resources");
+            container.setResources(InstanceService.fromMap(ResourceRequirements.class, runContext, Map.of(), resourcesMap));
+        }
+
+        // Apply env vars - prepend to existing
+        if (defaultSpecMap.containsKey("env")) {
+            List<Map<String, Object>> defaultEnv = (List<Map<String, Object>>) defaultSpecMap.get("env");
+            List<EnvVar> defaultEnvVars = defaultEnv.stream()
+                .map(ev -> {
+                    try {
+                        return InstanceService.fromMap(EnvVar.class, runContext, Map.of(), ev);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to parse default env var for sidecar: " + e.getMessage(), e);
+                    }
+                })
+                .toList();
+
+            List<EnvVar> existingEnv = container.getEnv();
+            if (existingEnv == null) {
+                existingEnv = new ArrayList<>();
+            }
+            List<EnvVar> mergedEnv = new ArrayList<>(defaultEnvVars);
+            mergedEnv.addAll(existingEnv);
+            container.setEnv(mergedEnv);
+        }
+    }
+
     private Container filesContainer(RunContext runContext, VolumeMount volumeMount, boolean finished) throws IllegalVariableEvaluationException {
         String status = finished ? ENDED_MARKER : READY_MARKER;
 
@@ -265,11 +583,20 @@ public abstract class AbstractPod extends AbstractConnection {
             containerBuilder.withVolumeMounts(Collections.singletonList(volumeMount));
         }
 
-        return containerBuilder.build();
+        Container container = containerBuilder.build();
+
+        // Apply containerDefaultSpec or fileSidecar.defaultSpec to the container
+        try {
+            applySidecarDefaultSpec(runContext, container, fileSidecar);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to apply default spec to sidecar container: " + e.getMessage(), e);
+        }
+
+        return container;
     }
 
     private Container workingDirectoryInitContainer(RunContext runContext, VolumeMount volumeMount) throws IllegalVariableEvaluationException {
-        return new ContainerBuilder()
+        Container container = new ContainerBuilder()
             .withName(INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
             .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
@@ -281,5 +608,14 @@ public abstract class AbstractPod extends AbstractConnection {
             ))
             .withVolumeMounts(Collections.singletonList(volumeMount))
             .build();
+
+        // Apply containerDefaultSpec or fileSidecar.defaultSpec to the container
+        try {
+            applySidecarDefaultSpec(runContext, container, fileSidecar);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to apply default spec to init container: " + e.getMessage(), e);
+        }
+
+        return container;
     }
 }

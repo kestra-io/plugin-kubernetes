@@ -22,4 +22,36 @@ public class SideCar {
         title = "The resource requirements applied to the file sidecar container"
     )
     private Property<Map<String, Object>> resources;
+
+    @Schema(
+        title = "Default container spec for the file sidecar and init containers",
+        description = """
+            Default container spec fields applied to the init and sidecar containers used for file transfer.
+            When set, this overrides containerDefaultSpec for file transfer containers only.
+
+            Supports the same fields as containerDefaultSpec:
+            - securityContext: Security settings for file transfer containers
+            - volumeMounts: Volume mounts to add to file transfer containers
+            - resources: Resource limits/requests (note: also available as top-level 'resources' property)
+            - env: Environment variables for file transfer containers
+
+            Example configuration:
+            ```yaml
+            fileSidecar:
+              defaultSpec:
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
+                  readOnlyRootFilesystem: true
+                  seccompProfile:
+                    type: RuntimeDefault
+                volumeMounts:
+                  - name: tmp
+                    mountPath: /tmp
+            ```
+            """
+    )
+    private Property<Map<String, Object>> defaultSpec;
 }

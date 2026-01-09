@@ -1,31 +1,7 @@
 package io.kestra.plugin.kubernetes.core;
 
-import static io.kestra.core.utils.Rethrow.throwFunction;
-import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
-
-import java.io.InterruptedIOException;
-import java.net.URI;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.AbstractMap;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
-
-import org.slf4j.Logger;
-
 import com.google.common.collect.ImmutableMap;
-
-import io.fabric8.kubernetes.api.model.ListOptionsBuilder;
-import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodBuilder;
-import io.fabric8.kubernetes.api.model.PodSpec;
+import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
@@ -51,13 +27,22 @@ import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.watchers.PodWatcher;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
-import lombok.Builder;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import lombok.*;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+
+import java.io.InterruptedIOException;
+import java.net.URI;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+
+import static io.kestra.core.utils.Rethrow.throwFunction;
+import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
 
 /**
  * Creates and manages a Kubernetes pod, handling its complete lifecycle from creation to cleanup.
@@ -202,6 +187,51 @@ import lombok.extern.slf4j.Slf4j;
                     outputFiles:
                       - out.txt
                 """
+        ),
+        @Example(
+            title = "Launch a Pod with default container spec applied to all containers for restrictive environments.",
+            full = true,
+            code = """
+                id: kubernetes_pod_create_secure
+                namespace: company.team
+
+                inputs:
+                  - id: file
+                    type: FILE
+
+                tasks:
+                  - id: pod_create
+                    type: io.kestra.plugin.kubernetes.core.PodCreate
+                    containerDefaultSpec:
+                      securityContext:
+                        allowPrivilegeEscalation: false
+                        capabilities:
+                          drop:
+                            - ALL
+                        readOnlyRootFilesystem: true
+                        seccompProfile:
+                          type: RuntimeDefault
+                      volumeMounts:
+                        - name: tmp
+                          mountPath: /tmp
+                    spec:
+                      volumes:
+                        - name: tmp
+                          emptyDir: {}
+                      containers:
+                      - name: main
+                        image: centos
+                        command:
+                          - cp
+                          - "{{workingDir}}/data.txt"
+                          - "{{workingDir}}/out.txt"
+                      restartPolicy: Never
+                    waitUntilRunning: PT3M
+                    inputFiles:
+                      data.txt: "{{inputs.file}}"
+                    outputFiles:
+                      - out.txt
+                """
         )
     }
 )
@@ -219,9 +249,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
     @Schema(
         title = "The pod specification",
-        description = "Kubernetes pod specification defining containers, volumes, restart policy, and other pod settings.\n" +
-            "Must include at least one container. Supports dynamic template expressions including the special\n" +
-            "{{workingDir}} variable which resolves to '/kestra/working-dir' when inputFiles or outputFiles are used."
+        description = """
+            Kubernetes pod specification defining containers, volumes, restart policy, and other pod settings.
+            Must include at least one container. Supports dynamic template expressions including the special {{ workingDir }} variable which resolves to '/kestra/working-dir' when inputFiles or outputFiles are used.
+            See how to define a spec on how [using pods](https://kubernetes.io/docs/concepts/workloads/pods/#using-pods) from the official Kubernetes documentation.
+            """
     )
     @PluginProperty(dynamic = true)
     @NotNull
@@ -290,9 +322,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
      *
      * @param runContext the execution context providing access to variables, storage, and logging
      * @return Output containing pod metadata, status, output files, and any variables extracted from logs
-     * @throws Exception if pod creation fails, times out, or terminates with a non-zero exit code
+     * @throws Exception             if pod creation fails, times out, or terminates with a non-zero exit code
      * @throws IllegalStateException if input files are invalid or if pod fails to reach Running state
-     * @throws InterruptedException if the task is interrupted and returns null
+     * @throws InterruptedException  if the task is interrupted and returns null
      * @see #kill() for handling task interruption
      */
     @Override
@@ -329,7 +361,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                     if (entry.getValue() == null || entry.getValue().isEmpty()) {
                         throw new IllegalStateException(
                             "Input file '" + entry.getKey() + "' references a null or empty value. " +
-                            "Please verify that the upstream task output exists.");
+                                "Please verify that the upstream task output exists.");
                     }
                 }
 
@@ -418,7 +450,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         if (hasSidecar) {
                             try {
                                 PodService.uploadMarker(runContext, PodService.podRef(client, pod),
-                                                       logger, ENDED_MARKER, SIDECAR_FILES_CONTAINER_NAME);
+                                    logger, ENDED_MARKER, SIDECAR_FILES_CONTAINER_NAME);
                                 logger.debug("Signaled sidecar to exit gracefully before pod deletion");
                             } catch (Exception markerException) {
                                 // Failure is acceptable - pod might already be terminating
@@ -462,11 +494,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
      * taskrun ID and attempt count. If exactly one matching pod is found, it is returned for resumption.
      * If no pod or multiple pods are found, a new pod is created.
      *
-     * @param runContext execution context for rendering properties and accessing variables
-     * @param client Kubernetes client for pod operations
-     * @param namespace namespace to search for or create the pod in
+     * @param runContext     execution context for rendering properties and accessing variables
+     * @param client         Kubernetes client for pod operations
+     * @param namespace      namespace to search for or create the pod in
      * @param additionalVars additional variables to use for pod template rendering
-     * @param logger logger for diagnostic messages
+     * @param logger         logger for diagnostic messages
      * @return the pod to use (either found for resumption or newly created)
      * @throws Exception if pod creation fails or label selector construction fails
      */
@@ -519,10 +551,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
      * file names in task outputs.
      *
      * @param runContext execution context for storage access and template rendering
-     * @param outputs list of glob patterns matching files to capture (supports wildcards like {@code *.txt})
-     * @param pathMap mapping from sanitized (encoded) paths to original unsanitized relative paths
+     * @param outputs    list of glob patterns matching files to capture (supports wildcards like {@code *.txt})
+     * @param pathMap    mapping from sanitized (encoded) paths to original unsanitized relative paths
      * @return map of original file paths to their storage URIs in Kestra's internal storage
-     * @throws Exception if file matching fails, storage upload fails, or pathMap is missing entries
+     * @throws Exception             if file matching fails, storage upload fails, or pathMap is missing entries
      * @throws IllegalStateException if a file path has no corresponding entry in pathMap
      */
     public static Map<String, URI> outputFiles(RunContext runContext, List<String> outputs, Map<Path, Path> pathMap) throws Exception {
@@ -572,6 +604,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             this.spec
         );
 
+        // Apply default container spec to user-defined containers before adding file handling containers
+        this.applyContainerDefaultSpec(runContext, spec);
 
         this.handleFiles(runContext, spec);
 
