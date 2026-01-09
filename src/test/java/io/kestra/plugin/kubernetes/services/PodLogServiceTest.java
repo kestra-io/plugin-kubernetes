@@ -84,7 +84,7 @@ class PodLogServiceTest {
         when(runContext.logger()).thenReturn(mock(Logger.class));
         AbstractLogConsumer logConsumer = mock(AbstractLogConsumer.class);
 
-        PodLogService svc = new PodLogService(threadMainFactoryBuilder);
+        PodLogService svc = new PodLogService();
         // start watch
         svc.watch(client, pod, logConsumer, runContext);
 
@@ -190,7 +190,7 @@ class PodLogServiceTest {
         when(runContext.logger()).thenReturn(mock(Logger.class));
         AbstractLogConsumer logConsumer = mock(AbstractLogConsumer.class);
 
-        PodLogService svc = new PodLogService(threadMainFactoryBuilder);
+        PodLogService svc = new PodLogService();
 
         // --- Act: Start watching - scheduled task executes immediately and hits 404 ---
         svc.watch(client, pod, logConsumer, runContext);
