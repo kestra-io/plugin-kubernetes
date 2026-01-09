@@ -49,10 +49,6 @@ import jakarta.inject.Inject;
  */
 @KestraTest
 class PodLogServiceTest {
-
-    @Inject
-    ThreadMainFactoryBuilder threadMainFactoryBuilder;
-
     @Test
     void closeStopsK8SListenerThread() {
         // --- Arrange: minimal mocks so the scheduled task runs fast and then waits for the next tick ---
