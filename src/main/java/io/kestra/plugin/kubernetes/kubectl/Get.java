@@ -44,7 +44,7 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
 @Plugin(
     examples = {
         @Example(
-            title = "Get all pods from Kubernetes using YAML (<=> kubectl get pods).",
+            title = "Get all pods from Kubernetes with a service account.",
             full = true,
             code = """
                 id: get_all_pods
@@ -56,6 +56,9 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                     namespace: default
                     resourceType: pods
                     fetchType: FETCH
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                 """
         ),
         @Example(
