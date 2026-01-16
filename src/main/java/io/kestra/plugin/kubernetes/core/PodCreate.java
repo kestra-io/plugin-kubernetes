@@ -99,7 +99,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
     aliases = {"io.kestra.plugin.kubernetes.PodCreate"},
     examples = {
         @Example(
-            title = "Launch a Pod",
+            title = "Create a Pod with a service account.",
             full = true,
             code = """
                 id: kubernetes_pod_create
@@ -109,6 +109,9 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
                   - id: pod_create
                     type: io.kestra.plugin.kubernetes.core.PodCreate
                     namespace: default
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     metadata:
                       labels:
                         my-label: my-value
@@ -124,7 +127,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
                 """
         ),
         @Example(
-            title = "Launch a Pod with input files and gather its output files.",
+            title = "Create a Pod with input files and gather its output files.",
             full = true,
             code = """
                 id: kubernetes_pod_create
@@ -154,7 +157,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
                 """
         ),
         @Example(
-            title = "Launch a Pod with input files and gather its output files limiting resources for the init and sidecar containers.",
+            title = "Create a Pod with input files and gather its output files limiting resources for the init and sidecar containers.",
             full = true,
             code = """
                 id: kubernetes_pod_create
@@ -189,7 +192,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
                 """
         ),
         @Example(
-            title = "Launch a Pod with default container spec applied to all containers for restrictive environments.",
+            title = "Create a Pod with default container spec applied to all containers for restrictive environments.",
             full = true,
             code = """
                 id: kubernetes_pod_create_secure
