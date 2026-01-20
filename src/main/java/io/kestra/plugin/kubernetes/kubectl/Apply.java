@@ -29,7 +29,7 @@ import java.util.Map;
 @Plugin(
     examples = {
         @Example(
-            title = "Apply a Kubernetes resource, using YAML.",
+            title = "Apply a Kubernetes resource.",
             full = true,
             code = """
                 id: create_or_replace_deployment
@@ -63,7 +63,7 @@ import java.util.Map;
                 """
         ),
         @Example(
-            title = "Apply a Kubernetes custom resource definition, using YAML.",
+            title = "Apply a Kubernetes custom resource definition.",
             full = true,
             code = """
                 id: k8s

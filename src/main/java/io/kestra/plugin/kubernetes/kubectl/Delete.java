@@ -28,7 +28,7 @@ import java.util.List;
 @Plugin(
     examples = {
         @Example(
-            title = "Delete a list of pods from Kubernetes using YAML (<=> kubectl delete pod my-pod my-pod-2).",
+            title = "Delete a list of pods from Kubernetes.",
             full = true,
             code = """
                 id: delete_pods

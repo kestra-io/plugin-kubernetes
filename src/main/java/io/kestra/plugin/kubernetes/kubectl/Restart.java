@@ -28,7 +28,7 @@ import java.util.List;
 @Plugin(
     examples = {
         @Example(
-            title = "Trigger a rolling restart of a StatefulSet named 'api' (equivalent to `kubectl rollout restart statefulset api`).",
+            title = "Trigger a rolling restart of a StatefulSet named 'api'.",
             full = true,
             code = """
                 id: restart_api

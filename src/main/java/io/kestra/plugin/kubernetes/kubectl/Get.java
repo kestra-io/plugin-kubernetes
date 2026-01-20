@@ -62,7 +62,7 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 """
         ),
         @Example(
-            title = "Get one deployment named my-deployment from Kubernetes using YAML (<=> kubectl get deployment my-deployment).",
+            title = "Get one deployment named my-deployment from Kubernetes.",
             full = true,
             code = """
                 id: get_one_deployment
@@ -79,7 +79,7 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 """
         ),
         @Example(
-            title = "Get two deployments named my-deployment and my-deployment-2 from Kubernetes using YAML (<=> kubectl get deployment my-deployment) and store them in the internal storage.",
+            title = "Get two deployments named my-deployment and my-deployment-2 from Kubernetes and store them in the internal storage.",
             full = true,
             code = """
                 id: get_two_deployments
@@ -97,7 +97,7 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 """
         ),
         @Example(
-            title = "Get one custom resource named Shirt from Kubernetes using YAML (<=> kubectl get Shirt).",
+            title = "Get one custom resource named Shirt from Kubernetes.",
             full = true,
             code = """
                 id: get_one_custom_resource
