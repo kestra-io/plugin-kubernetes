@@ -33,7 +33,7 @@ import java.util.List;
             code = """
                 id: delete_pods
                 namespace: company.team
-
+                
                 tasks:
                   - id: delete
                     type: io.kestra.plugin.kubernetes.kubectl.Delete

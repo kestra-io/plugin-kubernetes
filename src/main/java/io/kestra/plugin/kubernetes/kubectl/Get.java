@@ -44,7 +44,7 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
 @Plugin(
     examples = {
         @Example(
-            title = "Get all pods from Kubernetes with a service account.",
+            title = "Get all pods from Kubernetes with a service account and log the status of the pods.",
             full = true,
             code = """
                 id: get_all_pods
@@ -53,16 +53,20 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 tasks:
                   - id: get
                     type: io.kestra.plugin.kubernetes.kubectl.Get
-                    namespace: default
-                    resourceType: pods
-                    fetchType: FETCH
                     connection:
                       masterUrl: "{{ secret('K8S_MASTER_URL') }}"
                       oauthToken: "{{ secret('K8S_TOKEN') }}"
+                    namespace: default
+                    resourceType: pods
+                    fetchType: FETCH
+
+                  - id: log
+                    type: io.kestra.plugin.core.log.Log
+                    message: "{{ outputs.get.statusItems }}"
                 """
         ),
         @Example(
-            title = "Get one deployment named my-deployment from Kubernetes.",
+            title = "Get one deployment named 'my-deployment' from Kubernetes with a service account and log the status of the pod.",
             full = true,
             code = """
                 id: get_one_deployment
@@ -71,11 +75,19 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 tasks:
                   - id: get
                     type: io.kestra.plugin.kubernetes.kubectl.Get
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8_TOKEN') }}"
+                      trustCerts: true
                     namespace: default
                     resourceType: deployments
                     resourcesNames:
                       - my-deployment
                     fetchType: FETCH_ONE
+
+                  - id: log_status
+                    type: io.kestra.plugin.core.log.Log
+                    message: "{{ outputs.get.statusItem }}"
                 """
         ),
         @Example(
