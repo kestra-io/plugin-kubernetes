@@ -71,6 +71,9 @@ import java.time.Duration;
                 tasks:
                   - id: patch
                     type: io.kestra.plugin.kubernetes.kubectl.Patch
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: production
                     resourceType: deployment
                     resourceName: my-api
@@ -105,6 +108,9 @@ import java.time.Duration;
                 tasks:
                   - id: scale
                     type: io.kestra.plugin.kubernetes.kubectl.Patch
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: production
                     resourceType: deployment
                     resourceName: my-api
@@ -126,6 +132,9 @@ import java.time.Duration;
                 tasks:
                   - id: patch
                     type: io.kestra.plugin.kubernetes.kubectl.Patch
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: production
                     resourceType: deployment
                     resourceName: my-api
@@ -151,6 +160,9 @@ import java.time.Duration;
                 tasks:
                   - id: patch
                     type: io.kestra.plugin.kubernetes.kubectl.Patch
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: production
                     resourceType: shirts
                     resourceName: my-shirt
@@ -175,6 +187,9 @@ import java.time.Duration;
                 tasks:
                   - id: scale
                     type: io.kestra.plugin.kubernetes.kubectl.Patch
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: production
                     resourceType: deployment
                     resourceName: my-api

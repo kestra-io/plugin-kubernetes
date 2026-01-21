@@ -100,6 +100,9 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 tasks:
                   - id: get
                     type: io.kestra.plugin.kubernetes.kubectl.Get
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     resourceType: deployments
                     resourcesNames:
@@ -118,6 +121,9 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 tasks:
                   - id: get
                     type: io.kestra.plugin.kubernetes.kubectl.Get
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     resourceType: shirts # could be Shirt
                     apiGroup: stable.example.com
@@ -135,6 +141,9 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 tasks:
                   - id: get
                     type: io.kestra.plugin.kubernetes.kubectl.Get
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     resourceType: myresource
                     apiGroup: example.com

@@ -46,6 +46,33 @@ import java.util.List;
                       - my-pod
                       - my-pod-2
                 """
+        ),
+        @Example(
+            title = "Delete a list of pods from Kubernetes based on inputs.",
+            full = true,
+            code = """
+                id: delete_pods
+                namespace: company.team
+
+                inputs:
+                  - id: resources
+                    type: MULTISELECT
+                    allowCustomValue: true
+                    values:
+                      - my-pod
+                      - my-pod-2
+
+                tasks:
+                  - id: delete
+                    type: io.kestra.plugin.kubernetes.kubectl.Delete
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL) }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
+                      trustCerts: true
+                    namespace: default
+                    resourceType: pods
+                    resourcesNames: "{{ inputs.resources }}"
+            """
         )
     }
 )
