@@ -140,6 +140,9 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
                 tasks:
                   - id: pod_create
                     type: io.kestra.plugin.kubernetes.core.PodCreate
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     spec:
                       containers:
                       - name: unittest
@@ -170,6 +173,9 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
                 tasks:
                   - id: pod_create
                     type: io.kestra.plugin.kubernetes.core.PodCreate
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     fileSidecar:
                       resources:
                         limits:
@@ -205,6 +211,9 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
                 tasks:
                   - id: pod_create
                     type: io.kestra.plugin.kubernetes.core.PodCreate
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     containerDefaultSpec:
                       securityContext:
                         allowPrivilegeEscalation: false
