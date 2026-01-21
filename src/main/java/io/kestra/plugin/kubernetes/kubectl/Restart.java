@@ -37,14 +37,14 @@ import java.util.List;
                 tasks:
                   - id: restart
                     type: io.kestra.plugin.kubernetes.kubectl.Restart
-                    namespace: api
-                    resourceType: StatefulSet
-                    resourcesNames:
-                      - api
                     connection:
                       masterUrl: "{{ secret('MASTER_URL') }}"
                       caCertData: "{{ secret('CA_CERT_DATA') }}"
                       oauthToken: "{{ secret('OAUTH_TOKEN') }}"
+                    namespace: api
+                    resourceType: StatefulSet
+                    resourcesNames:
+                      - api
                 """
         )
     }

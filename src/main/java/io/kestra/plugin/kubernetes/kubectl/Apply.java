@@ -38,6 +38,9 @@ import java.util.Map;
                 tasks:
                   - id: apply
                     type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     spec: |-
                       apiVersion: apps/v1

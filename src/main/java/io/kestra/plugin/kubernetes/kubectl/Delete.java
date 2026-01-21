@@ -37,6 +37,9 @@ import java.util.List;
                 tasks:
                   - id: delete
                     type: io.kestra.plugin.kubernetes.kubectl.Delete
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     resourceType: pods
                     resourcesNames:
