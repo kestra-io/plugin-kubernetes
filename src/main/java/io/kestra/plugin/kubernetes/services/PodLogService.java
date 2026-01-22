@@ -13,6 +13,7 @@ import lombok.Getter;
 import org.slf4j.Logger;
 
 import java.io.IOException;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -28,6 +29,8 @@ public class PodLogService implements AutoCloseable {
     @Getter
     private LoggingOutputStream outputStream;
     private Thread thread;
+    private Clock clock = Clock.systemUTC();
+    private long refreshInterval = 30;
 
     public void setLogConsumer(AbstractLogConsumer logConsumer) {
         if (outputStream == null) {
@@ -35,19 +38,29 @@ public class PodLogService implements AutoCloseable {
         }
     }
 
+    // Visible for testing
+    void setClock(Clock clock) {
+        this.clock = clock;
+    }
+
+    // Visible for testing
+    void setRefreshInterval(long refreshInterval) {
+        this.refreshInterval = refreshInterval;
+    }
+
     public final void watch(KubernetesClient client, Pod pod, AbstractLogConsumer logConsumer, RunContext runContext) {
         scheduledExecutor = Executors.newSingleThreadScheduledExecutor(ThreadMainFactoryBuilder.build("k8s-log"));
         setLogConsumer(logConsumer);
         AtomicBoolean started = new AtomicBoolean(false);
-        AtomicReference<Instant> lastReconnection = new AtomicReference<>(Instant.now());
+        AtomicReference<Instant> lastReconnection = new AtomicReference<>(Instant.now(clock));
         Logger logger = runContext.logger();
 
         scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
             () -> {
                 Instant lastTimestamp = outputStream.getLastTimestamp() == null ? null : Instant.from(outputStream.getLastTimestamp());
-                boolean forceReconnect = Instant.now().isAfter(lastReconnection.get().plus(Duration.ofHours(3)));
+                boolean forceReconnect = Instant.now(clock).isAfter(lastReconnection.get().plus(Duration.ofHours(3)));
 
-                if (!started.get() || forceReconnect || lastTimestamp == null || lastTimestamp.isBefore(Instant.now().minus(Duration.ofMinutes(10)))) {
+                if (!started.get() || forceReconnect || lastTimestamp == null || lastTimestamp.isBefore(Instant.now(clock).minus(Duration.ofMinutes(10)))) {
                     if (!started.get()) {
                         started.set(true);
                     } else {
@@ -58,7 +71,7 @@ public class PodLogService implements AutoCloseable {
                         }
                     }
 
-                    lastReconnection.set(Instant.now());
+                    lastReconnection.set(Instant.now(clock));
 
                     if (podLogs != null) {
                         podLogs.forEach(LogWatch::close);
@@ -102,7 +115,7 @@ public class PodLogService implements AutoCloseable {
                 }
             },
             0,
-            30,
+            refreshInterval,
             TimeUnit.SECONDS
         );
 
