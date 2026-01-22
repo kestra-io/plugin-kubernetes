@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class PodLogService implements AutoCloseable {
     private List<LogWatch> podLogs = new ArrayList<>();
@@ -38,18 +39,26 @@ public class PodLogService implements AutoCloseable {
         scheduledExecutor = Executors.newSingleThreadScheduledExecutor(ThreadMainFactoryBuilder.build("k8s-log"));
         setLogConsumer(logConsumer);
         AtomicBoolean started = new AtomicBoolean(false);
+        AtomicReference<Instant> lastReconnection = new AtomicReference<>(Instant.now());
         Logger logger = runContext.logger();
 
         scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
             () -> {
                 Instant lastTimestamp = outputStream.getLastTimestamp() == null ? null : Instant.from(outputStream.getLastTimestamp());
+                boolean forceReconnect = Instant.now().isAfter(lastReconnection.get().plus(Duration.ofHours(3)));
 
-                if (!started.get() || lastTimestamp == null || lastTimestamp.isBefore(Instant.now().minus(Duration.ofMinutes(10)))) {
+                if (!started.get() || forceReconnect || lastTimestamp == null || lastTimestamp.isBefore(Instant.now().minus(Duration.ofMinutes(10)))) {
                     if (!started.get()) {
                         started.set(true);
                     } else {
-                        logger.trace("No log since '{}', reconnecting", lastTimestamp == null ? "unknown" : lastTimestamp.toString());
+                        if (forceReconnect) {
+                            logger.trace("Connection is over 3 hours old, forcing reconnect to prevent kubelet disconnect.");
+                        } else {
+                            logger.trace("No log since '{}', reconnecting", lastTimestamp == null ? "unknown" : lastTimestamp.toString());
+                        }
                     }
+
+                    lastReconnection.set(Instant.now());
 
                     if (podLogs != null) {
                         podLogs.forEach(LogWatch::close);
