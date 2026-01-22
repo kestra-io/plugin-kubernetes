@@ -44,7 +44,7 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
 @Plugin(
     examples = {
         @Example(
-            title = "Get all pods from Kubernetes using YAML (<=> kubectl get pods).",
+            title = "Get all pods from Kubernetes with a service account and log the status of the pods.",
             full = true,
             code = """
                 id: get_all_pods
@@ -53,13 +53,20 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 tasks:
                   - id: get
                     type: io.kestra.plugin.kubernetes.kubectl.Get
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     resourceType: pods
                     fetchType: FETCH
+
+                  - id: log
+                    type: io.kestra.plugin.core.log.Log
+                    message: "{{ outputs.get.statusItems }}"
                 """
         ),
         @Example(
-            title = "Get one deployment named my-deployment from Kubernetes using YAML (<=> kubectl get deployment my-deployment).",
+            title = "Get one deployment named 'my-deployment' from Kubernetes with a service account and log the status of the pod.",
             full = true,
             code = """
                 id: get_one_deployment
@@ -68,15 +75,23 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 tasks:
                   - id: get
                     type: io.kestra.plugin.kubernetes.kubectl.Get
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8_TOKEN') }}"
+                      trustCerts: true
                     namespace: default
                     resourceType: deployments
                     resourcesNames:
                       - my-deployment
                     fetchType: FETCH_ONE
+
+                  - id: log_status
+                    type: io.kestra.plugin.core.log.Log
+                    message: "{{ outputs.get.statusItem }}"
                 """
         ),
         @Example(
-            title = "Get two deployments named my-deployment and my-deployment-2 from Kubernetes using YAML (<=> kubectl get deployment my-deployment) and store them in the internal storage.",
+            title = "Get two deployments named my-deployment and my-deployment-2 from Kubernetes and store them in the internal storage.",
             full = true,
             code = """
                 id: get_two_deployments
@@ -85,6 +100,9 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 tasks:
                   - id: get
                     type: io.kestra.plugin.kubernetes.kubectl.Get
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     resourceType: deployments
                     resourcesNames:
@@ -94,7 +112,7 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 """
         ),
         @Example(
-            title = "Get one custom resource named Shirt from Kubernetes using YAML (<=> kubectl get Shirt).",
+            title = "Get one custom resource named Shirt from Kubernetes.",
             full = true,
             code = """
                 id: get_one_custom_resource
@@ -103,6 +121,9 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 tasks:
                   - id: get
                     type: io.kestra.plugin.kubernetes.kubectl.Get
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     resourceType: shirts # could be Shirt
                     apiGroup: stable.example.com
@@ -120,6 +141,9 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                 tasks:
                   - id: get
                     type: io.kestra.plugin.kubernetes.kubectl.Get
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     resourceType: myresource
                     apiGroup: example.com
