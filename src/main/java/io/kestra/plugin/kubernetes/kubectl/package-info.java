@@ -1,6 +1,6 @@
 @PluginSubGroup(
     description = "This subgroup of plugins contains core tasks for interacting with a Kubernetes cluster through kubectl commands.",
-    categories = { PluginSubGroup.PluginCategory.TOOL, PluginSubGroup.PluginCategory.CLOUD }
+        categories = { PluginSubGroup.PluginCategory.INFRASTRUCTURE }
 )
 package io.kestra.plugin.kubernetes.kubectl;
 
