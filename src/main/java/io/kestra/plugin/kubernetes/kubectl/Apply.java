@@ -29,7 +29,7 @@ import java.util.Map;
 @Plugin(
     examples = {
         @Example(
-            title = "Apply a Kubernetes resource, using YAML.",
+            title = "Apply a Kubernetes resource.",
             full = true,
             code = """
                 id: create_or_replace_deployment
@@ -38,6 +38,9 @@ import java.util.Map;
                 tasks:
                   - id: apply
                     type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     spec: |-
                       apiVersion: apps/v1
@@ -56,6 +59,9 @@ import java.util.Map;
                 tasks:
                   - id: apply
                     type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespaceFiles:
                       enabled: true
                     namespace: default
@@ -63,7 +69,7 @@ import java.util.Map;
                 """
         ),
         @Example(
-            title = "Apply a Kubernetes custom resource definition, using YAML.",
+            title = "Apply a Kubernetes custom resource definition.",
             full = true,
             code = """
                 id: k8s
@@ -72,6 +78,9 @@ import java.util.Map;
                 tasks:
                   - id: apply
                     type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     spec: |-
                       apiVersion: apiextensions.k8s.io/v1
@@ -129,6 +138,9 @@ import java.util.Map;
                 tasks:
                   - id: apply
                     type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
                     waitUntilReady: PT10M
                     spec: |-

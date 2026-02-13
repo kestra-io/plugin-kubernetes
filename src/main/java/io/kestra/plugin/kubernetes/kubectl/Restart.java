@@ -28,7 +28,7 @@ import java.util.List;
 @Plugin(
     examples = {
         @Example(
-            title = "Trigger a rolling restart of a StatefulSet named 'api' (equivalent to `kubectl rollout restart statefulset api`).",
+            title = "Trigger a rolling restart of a StatefulSet named 'api'.",
             full = true,
             code = """
                 id: restart_api
@@ -37,14 +37,14 @@ import java.util.List;
                 tasks:
                   - id: restart
                     type: io.kestra.plugin.kubernetes.kubectl.Restart
-                    namespace: api
-                    resourceType: StatefulSet
-                    resourcesNames:
-                      - api
                     connection:
                       masterUrl: "{{ secret('MASTER_URL') }}"
                       caCertData: "{{ secret('CA_CERT_DATA') }}"
                       oauthToken: "{{ secret('OAUTH_TOKEN') }}"
+                    namespace: api
+                    resourceType: StatefulSet
+                    resourcesNames:
+                      - api
                 """
         )
     }
