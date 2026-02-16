@@ -20,8 +20,8 @@ public class SideCar {
     private Property<String> image = Property.ofValue("busybox");
 
     @Schema(
-        title = "Sidecar resource requirements",
-        description = "CPU/memory limits and requests applied to the file sidecar."
+        title = "Configure sidecar resource requests/limits",
+        description = "Optional Kubernetes resources block applied to the file transfer sidecar."
     )
     private Property<Map<String, Object>> resources;
 

@@ -27,7 +27,7 @@ public class Connection {
 
     @Schema(
         title = "Kubernetes API URL",
-        description = "API server endpoint. Default https://kubernetes.default.svc."
+        description = "API server endpoint. Default `https://kubernetes.default.svc`."
     )
     @Builder.Default
     private final Property<String> masterUrl = Property.ofValue("https://kubernetes.default.svc");
