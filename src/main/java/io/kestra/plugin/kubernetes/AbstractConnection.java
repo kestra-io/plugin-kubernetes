@@ -21,31 +21,22 @@ import jakarta.validation.constraints.NotNull;
 @NoArgsConstructor
 public abstract class AbstractConnection extends Task {
     @Schema(
-        title = "The connection parameters to the Kubernetes cluster",
-        description = "If no connection is defined, we try to load the connection from the current context in the following order: \n" +
-            "1. System properties\n" +
-            "2. Environment variables\n" +
-            "3. Kube config file\n" +
-            "4. Service account token and a mounted CA certificate.\n" +
-            "\n" +
-            "You can pass a full configuration with all options if needed."
+        title = "Kubernetes connection",
+        description = "Connection settings for the cluster. If omitted, the client resolves credentials in order: system properties, environment variables, kubeconfig, then in-cluster service account."
     )
     private Connection connection;
 
     @Schema(
-        title = "The maximum duration to wait until the pod is running",
-        description = "Maximum time to wait for the pod to reach Running state, including scheduler assignment, image pull, and container startup.\n" +
-            "Only used by PodCreate task."
+        title = "Wait for pod to reach Running",
+        description = "Maximum time to reach Running (defaults to PT10M). Covers scheduling, image pulls, and startup. Used by PodCreate."
     )
     @NotNull
     @Builder.Default
     protected final Property<Duration> waitUntilRunning = Property.ofValue(Duration.ofMinutes(10));
 
     @Schema(
-        title = "The maximum duration to wait for pod completion",
-        description = "Maximum duration allowed for the pod to complete after reaching Running state.\n" +
-            "If the pod does not complete within this time, the task will fail and the pod will be deleted.\n" +
-            "Only used by PodCreate task."
+        title = "Wait for pod completion",
+        description = "Maximum run time after reaching Running (defaults to PT1H). PodCreate fails and deletes the pod when exceeded."
     )
     @NotNull
     @Builder.Default

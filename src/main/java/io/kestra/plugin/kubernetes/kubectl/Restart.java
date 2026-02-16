@@ -50,15 +50,16 @@ import java.util.List;
     }
 )
 @Schema(
-    title = "Trigger a rolling restart of one or multiple Kubernetes resources (Deployment, DaemonSet, StatefulSet)."
+    title = "Trigger rolling restarts for workloads",
+    description = "Performs a rolling restart on Deployments or StatefulSets in a namespace. waitUntilReady is ignored for this task."
 )
 public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
 
-    @Schema(title = "The Kubernetes resource type (Deployment, DaemonSet, StatefulSet).")
+    @Schema(title = "Workload type", description = "Deployment or StatefulSet.")
     @NotNull
     private Property<ResourceType> resourceType;
 
-    @Schema(title = "The Kubernetes resource names to restart.")
+    @Schema(title = "Resource names", description = "Names of workloads to restart in the namespace.")
     @NotNull
     private Property<List<String>> resourcesNames;
 

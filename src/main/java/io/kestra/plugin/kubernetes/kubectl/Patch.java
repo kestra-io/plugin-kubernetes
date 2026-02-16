@@ -205,55 +205,47 @@ import java.time.Duration;
     }
 )
 @Schema(
-    title = "Patch a Kubernetes resource with targeted updates.",
-    description = "Unlike kubectl.Apply which requires the full resource specification, " +
-        "kubectl.Patch allows targeted updates to specific fields. Supports three patch strategies: " +
-        "Strategic Merge (default), JSON Merge, and JSON Patch."
+    title = "Patch Kubernetes resources with merge or JSON patch",
+    description = "Applies targeted updates to a namespaced resource using Strategic Merge (default), JSON Merge, or JSON Patch. Supports waiting for readiness after the patch (waitUntilReady, default PT0S)."
 )
 public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
     @NotNull
     @Schema(
-        title = "The Kubernetes resource type (e.g., deployment, statefulset, pod)",
-        description = "Note: Currently only namespaced resources are supported. Cluster-scoped resources (e.g., ClusterRole, Node) are not supported."
+        title = "Resource kind",
+        description = "Namespaced Kubernetes kind (e.g., Deployment, StatefulSet, Pod). Cluster-scoped kinds are not supported."
     )
     private Property<String> resourceType;
 
     @NotNull
     @Schema(
-        title = "The name of the Kubernetes resource to patch"
+        title = "Resource name"
     )
     private Property<String> resourceName;
 
     @NotNull
     @Schema(
-        title = "The patch content",
-        description = "The format depends on the patchStrategy. For STRATEGIC_MERGE and JSON_MERGE, " +
-            "provide a JSON object with the fields to update. For JSON_PATCH, provide a JSON array " +
-            "of operations with 'op', 'path', and 'value' fields."
+        title = "Patch content",
+        description = "For STRATEGIC_MERGE and JSON_MERGE, supply a JSON object with fields to update (null removes fields). For JSON_PATCH, supply a JSON array of RFC 6902 operations."
     )
     private Property<String> patch;
 
     @Builder.Default
     @Schema(
-        title = "The patch strategy to use",
-        description = "STRATEGIC_MERGE (default): Kubernetes strategic merge patch, most user-friendly. " +
-            "Understands K8s resource structure and intelligently merges lists by merge keys. " +
-            "JSON_MERGE: Simple merge with null-deletion semantics (RFC 7386). " +
-            "JSON_PATCH: Precision operations with add/remove/replace/test (RFC 6902)."
+        title = "Patch strategy",
+        description = "STRATEGIC_MERGE (default) merges using Kubernetes semantics; JSON_MERGE follows RFC 7386; JSON_PATCH follows RFC 6902 for add/remove/replace/test."
     )
     private Property<PatchStrategy> patchStrategy = Property.ofValue(PatchStrategy.STRATEGIC_MERGE);
 
     @Schema(
-        title = "The Kubernetes resource apiGroup",
-        description = "Required for custom resources. For core resources (pods, services, etc.), leave empty."
+        title = "API group",
+        description = "Group for the resource kind. Leave empty for core resources."
     )
     private Property<String> apiGroup;
 
     @Schema(
-        title = "The Kubernetes resource API version",
-        description = "The version part of the API (e.g., 'v1', 'v1beta1'). Default is 'v1'. " +
-            "Note: This is just the version, not the full group/version. Use apiGroup for the group part."
+        title = "API version",
+        description = "Version for the resource kind (e.g., v1). Defaults to v1 when omitted."
     )
     private Property<String> apiVersion;
 
@@ -342,14 +334,14 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
     public static class Output implements io.kestra.core.models.tasks.Output {
 
         @Schema(
-            title = "The resource metadata after patching"
+            title = "Patched resource metadata",
+            description = "Metadata returned after patch application."
         )
         private final Metadata metadata;
 
         @Schema(
-            title = "The resource status after patching",
-            description = "Contains the current state of the resource including conditions, replicas, phase, etc. " +
-                "Useful for validation and conditional logic in workflows."
+            title = "Patched resource status",
+            description = "Current status snapshot (conditions, replicas, phase) after the patch."
         )
         private final ResourceStatus status;
     }

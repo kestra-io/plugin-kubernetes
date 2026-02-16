@@ -42,11 +42,28 @@ import java.util.Map;
                       masterUrl: "{{ secret('K8S_MASTER_URL') }}"
                       oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
-                    spec: |-
+                    spec: |- 
                       apiVersion: apps/v1
                       kind: Deployment
                       metadata:
                         name: mypod
+                        labels:
+                          app: mypod
+                      spec:
+                        replicas: 1
+                        selector:
+                          matchLabels:
+                            app: mypod
+                        template:
+                          metadata:
+                            labels:
+                              app: mypod
+                          spec:
+                            containers:
+                              - name: app
+                                image: nginx:stable-alpine
+                                ports:
+                                  - containerPort: 80
                 """
         ),
         @Example(
@@ -155,13 +172,15 @@ import java.util.Map;
     }
 )
 @Schema(
-    title = "Apply a Kubernetes resource (e.g., a Kubernetes deployment)."
+    title = "Apply Kubernetes resources with server-side apply",
+    description = "Applies one or more YAML/JSON manifests using server-side apply, then optionally waits until each resource is Ready (waitUntilReady, default PT0S). Namespaces must be provided for namespaced kinds."
 )
 public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 
     @NotNull
     @Schema(
-        title = "The Kubernetes resource spec"
+        title = "Resource manifest",
+        description = "YAML or JSON manifest to apply. Can include multiple documents separated by '---'. Supports template expressions before apply."
     )
     private Property<String> spec;
 
@@ -228,7 +247,8 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
     public static class Output implements io.kestra.core.models.tasks.Output {
 
         @Schema(
-            title = "The resource metadata"
+            title = "Applied resource metadata",
+            description = "Metadata returned by the API after server-side apply."
         )
         private final List<Metadata> metadata;
     }

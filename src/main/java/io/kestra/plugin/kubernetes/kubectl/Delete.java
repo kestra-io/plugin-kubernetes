@@ -66,7 +66,7 @@ import java.util.List;
                   - id: delete
                     type: io.kestra.plugin.kubernetes.kubectl.Delete
                     connection:
-                      masterUrl: "{{ secret('K8S_MASTER_URL) }}"
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
                       oauthToken: "{{ secret('K8S_TOKEN') }}"
                       trustCerts: true
                     namespace: default
@@ -77,29 +77,34 @@ import java.util.List;
     }
 )
 @Schema(
-    title = "Delete one or many Kubernetes resources of a kind."
+    title = "Delete Kubernetes resources by kind and name",
+    description = "Deletes the provided resource names of a given kind in a namespace using the specified apiGroup/apiVersion (default v1, core group). Supports only namespaced resources."
 )
 public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
 
     @Schema(
-        title = "The Kubernetes resource type (= kind) (e.g., pod, service)"
+        title = "Resource kind",
+        description = "Kubernetes kind (e.g., Pod, Deployment, Service). Case-insensitive."
     )
     @NotNull
     private Property<String> resourceType;
 
     @Schema(
-        title = "The Kubernetes resources names"
+        title = "Resource names",
+        description = "List of resource names to delete in the target namespace."
     )
     @NotNull
     private Property<List<String>> resourcesNames;
 
     @Schema(
-        title = "The Kubernetes resource apiGroup"
+        title = "API group",
+        description = "Group for the resource kind (empty for core resources)."
     )
     private Property<String> apiGroup;
 
     @Schema(
-        title = "The Kubernetes resource apiVersion"
+        title = "API version",
+        description = "Version for the resource kind. Defaults to v1 when omitted."
     )
     private Property<String> apiVersion;
 
