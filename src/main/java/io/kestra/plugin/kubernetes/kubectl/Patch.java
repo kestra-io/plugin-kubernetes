@@ -226,14 +226,14 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
     @NotNull
     @Schema(
         title = "Patch content",
-        description = "For STRATEGIC_MERGE and JSON_MERGE, supply a JSON object with fields to update (null removes fields). For JSON_PATCH, supply a JSON array of RFC 6902 operations."
+        description = "The format depends on the patchStrategy. For STRATEGIC_MERGE and JSON_MERGE, provide a JSON object with the fields to update. For JSON_PATCH, provide a JSON array of operations with 'op', 'path', and 'value' fields."
     )
     private Property<String> patch;
 
     @Builder.Default
     @Schema(
         title = "Patch strategy",
-        description = "STRATEGIC_MERGE (default) merges using Kubernetes semantics; JSON_MERGE follows RFC 7386; JSON_PATCH follows RFC 6902 for add/remove/replace/test."
+        description = "STRATEGIC_MERGE (default): Kubernetes strategic merge patch, most user-friendly. Understands K8s resource structure and intelligently merges lists by merge keys. JSON_MERGE: Simple merge with null-deletion semantics (RFC 7386). JSON_PATCH: Precision operations with add/remove/replace/test (RFC 6902)."
     )
     private Property<PatchStrategy> patchStrategy = Property.ofValue(PatchStrategy.STRATEGIC_MERGE);
 
