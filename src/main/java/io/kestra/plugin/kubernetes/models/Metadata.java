@@ -20,52 +20,52 @@ public class Metadata {
     private String uid;
 
     @Schema(
-            title = "Name of the resource"
+            title = "Resource name"
     )
     private final String name;
 
     @Schema(
-            title = "Namespace of the resource"
+            title = "Resource namespace"
     )
     private final String namespace;
 
     @Schema(
-            title = "Name of the current cluster"
+            title = "Cluster name"
     )
     private final String clusterName;
 
     @Schema(
-            title = "List of all annotations of the resource"
+            title = "Resource annotations"
     )
     private final Map<String, String> annotations;
 
     @Schema(
-            title = "List of labels"
+            title = "Resource labels"
     )
     private final Map<String, String> labels;
 
     @Schema(
-            title = "Creation datetime"
+            title = "Creation timestamp"
     )
     private final Instant creationTimestamp;
 
     @Schema(
-            title = "Deletetion grace period in seconds"
+            title = "Deletion grace period in seconds"
     )
     private final Long deletionGracePeriodSeconds;
 
     @Schema(
-            title = "Deletion datetime"
+            title = "Deletion timestamp"
     )
     private final Instant deletionTimestamp;
 
     @Schema(
-            title = "List of finalizers"
+            title = "Finalizers"
     )
     private final List<String> finalizers;
 
     @Schema(
-            title = "Generate name of the resource"
+            title = "Generated name prefix"
     )
     private final String generateName;
 
@@ -75,12 +75,12 @@ public class Metadata {
     private final Long generation;
 
     @Schema(
-            title = "List of managed fields"
+            title = "Managed fields"
     )
     private final List<ManagedFieldsEntry> managedFields;
 
     @Schema(
-            title = "List of owner reference"
+            title = "Owner references"
     )
     private final List<OwnerReference> ownerReferences;
 
@@ -90,7 +90,7 @@ public class Metadata {
     private final String resourceVersion;
 
     @Schema(
-            title = "Direct link to the API of this resource"
+            title = "Self link"
     )
     private final String selfLink;
 

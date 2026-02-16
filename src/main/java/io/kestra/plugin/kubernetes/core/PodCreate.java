@@ -93,7 +93,8 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Create a pod on a Kubernetes cluster, wait until the pod stops and collect its logs."
+    title = "Run a Kubernetes pod and collect logs",
+    description = "Creates or resumes a pod from the provided spec, streams container logs, and handles file upload/download via init and sidecar containers. Deletes the pod by default after completion and waits briefly for late-arriving logs."
 )
 @Plugin(
     aliases = {"io.kestra.plugin.kubernetes.PodCreate"},
@@ -251,20 +252,18 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
 public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Output> {
 
     @Schema(
-        title = "The pod metadata configuration",
-        description = "Kubernetes metadata for the pod, including labels, annotations, and name.\n" +
-            "If name is not specified, it will be auto-generated based on the task execution context.\n" +
-            "Supports dynamic template expressions."
+        title = "Pod metadata",
+        description = "Name, labels, and annotations applied to the pod. Name is auto-generated from the task run when omitted. Supports template expressions."
     )
     @PluginProperty(dynamic = true)
     private Map<String, Object> metadata;
 
     @Schema(
-        title = "The pod specification",
+        title = "Pod specification",
         description = """
-            Kubernetes pod specification defining containers, volumes, restart policy, and other pod settings.
-            Must include at least one container. Supports dynamic template expressions including the special {{ workingDir }} variable which resolves to '/kestra/working-dir' when inputFiles or outputFiles are used.
-            See how to define a spec on how [using pods](https://kubernetes.io/docs/concepts/workloads/pods/#using-pods) from the official Kubernetes documentation.
+            Kubernetes Pod spec map defining containers, volumes, restart policy, and related settings.
+            Must declare at least one container. Template expressions are allowed, including {{ workingDir }} resolving to '/kestra/working-dir' when inputFiles or outputFiles are configured.
+            See [using pods](https://kubernetes.io/docs/concepts/workloads/pods/#using-pods) in the Kubernetes documentation for the full spec format.
             """
     )
     @PluginProperty(dynamic = true)
@@ -272,29 +271,24 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private Map<String, Object> spec;
 
     @Schema(
-        title = "Whether to delete the pod after task completion",
-        description = "When true (default), the pod is automatically deleted after successful completion or failure.\n" +
-            "Set to false to keep the pod for debugging purposes. Note that pods are always deleted when the task is killed."
+        title = "Delete pod after task completion",
+        description = "Default true. Deletes the pod after success or failure; set to false to keep it for debugging. Pods are still deleted when the task is killed."
     )
     @NotNull
     @Builder.Default
     private final Property<Boolean> delete = Property.ofValue(true);
 
     @Schema(
-        title = "Whether to resume execution of an existing pod",
-        description = "When true (default), attempts to reconnect to an existing pod with matching taskrun ID and attempt count\n" +
-            "instead of creating a new pod. This enables recovery from interrupted executions.\n" +
-            "If no matching pod exists or multiple matching pods are found, a new pod is created."
+        title = "Resume an existing pod when possible",
+        description = "Default true. Reconnects to a pod labeled with the current taskrun ID and attempt instead of creating a new one; falls back to a new pod if none or multiple matches exist."
     )
     @NotNull
     @Builder.Default
     private final Property<Boolean> resume = Property.ofValue(true);
 
     @Schema(
-        title = "Additional time to wait for late-arriving logs after pod completion",
-        description = "After the pod completes and initial log collection finishes, wait this duration to capture any\n" +
-            "remaining logs that may still be in transit. Defaults to 30 seconds.\n" +
-            "Useful as a safety net for high-throughput scenarios where logs may arrive slightly delayed."
+        title = "Grace period for late logs",
+        description = "Duration to wait after completion before fetching final logs. Default PT30S; increase in high-throughput clusters to avoid missing trailing logs."
     )
     @NotNull
     @Builder.Default
@@ -672,23 +666,27 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "The pod metadata"
+            title = "Returned pod metadata",
+            description = "Metadata from the pod at task completion."
         )
         private final Metadata metadata;
 
         @Schema(
-            title = "The pod status"
+            title = "Returned pod status",
+            description = "Kubernetes status snapshot used to set the task final state."
         )
         private final PodStatus status;
 
         @Schema(
-            title = "The output files URI in Kestra's internal storage"
+            title = "Downloaded output file URIs",
+            description = "Kestra internal storage URIs for files fetched from the pod sidecar."
         )
         @PluginProperty(additionalProperties = URI.class)
         private final Map<String, URI> outputFiles;
 
         @Schema(
-            title = "The output variables extracted from the logs of the commands"
+            title = "Extracted variables from pod logs",
+            description = "Key/value pairs parsed from container log output."
         )
         private final Map<String, Object> vars;
 

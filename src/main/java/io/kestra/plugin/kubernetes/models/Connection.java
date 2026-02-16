@@ -14,65 +14,74 @@ import io.kestra.core.runners.RunContext;
 @Getter
 public class Connection {
     @Schema(
-        title = "Trust all certificates"
+        title = "Trust all certificates",
+        description = "When true, skips TLS cert validation. Use only for testing."
     )
     private final Property<Boolean> trustCerts;
 
     @Schema(
-        title = "Disable hostname verification"
+        title = "Disable hostname verification",
+        description = "Disables TLS hostname checks. Avoid in production clusters."
     )
     private final Property<Boolean> disableHostnameVerification;
 
     @Schema(
-        title = "The URL to the Kubernetes API"
+        title = "Kubernetes API URL",
+        description = "API server endpoint. Default `https://kubernetes.default.svc`."
     )
     @Builder.Default
     private final Property<String> masterUrl = Property.ofValue("https://kubernetes.default.svc");
 
     @Schema(
-        title = "The API version"
+        title = "API version",
+        description = "API group version used by the client. Default v1."
     )
     @Builder.Default
     private final Property<String> apiVersion = Property.ofValue("v1");
 
     @Schema(
-        title = "The namespace used"
+        title = "Default namespace",
+        description = "Namespace used when resources omit a namespace."
     )
     private final Property<String> namespace;
 
     @Schema(
-        title = "CA certificate as file path"
+        title = "CA certificate file",
+        description = "Path to a PEM CA bundle."
     )
     private final Property<String> caCertFile;
 
     @Schema(
-        title = "CA certificate as data"
+        title = "CA certificate data",
+        description = "Base64-encoded PEM CA bundle. Whitespace is stripped automatically."
     )
     private final Property<String> caCertData;
 
     @Schema(
-        title = "Client certificate as a file path"
+        title = "Client certificate file"
     )
     private final Property<String> clientCertFile;
 
     @Schema(
-        title = "Client certificate as data"
+        title = "Client certificate data",
+        description = "Base64-encoded client cert. Whitespace is stripped automatically."
     )
     private final Property<String> clientCertData;
 
     @Schema(
-        title = "Client key as a file path"
+        title = "Client key file"
     )
     private final Property<String> clientKeyFile;
 
     @Schema(
-        title = "Client key as data"
+        title = "Client key data",
+        description = "Base64-encoded client key. Whitespace is stripped automatically."
     )
     private final Property<String> clientKeyData;
 
     @Schema(
-        title = "Client key encryption algorithm",
-        description = "default is RSA"
+        title = "Client key algorithm",
+        description = "Algorithm for the client key. Default RSA."
     )
     @Builder.Default
     private final Property<String> clientKeyAlgo = Property.ofValue("RSA");
@@ -93,22 +102,22 @@ public class Connection {
     private final Property<String> trustStorePassphrase;
 
     @Schema(
-        title = "Key store file"
+        title = "Keystore file"
     )
     private final Property<String> keyStoreFile;
 
     @Schema(
-        title = "Key store passphrase"
+        title = "Keystore passphrase"
     )
     private final Property<String> keyStorePassphrase;
 
     @Schema(
-        title = "Oauth token"
+        title = "OAuth token"
     )
     private final Property<String> oauthToken;
 
     @Schema(
-        title = "Oauth token provider"
+        title = "OAuth token provider"
     )
     @PluginProperty
     private final OAuthTokenProvider oauthTokenProvider;

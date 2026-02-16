@@ -77,7 +77,7 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
                     type: io.kestra.plugin.kubernetes.kubectl.Get
                     connection:
                       masterUrl: "{{ secret('K8S_MASTER_URL') }}"
-                      oauthToken: "{{ secret('K8_TOKEN') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
                       trustCerts: true
                     namespace: default
                     resourceType: deployments
@@ -165,31 +165,40 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
     }
 )
 @Schema(
-    title = "Get one or many Kubernetes resources of a kind."
+    title = "Fetch Kubernetes resources with optional storage",
+    description = "Reads resources of a given kind in a namespace, optionally filtering by name. Supports waiting for readiness, returning data to the flow, or storing results in internal storage depending on fetchType."
 )
 public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
     @Schema(
-        title = "The Kubernetes resource type (= kind) (e.g., pod, service)"
+        title = "Resource kind",
+        description = "Kubernetes kind (e.g., Pod, Deployment, Service). Case-insensitive."
     )
     @NotNull
     private Property<String> resourceType;
 
     @Schema(
-        title = "The Kubernetes resources names"
+        title = "Resource names",
+        description = "Optional list of names to fetch. When empty, all resources of the kind in the namespace are returned."
     )
     private Property<List<String>> resourcesNames;
 
     @Schema(
-        title = "The Kubernetes resource apiGroup"
+        title = "API group",
+        description = "Group for the resource kind (empty for core resources)."
     )
     private Property<String> apiGroup;
 
     @Schema(
-        title = "The Kubernetes resource apiVersion"
+        title = "API version",
+        description = "Version for the resource kind. Defaults to v1 when omitted."
     )
     private Property<String> apiVersion;
 
+    @Schema(
+        title = "Fetch behavior",
+        description = "Determines the output: NONE returns only metrics; FETCH returns lists; FETCH_ONE returns a single item; STORE writes to internal storage and returns URI."
+    )
     @NotNull
     @Builder.Default
     protected Property<FetchType> fetchType = Property.ofValue(NONE);
@@ -329,37 +338,37 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     public static class Output implements io.kestra.core.models.tasks.Output {
 
         @Schema(
-            title = "The metadata for multiple resources",
+            title = "Metadata list",
             description = "Only available when `fetchType` is set to `FETCH`."
         )
         private final List<Metadata> metadataItems;
 
         @Schema(
-            title = "The metadata for a single resource",
+            title = "Single metadata",
             description = "Only available when `fetchType` is set to `FETCH_ONE`."
         )
         private final Metadata metadataItem;
 
         @Schema(
-            title = "The status for multiple resources",
+            title = "Status list",
             description = "Only available when `fetchType` is set to `FETCH`."
         )
         private final List<ResourceStatus> statusItems;
 
         @Schema(
-            title = "The status for a single resource",
+            title = "Single status",
             description = "Only available when `fetchType` is set to `FETCH_ONE`."
         )
         private final ResourceStatus statusItem;
 
         @Schema(
-            title = "The output files URI in Kestra's internal storage",
+            title = "Stored result URI",
             description = "Only available when `fetchType` is set to `STORE`."
         )
         private final URI uri;
 
         @Schema(
-            title = "The count of the fetched or stored resources"
+            title = "Resource count"
         )
         private Integer size;
     }
