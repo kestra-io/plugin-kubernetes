@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 
 @KestraTest
 class PodServiceTest {
+
     @Test
     void shouldNotReturnPodWhenContainersReadyFalse() {
         KubernetesClient client = mock(KubernetesClient.class);
@@ -29,6 +30,12 @@ class PodServiceTest {
             .withName("test-pod")
             .withNamespace("default")
             .endMetadata()
+            .withNewSpec()
+            .addNewContainer()
+            .withName("test-container")
+            .withImage("busybox")
+            .endContainer()
+            .endSpec()
             .withNewStatus()
             .addNewCondition()
             .withType("ContainersReady")
