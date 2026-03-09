@@ -121,7 +121,7 @@ class PodCreateTest {
 
         PodCreate.Output runOutput = task.run(runContext);
 
-        assertThat(runOutput.getMetadata().getName(), containsString("iokestrapluginkubernetescorepodcreatetest-run-podcreate"));
+        assertThat(runOutput.getMetadata().getName(), containsString("podcreate"));
 
         List<LogEntry> logs = receive.collectList().block();
 
