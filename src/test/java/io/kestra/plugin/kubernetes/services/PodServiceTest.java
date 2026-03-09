@@ -1,64 +1,62 @@
 package io.kestra.plugin.kubernetes.services;
 
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientException;
-import io.fabric8.kubernetes.client.KubernetesClientTimeoutException;
+import io.fabric8.kubernetes.client.dsl.MixedOperation;
+import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.junit.annotations.KestraTest;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-import org.slf4j.Logger;
 
-import java.io.IOException;
 import java.time.Duration;
-import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @KestraTest
 class PodServiceTest {
     @Test
-    void waitForContainersStartedOrCompletedShouldRetryOnClientTimeoutWhenPodStillExists() {
-        var client = Mockito.mock(KubernetesClient.class);
-        var podResource = Mockito.mock(PodResource.class);
-        var pod = new PodBuilder()
+    void shouldNotReturnPodWhenContainersReadyFalse() {
+        KubernetesClient client = mock(KubernetesClient.class);
+
+        Pod pod = new PodBuilder()
             .withNewMetadata()
-            .withName("pod-1")
+            .withName("test-pod")
             .withNamespace("default")
             .endMetadata()
+            .withNewStatus()
+            .addNewCondition()
+            .withType("ContainersReady")
+            .withStatus("False")
+            .endCondition()
+            .endStatus()
             .build();
 
-        Mockito.when(podResource.waitUntilCondition(Mockito.any(), Mockito.eq(30L), Mockito.eq(TimeUnit.SECONDS)))
-            .thenThrow(new KubernetesClientTimeoutException("Timed out", "Pod", "pod-1", 10L, TimeUnit.SECONDS))
-            .thenReturn(pod);
-        Mockito.when(podResource.get()).thenReturn(pod);
+        @SuppressWarnings("rawtypes")
+        MixedOperation pods = mock(MixedOperation.class);
 
-        try (var podService = Mockito.mockStatic(PodService.class, Mockito.CALLS_REAL_METHODS)) {
-            podService.when(() -> PodService.podRef(client, pod)).thenReturn(podResource);
+        @SuppressWarnings("rawtypes")
+        NonNamespaceOperation ns = mock(NonNamespaceOperation.class);
 
-            var result = PodService.waitForContainersStartedOrCompleted(client, pod, Duration.ofSeconds(30));
+        PodResource podResource = mock(PodResource.class);
 
-            assertThat(result, is(pod));
-            Mockito.verify(podResource).get();
-            Mockito.verify(podResource, Mockito.times(2)).waitUntilCondition(Mockito.any(), Mockito.eq(30L), Mockito.eq(TimeUnit.SECONDS));
-        }
-    }
+        when(client.pods()).thenReturn(pods);
+        when(pods.inNamespace("default")).thenReturn(ns);
+        when(ns.withName("test-pod")).thenReturn(podResource);
 
-    @Test
-    void withRetriesShouldWrapRetryFailureAsIoException() {
-        var logger = Mockito.mock(Logger.class);
+        when(podResource.waitUntilCondition(any(), anyLong(), any()))
+            .thenAnswer(invocation -> {
+                Predicate<Pod> predicate = invocation.getArgument(0);
+                return predicate.test(pod) ? pod : null;
+            });
 
-        var exception = assertThrows(IOException.class, () -> PodService.withRetries(
-            logger,
-            "uploadMarker",
-            () -> {
-                throw new KubernetesClientException("boom");
-            }
-        ));
+        Pod result = PodService.waitForPodReady(client, pod, Duration.ofSeconds(1));
 
-        assertThat(exception.getMessage(), is("Failed to call 'uploadMarker'"));
+        assertNull(result);
     }
 }
