@@ -67,11 +67,8 @@ abstract public class PodService {
                         j.getStatus()
                             .getConditions()
                             .stream()
-                            .anyMatch(podCondition ->
-                                ("ContainersReady".equals(podCondition.getType()) &&
-                                    "True".equals(podCondition.getStatus())) ||
-                                (podCondition.getReason() != null &&
-                                    "PodCompleted".equals(podCondition.getReason()))
+                            .anyMatch(podCondition -> "ContainersReady".equals(podCondition.getType()) ||
+                                (podCondition.getReason() != null && "PodCompleted".equals(podCondition.getReason()))
                             )
                     ),
                 waitUntilRunning.toSeconds(),
