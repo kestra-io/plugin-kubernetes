@@ -6,3 +6,6 @@ chmod +x ./kubectl
 
 docker pull ubuntu
 ./kind load docker-image ubuntu
+
+docker pull busybox
+./kind load docker-image debian:stable-slim
