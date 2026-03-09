@@ -141,8 +141,9 @@ public class PodLogService implements AutoCloseable {
         );
 
         PodResource podResource = PodService.podRef(client, pod);
+        boolean anyLogsFound = false;
 
-        pod.getSpec().getContainers().forEach(container -> {
+        for (var container : pod.getSpec().getContainers()) {
             try {
                 String logs = podResource
                     .inContainer(container.getName())
@@ -154,13 +155,43 @@ public class PodLogService implements AutoCloseable {
                     // Write all logs - hash-based deduplication automatically filters duplicates
                     outputStream.write(logs.getBytes());
                     outputStream.flush();
+                    anyLogsFound = true;
                 } else {
                     logger.debug("No logs returned for container '{}'", container.getName());
                 }
             } catch (IOException e) {
                 logger.error("Failed to fetch final logs for container '{}'", container.getName(), e);
             }
-        });
+        };
+
+        // If no container logs found, the pod likely never started — fall back to pod events
+        // This surfaces errors like ImagePullBackOff, Insufficient CPU, Failed to schedule, etc.
+        if (!anyLogsFound) {
+            try {
+                var events = client.v1().events()
+                    .inNamespace(pod.getMetadata().getNamespace())
+                    .withField("involvedObject.name", pod.getMetadata().getName())
+                    .list()
+                    .getItems();
+
+                if (events.isEmpty()) {
+                    runContext.logger().warn("No container logs and no pod events found for pod '{}'", pod.getMetadata().getName());
+                } else {
+                    runContext.logger().warn("No container logs found — pod may never have started. Pod events:");
+                    for (var event : events) {
+                        String msg = "[PodEvent] " + event.getReason() + ": " + event.getMessage();
+                        try {
+                            outputStream.write((msg + "\n").getBytes());
+                        } catch (IOException e) {
+                            runContext.logger().warn("Failed to write pod event to log: {}", e.getMessage());
+                        }
+                    }
+                    outputStream.flush();
+                }
+            } catch (Exception e) {
+                runContext.logger().error("Failed to fetch pod events for '{}'", pod.getMetadata().getName(), e);
+            }
+        }
     }
 
     @Override

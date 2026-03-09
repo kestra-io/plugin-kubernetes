@@ -7,6 +7,7 @@ import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.tasks.retrys.Exponential;
+import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.RetryUtils;
 import io.kestra.plugin.kubernetes.models.Connection;
@@ -17,7 +18,9 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
@@ -53,6 +56,14 @@ abstract public class PodService {
                 j -> j != null &&
                     j.getStatus() != null && (
                         "Failed".equals(j.getStatus().getPhase()) ||
+                            (j.getStatus().getContainerStatuses() != null &&
+                                j.getStatus().getContainerStatuses().stream()
+                                    .anyMatch(cs -> cs.getState() != null &&
+                                        cs.getState().getWaiting() != null &&
+                                        cs.getState().getWaiting().getReason() != null &&
+                                        !TransientWaitingReason.contains(cs.getState().getWaiting().getReason())
+                                    )
+                            ) ||
                         j.getStatus()
                             .getConditions()
                             .stream()
@@ -179,7 +190,19 @@ abstract public class PodService {
                     "exitcode '" + containerStateTerminated.getExitCode() + "' & " +
                     "message '" + containerStateTerminated.getMessage() + "'"
             ))
-            .orElse(new IllegalStateException("Pods terminated without any containers status !"));
+            .orElseGet(() -> {
+                if (pod.getStatus().getContainerStatuses() != null) {
+                    Optional<String> waitingReason = pod.getStatus().getContainerStatuses().stream()
+                        .filter(cs -> cs.getState() != null && cs.getState().getWaiting() != null)
+                        .map(cs -> cs.getState().getWaiting().getReason())
+                        .filter(reason -> reason != null && !TransientWaitingReason.contains(reason))
+                        .findFirst();
+                    if (waitingReason.isPresent()) {
+                        return new IllegalStateException("Pod failed before container start: " + waitingReason.get());
+                    }
+                }
+                return new IllegalStateException("Pod failed with phase '" + pod.getStatus().getPhase() + "'");
+            });
     }
 
     public static void checkContainerFailures(Pod pod, String exceptContainer, Logger logger) throws IllegalStateException {
@@ -264,7 +287,65 @@ abstract public class PodService {
         logger.debug(marker + " marker uploaded");
     }
 
+    /**
+     * Fetch and log Kubernetes pod events (e.g. FailedScheduling, Evicted, ImagePullBackOff).
+     */
+    public static void logPodEvents(KubernetesClient client, Pod pod, Logger logger, AbstractLogConsumer logConsumer) {
+        if (pod == null || pod.getMetadata() == null) {
+            return;
+        }
+
+        String namespace = pod.getMetadata().getNamespace();
+        String podName = pod.getMetadata().getName();
+
+        try {
+            client.v1().events()
+                .inNamespace(namespace)
+                .withField("involvedObject.name", podName)
+                .list()
+                .getItems()
+                .stream()
+                .filter(event -> "Warning".equals(event.getType()))
+                .sorted(Comparator.comparing(
+                    Event::getLastTimestamp,
+                    Comparator.nullsLast(Comparator.naturalOrder())
+                ))
+                .forEach(event -> {
+                    String reason = event.getReason() == null ? "" : event.getReason();
+                    String message = event.getMessage() == null ? "" : event.getMessage();
+
+                    logConsumer.accept(
+                        "[pod-event] " + reason + " - " + message,
+                        true
+                    );
+                });
+
+        } catch (Exception e) {
+            logger.warn("Failed to fetch events for pod '{}'", podName, e);
+        }
+    }
+
     public static Path tempDir(RunContext runContext) {
         return runContext.workingDir().path().resolve("working-dir");
+    }
+
+    public enum TransientWaitingReason {
+        CONTAINER_CREATING("ContainerCreating"),
+        POD_INITIALIZING("PodInitializing");
+
+        private final String reason;
+
+        TransientWaitingReason(String reason) {
+            this.reason = reason;
+        }
+
+        public static boolean contains(String reason) {
+            for (TransientWaitingReason r : values()) {
+                if (r.reason.equals(reason)) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }
