@@ -26,6 +26,7 @@ import java.util.function.Predicate;
 
 abstract public class PodService {
     private static final List<String> COMPLETED_PHASES = List.of("Succeeded", "Failed", "Unknown"); // see https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase
+    private static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
 
     public static KubernetesClient client(RunContext runContext, Connection connection) throws IllegalVariableEvaluationException {
         return connection != null ? client(connection.toConfig(runContext)) : client(null);
@@ -51,6 +52,9 @@ abstract public class PodService {
     }
 
     public static Pod waitForPodReady(KubernetesClient client, Pod pod, Duration waitUntilRunning) {
+        boolean hasSidecar = pod.getSpec().getContainers().stream()
+            .anyMatch(c -> SIDECAR_FILES_CONTAINER_NAME.equals(c.getName()));
+
         return PodService.podRef(client, pod)
             .waitUntilCondition(
                 j -> j != null &&
@@ -67,8 +71,10 @@ abstract public class PodService {
                         j.getStatus()
                             .getConditions()
                             .stream()
-                            .anyMatch(podCondition -> "ContainersReady".equals(podCondition.getType()) ||
-                                (podCondition.getReason() != null && "PodCompleted".equals(podCondition.getReason()))
+                            .anyMatch(podCondition ->
+                                ("ContainersReady".equals(podCondition.getType()) &&
+                                    (hasSidecar || "True".equals(podCondition.getStatus()))) ||
+                                    ("PodCompleted".equals(podCondition.getReason()))
                             )
                     ),
                 waitUntilRunning.toSeconds(),
