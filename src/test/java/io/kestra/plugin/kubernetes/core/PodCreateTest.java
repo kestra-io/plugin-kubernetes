@@ -216,7 +216,7 @@ class PodCreateTest {
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c'",
-                "    - 'echo \"Container failing\" && exit 1'",
+                "    - 'echo \"Container failing\" && sleep 1 && exit 1'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -864,7 +864,7 @@ class PodCreateTest {
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c'",
-                "    - 'echo \"Task succeeded\" > {{ workingDir }}/result.txt && exit 0'",
+                "    - 'echo \"Task succeeded\" > {{ workingDir }}/result.txt && sleep 1 && exit 0'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -900,13 +900,13 @@ class PodCreateTest {
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c'",
-                "    - 'echo \"First container succeeded\" && exit 0'",
+                "    - 'echo \"First container succeeded\" && sleep 1 && exit 0'",
                 "- name: container-failure",
                 "  image: debian:stable-slim",
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c'",
-                "    - 'echo \"Second container failing\" && exit 1'",
+                "    - 'echo \"Second container failing\" && sleep 1 && exit 1'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -947,7 +947,7 @@ class PodCreateTest {
                 "  command:",
                 "    - 'bash'",
                 "    - '-c'",
-                "    - 'seq 1 20 | while read i; do echo \"Quick termination log line $i\"; done; echo \"FINAL\" && exit 1'",
+                "    - 'seq 1 20 | while read i; do echo \"Quick termination log line $i\"; done; echo \"FINAL\" && sleep 1 && exit 1'",
                 "restartPolicy: Never"
             ))
             .build();
