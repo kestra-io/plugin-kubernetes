@@ -9,3 +9,7 @@ docker pull ubuntu
 
 docker pull busybox
 ./kind load docker-image busybox
+
+
+docker pull debian:stable-slim
+./kind load docker-image debian:stable-slim
