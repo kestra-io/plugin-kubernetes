@@ -164,8 +164,8 @@ public class PodLogService implements AutoCloseable {
             }
         };
 
-        // If no container logs found, the pod likely never started — fall back to pod events
-        // This surfaces errors like ImagePullBackOff, Insufficient CPU, Failed to schedule, etc.
+        // if no container logs were found, the pod likely never started.
+        // we fall back to Kubernetes pod events
         if (!anyLogsFound) {
             try {
                 var events = client.v1().events()
@@ -175,16 +175,12 @@ public class PodLogService implements AutoCloseable {
                     .getItems();
 
                 if (events.isEmpty()) {
-                    runContext.logger().warn("No container logs and no pod events found for pod '{}'", pod.getMetadata().getName());
+                    runContext.logger().info("No container logs and no pod events found for pod '{}'", pod.getMetadata().getName());
                 } else {
-                    runContext.logger().warn("No container logs found — pod may never have started. Pod events:");
+                    runContext.logger().info("No container logs available. Pod events:");
                     for (var event : events) {
-                        String msg = "[PodEvent] " + event.getReason() + ": " + event.getMessage();
-                        try {
-                            outputStream.write((msg + "\n").getBytes());
-                        } catch (IOException e) {
-                            runContext.logger().warn("Failed to write pod event to log: {}", e.getMessage());
-                        }
+                        var message = "[pod-event] " + event.getReason() + ": " + event.getMessage();
+                        outputStream.write((message + "\n").getBytes());
                     }
                     outputStream.flush();
                 }
