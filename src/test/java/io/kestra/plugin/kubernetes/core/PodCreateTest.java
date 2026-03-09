@@ -672,7 +672,12 @@ class PodCreateTest {
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
             Await.until(() -> {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+                if (pods.isEmpty()) {
+                    return false;
+                }
+
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
@@ -1244,7 +1249,12 @@ class PodCreateTest {
             // Wait for pod to be running
             Await.until(() -> {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+                if (pods.isEmpty()) {
+                    return false;
+                }
+
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
@@ -1345,7 +1355,12 @@ class PodCreateTest {
             // Wait for pod to be running
             Await.until(() -> {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+                if (pods.isEmpty()) {
+                    return false;
+                }
+
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
@@ -1540,7 +1555,12 @@ class PodCreateTest {
             // Wait for pod to be running
             Await.until(() -> {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+                if (pods.isEmpty()) {
+                    return false;
+                }
+
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
