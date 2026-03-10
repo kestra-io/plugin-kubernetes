@@ -383,7 +383,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 try (Watch ignored = PodService.podRef(client, pod).watch(listOptions(runContext), new PodWatcher(logger))) {
                     try {
                         // in case of resuming an already running pod, the status will be running
-                        if (!"Running".equals(pod.getStatus().getPhase())) {
+                        if (!PodService.PodPhase.RUNNING.value().equals(pod.getStatus().getPhase())) {
                             // wait for init container and upload files
                             if (validatedInputFiles != null) {
                                 // Files already validated and created before pod creation
@@ -400,9 +400,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         AbstractLogConsumer logConsumer = new DefaultLogConsumer(runContext);
                         podLogService.setLogConsumer(logConsumer);
 
-
                         if (pod.getStatus() != null) {
-                            if ("Failed".equals(pod.getStatus().getPhase()) || PodService.hasNonTransientWaitingContainer(pod)) {
+                            if (PodService.PodPhase.FAILED.value().equals(pod.getStatus().getPhase()) || PodService.hasNonTransientWaitingContainer(pod)) {
                                 if (PodService.hasAnyContainerStarted(pod)) {
                                     podLogService.fetchFinalLogs(client, pod, runContext);
                                 }
@@ -418,7 +417,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                         // Only start log streaming if pod is actually running
                         // For pods that complete quickly, fetchFinalLogs will handle log collection
-                        if (pod.getStatus() != null && "Running".equals(pod.getStatus().getPhase())) {
+                        if (pod.getStatus() != null && PodService.PodPhase.RUNNING.value().equals(pod.getStatus().getPhase())) {
                             podLogService.watch(client, pod, logConsumer, runContext);
                         }
 
@@ -650,7 +649,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         if (currentPod != null) {
             podLogService.fetchFinalLogs(client, ended, runContext);
 
-            if (!"Succeeded".equals(ended.getStatus().getPhase())) {
+            if (!PodService.PodPhase.SUCCEEDED.value().equals(ended.getStatus().getPhase())) {
                 PodService.logPodEvents(client, ended, logger, logConsumer);
             }
         } else {
@@ -662,7 +661,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             // For pods with outputFiles, check container exit codes
             // (pod phase stays "Running" due to sidecar container)
             PodService.checkContainerFailures(ended, SIDECAR_FILES_CONTAINER_NAME, logger);
-        } else if (ended.getStatus() != null && ended.getStatus().getPhase().equals("Failed")) {
+        } else if (ended.getStatus() != null && ended.getStatus().getPhase().equals(PodService.PodPhase.FAILED.value())) {
             // For pods without outputFiles, check pod phase
             throw PodService.failedMessage(ended);
         }

@@ -155,9 +155,9 @@ public class PodLogService implements AutoCloseable {
                     outputStream.flush();
                     return true;
                 }
-                runContext.logger().debug("No logs returned for container '{}'", container.getName());
+                logger.debug("No logs returned for container '{}'", container.getName());
             } catch (IOException e) {
-                runContext.logger().error("Failed to fetch final logs for container '{}'", container.getName(), e);
+                logger.error("Failed to fetch final logs for container '{}'", container.getName(), e);
             }
             return false;
         })) {
@@ -168,6 +168,8 @@ public class PodLogService implements AutoCloseable {
     }
 
     private void fetchPodEvents(KubernetesClient client, Pod pod, RunContext runContext) {
+        Logger logger = runContext.logger();
+
         try {
             var events = client.v1().events()
                 .inNamespace(pod.getMetadata().getNamespace())
@@ -176,17 +178,17 @@ public class PodLogService implements AutoCloseable {
                 .getItems();
 
             if (events.isEmpty()) {
-                runContext.logger().warn("No container logs and no pod events found for pod '{}'", pod.getMetadata().getName());
+                logger.warn("No container logs and no pod events found for pod '{}'", pod.getMetadata().getName());
                 return;
             }
 
-            runContext.logger().info("No container logs available. Pod events:");
+            logger.info("No container logs available. Pod events:");
             for (var event : events) {
                 outputStream.write(("[pod-event] " + event.getReason() + ": " + event.getMessage() + "\n").getBytes());
             }
             outputStream.flush();
         } catch (Exception e) {
-            runContext.logger().error("Failed to fetch pod events for '{}'", pod.getMetadata().getName(), e);
+            logger.error("Failed to fetch pod events for '{}'", pod.getMetadata().getName(), e);
         }
     }
 

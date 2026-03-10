@@ -59,7 +59,7 @@ abstract public class PodService {
             .waitUntilCondition(
                 j -> j != null &&
                     j.getStatus() != null && (
-                        "Failed".equals(j.getStatus().getPhase()) ||
+                        PodPhase.FAILED.value().equals(j.getStatus().getPhase()) ||
                             (j.getStatus().getContainerStatuses() != null &&
                                 j.getStatus().getContainerStatuses().stream()
                                     .anyMatch(cs -> cs.getState() != null &&
@@ -87,7 +87,7 @@ abstract public class PodService {
             .waitUntilCondition(
                 j -> j != null &&
                     j.getStatus() != null && (
-                        ("Running".equals(j.getStatus().getPhase()) &&
+                        (PodPhase.RUNNING.value().equals(j.getStatus().getPhase()) &&
                          j.getStatus().getContainerStatuses() != null &&
                          j.getStatus().getContainerStatuses().stream()
                              .anyMatch(c -> c.getState().getRunning() != null))
@@ -372,5 +372,19 @@ abstract public class PodService {
             }
             return false;
         }
+    }
+
+    public enum PodPhase {
+        PENDING("Pending"),
+        RUNNING("Running"),
+        SUCCEEDED("Succeeded"),
+        FAILED("Failed"),
+        UNKNOWN("Unknown");
+
+        private final String value;
+
+        PodPhase(String value) { this.value = value; }
+
+        public String value() { return value; }
     }
 }
