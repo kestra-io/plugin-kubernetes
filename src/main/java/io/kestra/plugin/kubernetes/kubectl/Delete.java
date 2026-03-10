@@ -1,7 +1,7 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
+import java.util.List;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.property.Property;
@@ -10,6 +10,9 @@ import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.services.PodService;
+
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.EqualsAndHashCode;
@@ -17,8 +20,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
-
-import java.util.List;
 
 @SuperBuilder
 @ToString
@@ -33,7 +34,7 @@ import java.util.List;
             code = """
                 id: delete_pods
                 namespace: company.team
-                
+
                 tasks:
                   - id: delete
                     type: io.kestra.plugin.kubernetes.kubectl.Delete
@@ -51,28 +52,28 @@ import java.util.List;
             title = "Delete a list of pods from Kubernetes based on inputs.",
             full = true,
             code = """
-                id: delete_pods
-                namespace: company.team
+                    id: delete_pods
+                    namespace: company.team
 
-                inputs:
-                  - id: resources
-                    type: MULTISELECT
-                    allowCustomValue: true
-                    values:
-                      - my-pod
-                      - my-pod-2
+                    inputs:
+                      - id: resources
+                        type: MULTISELECT
+                        allowCustomValue: true
+                        values:
+                          - my-pod
+                          - my-pod-2
 
-                tasks:
-                  - id: delete
-                    type: io.kestra.plugin.kubernetes.kubectl.Delete
-                    connection:
-                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
-                      oauthToken: "{{ secret('K8S_TOKEN') }}"
-                      trustCerts: true
-                    namespace: default
-                    resourceType: pods
-                    resourcesNames: "{{ inputs.resources }}"
-            """
+                    tasks:
+                      - id: delete
+                        type: io.kestra.plugin.kubernetes.kubectl.Delete
+                        connection:
+                          masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                          oauthToken: "{{ secret('K8S_TOKEN') }}"
+                          trustCerts: true
+                        namespace: default
+                        resourceType: pods
+                        resourcesNames: "{{ inputs.resources }}"
+                """
         )
     }
 )
@@ -130,8 +131,8 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
                 .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
                 .build();
 
-            rResourcesNames.forEach(name ->
-                client.genericKubernetesResources(resourceDefinitionContext)
+            rResourcesNames.forEach(
+                name -> client.genericKubernetesResources(resourceDefinitionContext)
                     .inNamespace(rNamespace)
                     .withName(name)
                     .delete()

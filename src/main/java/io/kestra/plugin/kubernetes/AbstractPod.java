@@ -1,23 +1,5 @@
 package io.kestra.plugin.kubernetes;
 
-import io.fabric8.kubernetes.api.model.*;
-import io.fabric8.kubernetes.client.dsl.ContainerResource;
-import io.fabric8.kubernetes.client.dsl.PodResource;
-import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.models.annotations.PluginProperty;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.plugin.kubernetes.models.SideCar;
-import io.kestra.plugin.kubernetes.services.InstanceService;
-import io.kestra.plugin.kubernetes.services.PodService;
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotNull;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-import org.slf4j.Logger;
-
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -28,6 +10,26 @@ import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import org.slf4j.Logger;
+
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.plugin.kubernetes.models.SideCar;
+import io.kestra.plugin.kubernetes.services.InstanceService;
+import io.kestra.plugin.kubernetes.services.PodService;
+
+import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.client.dsl.ContainerResource;
+import io.fabric8.kubernetes.client.dsl.PodResource;
+import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
 import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
@@ -141,7 +143,8 @@ public abstract class AbstractPod extends AbstractConnection {
         Path tempDir = PodService.tempDir(runContext);
 
         Map<String, List<String>> grouped = inputFiles.stream()
-            .collect(Collectors.groupingBy(file -> {
+            .collect(Collectors.groupingBy(file ->
+            {
                 Path p = Path.of(file);
                 return p.getNameCount() > 0 ? p.getName(0).toString() : file;
             }));
@@ -158,7 +161,8 @@ public abstract class AbstractPod extends AbstractConnection {
 
             if (Files.isDirectory(topAbsolute)) {
                 try {
-                    withRetries(logger, "uploadInputFilesBulk",
+                    withRetries(
+                        logger, "uploadInputFilesBulk",
                         () -> container
                             .dir(containerTop)
                             .upload(topAbsolute)
@@ -170,8 +174,10 @@ public abstract class AbstractPod extends AbstractConnection {
             }
 
             for (String file : entry.getValue()) {
-                withRetries(logger, "uploadInputFiles",
-                    () -> {
+                withRetries(
+                    logger, "uploadInputFiles",
+                    () ->
+                    {
                         try (var fileInputStream = new FileInputStream(tempDir.resolve(file).toFile())) {
                             return container
                                 .file("/kestra/working-dir/" + file)
@@ -202,14 +208,20 @@ public abstract class AbstractPod extends AbstractConnection {
         try (Stream<Path> files = Files.walk(runContext.workingDir().resolve(Path.of("working-dir/kestra/working-dir/")))) {
             files
                 .filter(path -> !Files.isDirectory(path) && Files.isReadable(path))
-                .forEach(throwConsumer(outputFile -> {
+                .forEach(throwConsumer(outputFile ->
+                {
                     Path relativePathFromContainerWDir = runContext.workingDir().resolve(Path.of("working-dir/kestra/working-dir/")).relativize(outputFile);
                     // Split path into components and sanitize by encoding special characters
                     Path resolvedOutputFile = runContext.workingDir().path();
                     for (int i = 0; i < relativePathFromContainerWDir.getNameCount(); i++) {
-                        resolvedOutputFile = resolvedOutputFile.resolve(Path.of(java.net.URLEncoder.encode(
-                            relativePathFromContainerWDir.getName(i).toString(),
-                            StandardCharsets.UTF_8)));
+                        resolvedOutputFile = resolvedOutputFile.resolve(
+                            Path.of(
+                                java.net.URLEncoder.encode(
+                                    relativePathFromContainerWDir.getName(i).toString(),
+                                    StandardCharsets.UTF_8
+                                )
+                            )
+                        );
                     }
                     pathMap.put(resolvedOutputFile, relativePathFromContainerWDir);
                     moveFile(outputFile, resolvedOutputFile);
@@ -241,7 +253,8 @@ public abstract class AbstractPod extends AbstractConnection {
         }
 
         // Apply to all containers
-        spec.getContainers().forEach(container -> {
+        spec.getContainers().forEach(container ->
+        {
             try {
                 mergeContainerDefaults(runContext, container, defaultSpecMap);
             } catch (Exception e) {
@@ -251,7 +264,8 @@ public abstract class AbstractPod extends AbstractConnection {
 
         // Apply to all init containers
         if (spec.getInitContainers() != null) {
-            spec.getInitContainers().forEach(container -> {
+            spec.getInitContainers().forEach(container ->
+            {
                 try {
                     mergeContainerDefaults(runContext, container, defaultSpecMap);
                 } catch (Exception e) {
@@ -285,7 +299,8 @@ public abstract class AbstractPod extends AbstractConnection {
         if (defaultSpecMap.containsKey("volumeMounts")) {
             List<Map<String, Object>> defaultVolumeMounts = (List<Map<String, Object>>) defaultSpecMap.get("volumeMounts");
             List<VolumeMount> defaultMounts = defaultVolumeMounts.stream()
-                .map(vm -> {
+                .map(vm ->
+                {
                     try {
                         return InstanceService.fromMap(VolumeMount.class, runContext, Map.of(), vm);
                     } catch (Exception e) {
@@ -319,7 +334,8 @@ public abstract class AbstractPod extends AbstractConnection {
         if (defaultSpecMap.containsKey("env")) {
             List<Map<String, Object>> defaultEnv = (List<Map<String, Object>>) defaultSpecMap.get("env");
             List<EnvVar> defaultEnvVars = defaultEnv.stream()
-                .map(ev -> {
+                .map(ev ->
+                {
                     try {
                         return InstanceService.fromMap(EnvVar.class, runContext, Map.of(), ev);
                     } catch (Exception e) {
@@ -348,7 +364,8 @@ public abstract class AbstractPod extends AbstractConnection {
         }
         try {
             String yaml = JacksonMapper.ofYaml().writeValueAsString(obj);
-            return JacksonMapper.ofYaml().readValue(yaml, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            return JacksonMapper.ofYaml().readValue(yaml, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+            });
         } catch (Exception e) {
             return new HashMap<>();
         }
@@ -399,18 +416,20 @@ public abstract class AbstractPod extends AbstractConnection {
 
         if (this.inputFiles != null || this.outputFiles != null) {
             spec.getContainers()
-                .forEach(container -> {
+                .forEach(container ->
+                {
                     List<VolumeMount> volumeMounts = container.getVolumeMounts();
                     volumeMounts.add(volumeMount);
                     container.setVolumeMounts(volumeMounts);
                 });
 
             spec.getVolumes()
-                .add(new VolumeBuilder()
-                    .withName(FILES_VOLUME_NAME)
-                    .withNewEmptyDir()
-                    .endEmptyDir()
-                    .build()
+                .add(
+                    new VolumeBuilder()
+                        .withName(FILES_VOLUME_NAME)
+                        .withNewEmptyDir()
+                        .endEmptyDir()
+                        .build()
                 );
         }
     }
@@ -470,6 +489,7 @@ public abstract class AbstractPod extends AbstractConnection {
     /**
      * Gets the default spec to apply to sidecar/init containers.
      * Priority: fileSidecar.defaultSpec > containerDefaultSpec
+     * 
      * @return the default spec map or null if none configured
      */
     private Map<String, Object> getSidecarDefaultSpec(RunContext runContext, SideCar sideCar) throws IllegalVariableEvaluationException {
@@ -513,7 +533,8 @@ public abstract class AbstractPod extends AbstractConnection {
         if (defaultSpecMap.containsKey("volumeMounts")) {
             List<Map<String, Object>> defaultVolumeMounts = (List<Map<String, Object>>) defaultSpecMap.get("volumeMounts");
             List<VolumeMount> defaultMounts = defaultVolumeMounts.stream()
-                .map(vm -> {
+                .map(vm ->
+                {
                     try {
                         return InstanceService.fromMap(VolumeMount.class, runContext, Map.of(), vm);
                     } catch (Exception e) {
@@ -541,7 +562,8 @@ public abstract class AbstractPod extends AbstractConnection {
         if (defaultSpecMap.containsKey("env")) {
             List<Map<String, Object>> defaultEnv = (List<Map<String, Object>>) defaultSpecMap.get("env");
             List<EnvVar> defaultEnvVars = defaultEnv.stream()
-                .map(ev -> {
+                .map(ev ->
+                {
                     try {
                         return InstanceService.fromMap(EnvVar.class, runContext, Map.of(), ev);
                     } catch (Exception e) {
@@ -567,17 +589,19 @@ public abstract class AbstractPod extends AbstractConnection {
             .withName(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
             .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
-            .withCommand(Arrays.asList(
-                "sh",
-                "-c",
-                "echo 'waiting to be " + status + "!'\n" +
-                    "while [ ! -f /kestra/" + status + " ]\n" +
-                    "do\n" +
-                    "  sleep 0.5\n" +
-                    (finished ? "" : "echo '* still waiting!'\n") +
-                    "done\n" +
-                    "echo '" + status + " successfully'\n"
-            ));
+            .withCommand(
+                Arrays.asList(
+                    "sh",
+                    "-c",
+                    "echo 'waiting to be " + status + "!'\n" +
+                        "while [ ! -f /kestra/" + status + " ]\n" +
+                        "do\n" +
+                        "  sleep 0.5\n" +
+                        (finished ? "" : "echo '* still waiting!'\n") +
+                        "done\n" +
+                        "echo '" + status + " successfully'\n"
+                )
+            );
 
         if (!finished) {
             containerBuilder.withVolumeMounts(Collections.singletonList(volumeMount));
@@ -600,12 +624,14 @@ public abstract class AbstractPod extends AbstractConnection {
             .withName(INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
             .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
-            .withCommand(Arrays.asList(
-                "sh",
-                "-c",
-                "echo 'Creating working directory'\n" +
-                    "mkdir -p /kestra/working-dir\n"
-            ))
+            .withCommand(
+                Arrays.asList(
+                    "sh",
+                    "-c",
+                    "echo 'Creating working directory'\n" +
+                        "mkdir -p /kestra/working-dir\n"
+                )
+            )
             .withVolumeMounts(Collections.singletonList(volumeMount))
             .build();
 

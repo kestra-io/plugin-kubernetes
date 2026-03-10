@@ -1,17 +1,5 @@
 package io.kestra.plugin.kubernetes.services;
 
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientException;
-import io.fabric8.kubernetes.client.dsl.LogWatch;
-import io.fabric8.kubernetes.client.dsl.PodResource;
-import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.utils.Await;
-import io.kestra.core.utils.ThreadMainFactoryBuilder;
-import lombok.Getter;
-import org.slf4j.Logger;
-
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
@@ -21,6 +9,20 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.slf4j.Logger;
+
+import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.utils.Await;
+import io.kestra.core.utils.ThreadMainFactoryBuilder;
+
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.dsl.LogWatch;
+import io.fabric8.kubernetes.client.dsl.PodResource;
+import lombok.Getter;
 
 public class PodLogService implements AutoCloseable {
     private List<LogWatch> podLogs = new ArrayList<>();
@@ -56,7 +58,8 @@ public class PodLogService implements AutoCloseable {
         Logger logger = runContext.logger();
 
         scheduledFuture = scheduledExecutor.scheduleAtFixedRate(
-            () -> {
+            () ->
+            {
                 Instant lastTimestamp = outputStream.getLastTimestamp() == null ? null : Instant.from(outputStream.getLastTimestamp());
                 boolean forceReconnect = Instant.now(clock).isAfter(lastReconnection.get().plus(Duration.ofHours(3)));
 
@@ -84,16 +87,17 @@ public class PodLogService implements AutoCloseable {
                         pod
                             .getSpec()
                             .getContainers()
-                            .forEach(container -> {
+                            .forEach(container ->
+                            {
                                 try {
-                                    podLogs.add(podResource
-                                        .inContainer(container.getName())
-                                        .usingTimestamps()
-                                        .sinceTime(lastTimestamp != null ?
-                                            lastTimestamp.plusNanos(1).toString() :
-                                            null
-                                        )
-                                        .watchLog(outputStream)
+                                    podLogs.add(
+                                        podResource
+                                            .inContainer(container.getName())
+                                            .usingTimestamps()
+                                            .sinceTime(
+                                                lastTimestamp != null ? lastTimestamp.plusNanos(1).toString() : null
+                                            )
+                                            .watchLog(outputStream)
                                     );
                                 } catch (KubernetesClientException e) {
                                     if (e.getCode() == 404) {
@@ -121,7 +125,8 @@ public class PodLogService implements AutoCloseable {
 
         // look at exception on the main thread
         thread = Thread.ofVirtual().name("k8s-listener").start(
-            () -> {
+            () ->
+            {
                 try {
                     Await.until(scheduledFuture::isDone);
                 } catch (RuntimeException e) {

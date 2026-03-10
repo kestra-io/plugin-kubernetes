@@ -1,5 +1,9 @@
 package io.kestra.plugin.kubernetes.models;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+
 import io.fabric8.kubernetes.api.model.ManagedFieldsEntry;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.OwnerReference;
@@ -7,93 +11,88 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-
 @Builder
 @Getter
 public class Metadata {
     @Schema(
-            title = "Generated UUID of this resource"
+        title = "Generated UUID of this resource"
     )
     private String uid;
 
     @Schema(
-            title = "Resource name"
+        title = "Resource name"
     )
     private final String name;
 
     @Schema(
-            title = "Resource namespace"
+        title = "Resource namespace"
     )
     private final String namespace;
 
     @Schema(
-            title = "Cluster name"
+        title = "Cluster name"
     )
     private final String clusterName;
 
     @Schema(
-            title = "Resource annotations"
+        title = "Resource annotations"
     )
     private final Map<String, String> annotations;
 
     @Schema(
-            title = "Resource labels"
+        title = "Resource labels"
     )
     private final Map<String, String> labels;
 
     @Schema(
-            title = "Creation timestamp"
+        title = "Creation timestamp"
     )
     private final Instant creationTimestamp;
 
     @Schema(
-            title = "Deletion grace period in seconds"
+        title = "Deletion grace period in seconds"
     )
     private final Long deletionGracePeriodSeconds;
 
     @Schema(
-            title = "Deletion timestamp"
+        title = "Deletion timestamp"
     )
     private final Instant deletionTimestamp;
 
     @Schema(
-            title = "Finalizers"
+        title = "Finalizers"
     )
     private final List<String> finalizers;
 
     @Schema(
-            title = "Generated name prefix"
+        title = "Generated name prefix"
     )
     private final String generateName;
 
     @Schema(
-            title = "Generation"
+        title = "Generation"
     )
     private final Long generation;
 
     @Schema(
-            title = "Managed fields"
+        title = "Managed fields"
     )
     private final List<ManagedFieldsEntry> managedFields;
 
     @Schema(
-            title = "Owner references"
+        title = "Owner references"
     )
     private final List<OwnerReference> ownerReferences;
 
     @Schema(
-            title = "Resource version"
+        title = "Resource version"
     )
     private final String resourceVersion;
 
     @Schema(
-            title = "Self link"
+        title = "Self link"
     )
     private final String selfLink;
-
 
     public static Metadata from(ObjectMeta meta) {
         MetadataBuilder builder = Metadata.builder();

@@ -1,12 +1,24 @@
 package io.kestra.plugin.kubernetes.core;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.io.CharStreams;
-import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.fabric8.kubernetes.api.model.Quantity;
-import io.fabric8.kubernetes.api.model.ResourceRequirements;
-import io.fabric8.kubernetes.client.KubernetesClient;
+
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.executions.LogEntry;
@@ -24,23 +36,14 @@ import io.kestra.core.utils.TestsUtils;
 import io.kestra.plugin.kubernetes.TestUtils;
 import io.kestra.plugin.kubernetes.models.SideCar;
 import io.kestra.plugin.kubernetes.services.PodService;
+
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Quantity;
+import io.fabric8.kubernetes.api.model.ResourceRequirements;
+import io.fabric8.kubernetes.client.KubernetesClient;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
-import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
 import reactor.core.publisher.Flux;
-
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.time.Duration;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -76,7 +79,8 @@ class PodCreateTest {
             System.err.println("Count: " + count);
             System.err.println("Total logs collected: " + logs.size());
             System.err.println("\nAll collected log messages with timestamps and levels:");
-            logs.forEach(log -> {
+            logs.forEach(log ->
+            {
                 String msg = log.getMessage();
                 System.err.println("  - [" + log.getTimestamp() + "] [" + log.getLevel() + "] [" + (msg != null ? msg.length() : 0) + " chars] '" + msg + "'");
             });
@@ -99,18 +103,20 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-//            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'seq 1 20 | while read i; do echo \"Log line $i from test pod\"; {{ inputs.command }} 0.05; done; >&2 echo \"error\"'",
-                "restartPolicy: Never"
-            ))
+            //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'seq 1 20 | while read i; do echo \"Log line $i from test pod\"; {{ inputs.command }} 0.05; done; >&2 echo \"error\"'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep"));
@@ -142,17 +148,19 @@ class PodCreateTest {
             .namespace(Property.ofValue("default"))
             .resume(Property.ofValue(false))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'exit 1'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'exit 1'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -167,8 +175,10 @@ class PodCreateTest {
             assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
 
             // Verify pod was deleted after failure
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofSeconds(10));
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofSeconds(10)
+            );
         }
     }
 
@@ -179,17 +189,19 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'sleep 1 && exit 1'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'sleep 1 && exit 1'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -239,17 +251,19 @@ class PodCreateTest {
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'echo \"Container failing\" && sleep 1 && exit 1'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo \"Container failing\" && sleep 1 && exit 1'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
@@ -260,7 +274,8 @@ class PodCreateTest {
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
-        Future<?> taskFuture = executorService.submit(() -> {
+        Future<?> taskFuture = executorService.submit(() ->
+        {
             try {
                 task.run(finalRunContext);
             } catch (Exception e) {
@@ -272,7 +287,8 @@ class PodCreateTest {
 
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
             // Wait for pod creation
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 return !pods.isEmpty();
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
@@ -282,8 +298,10 @@ class PodCreateTest {
             logger.info("Test detected pod creation: {}", podName);
 
             // Wait for pod to be deleted despite the failure
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(2));
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(2)
+            );
 
             logger.info("Pod {} was successfully deleted after failure with outputFiles.", podName);
         } finally {
@@ -302,17 +320,19 @@ class PodCreateTest {
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'echo \"Container failing\" && exit 1'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo \"Container failing\" && exit 1'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
@@ -323,7 +343,8 @@ class PodCreateTest {
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
-        Future<?> taskFuture = executorService.submit(() -> {
+        Future<?> taskFuture = executorService.submit(() ->
+        {
             try {
                 task.run(finalRunContext);
             } catch (Exception e) {
@@ -335,7 +356,8 @@ class PodCreateTest {
 
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
             // Wait for pod creation and completion
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 if (pods.isEmpty()) {
                     return false;
@@ -364,7 +386,8 @@ class PodCreateTest {
 
             // Wait for pod deletion and measure time
             long deletionStartTime = System.currentTimeMillis();
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 if (!pods.isEmpty()) {
                     var pod = pods.get(0);
@@ -378,8 +401,10 @@ class PodCreateTest {
                             String reason = state.getTerminated().getReason();
                             logger.info("Sidecar terminated with reason: {}", reason);
                             // Verify sidecar terminated gracefully (Completed), not force-killed (Error/Killed)
-                            assertThat("Sidecar should exit gracefully with Completed status",
-                                reason, is("Completed"));
+                            assertThat(
+                                "Sidecar should exit gracefully with Completed status",
+                                reason, is("Completed")
+                            );
                         }
                     }
                 }
@@ -388,8 +413,10 @@ class PodCreateTest {
             long deletionDuration = System.currentTimeMillis() - deletionStartTime;
 
             // Verify pod deletion was fast (< 15 seconds indicates graceful sidecar exit)
-            assertThat("Pod deletion should be fast when sidecar exits gracefully (< 15s)",
-                deletionDuration, lessThan(15000L));
+            assertThat(
+                "Pod deletion should be fast when sidecar exits gracefully (< 15s)",
+                deletionDuration, lessThan(15000L)
+            );
 
             logger.info("Pod {} deleted in {}ms - sidecar exited gracefully", podName, deletionDuration);
         } finally {
@@ -410,17 +437,19 @@ class PodCreateTest {
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'cat {{ workingDir }}/data.txt'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'cat {{ workingDir }}/data.txt'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -462,18 +491,20 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-//            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'seq 1 10 | while read i; do echo \"Resume log line $i\"; {{ inputs.command }} 0.1; done'",
-                "restartPolicy: Never"
-            ))
+            //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'seq 1 10 | while read i; do echo \"Resume log line $i\"; {{ inputs.command }} 0.1; done'",
+                    "restartPolicy: Never"
+                )
+            )
             .resume(Property.ofValue(true))
             .build();
 
@@ -488,13 +519,15 @@ class PodCreateTest {
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
 
-        Flux<LogEntry> shutdownReceive = TestsUtils.receive(workerTaskLogQueue, logEntry -> {
+        Flux<LogEntry> shutdownReceive = TestsUtils.receive(workerTaskLogQueue, logEntry ->
+        {
             if (logEntry.getLeft().getMessage() != null && logEntry.getLeft().getMessage().equals("Resume log line 1")) {
                 executorService.shutdownNow();
             }
         });
 
-        executorService.execute(() -> {
+        executorService.execute(() ->
+        {
             try {
                 task.run(finalRunContext);
             } catch (Exception e) {
@@ -519,28 +552,32 @@ class PodCreateTest {
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(Arrays.asList("xml", "csv")))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-//            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
-            .inputFiles(Map.of(
-                "files/in/in.txt", "I'm here",
-                "main.sh", "sleep 1\n" +
-                    "echo '::{\"outputs\": {\"extract\":\"'$(cat files/in/in.txt)'\"}}::'\n" +
-                    "echo 1 >> {{ outputFiles.xml }}\n" +
-                    "echo 2 >> {{ outputFiles.csv }}\n" +
-                    "echo 3 >> {{ outputFiles.xml }}\n" +
-                    "sleep 1"
-            ))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  workingDir: /kestra/working-dir",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c' ",
-                "    - 'ls -lh && bash main.sh {{ outputFiles.xml }}'",
-                "restartPolicy: Never"
-            ))
+            //            .delete(Property.ofValue(false)) // Uncomment for tests if you need to check kubectl logs your_pod
+            .inputFiles(
+                Map.of(
+                    "files/in/in.txt", "I'm here",
+                    "main.sh", "sleep 1\n" +
+                        "echo '::{\"outputs\": {\"extract\":\"'$(cat files/in/in.txt)'\"}}::'\n" +
+                        "echo 1 >> {{ outputFiles.xml }}\n" +
+                        "echo 2 >> {{ outputFiles.csv }}\n" +
+                        "echo 3 >> {{ outputFiles.xml }}\n" +
+                        "sleep 1"
+                )
+            )
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  workingDir: /kestra/working-dir",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c' ",
+                    "    - 'ls -lh && bash main.sh {{ outputFiles.xml }}'",
+                    "restartPolicy: Never"
+                )
+            )
             .metadata(Map.of("name", "custom-name-" + IdUtils.create().toLowerCase()))
             .resume(Property.ofValue(true))
             .build();
@@ -580,18 +617,20 @@ class PodCreateTest {
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("*.txt")))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: file-writer",
-                "  image: debian:stable-slim",
-                "  command: [\"/bin/sh\"]",
-                "  args:",
-                "    - -c",
-                "    - >-",
-                "      echo 'hello from pod' > {{ workingDir }}/hello.txt",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: file-writer",
+                    "  image: debian:stable-slim",
+                    "  command: [\"/bin/sh\"]",
+                    "  args:",
+                    "    - -c",
+                    "    - >-",
+                    "      echo 'hello from pod' > {{ workingDir }}/hello.txt",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
@@ -624,7 +663,8 @@ class PodCreateTest {
                   requests:
                     cpu: 100m
                     memory: 128Mi""",
-            SideCar.class);
+            SideCar.class
+        );
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -632,9 +672,11 @@ class PodCreateTest {
             .namespace(Property.ofValue("default"))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
             .fileSidecar(sidecar)
-            .inputFiles(Map.of(
-                "in.txt", "File content"
-            ))
+            .inputFiles(
+                Map.of(
+                    "in.txt", "File content"
+                )
+            )
             .outputFiles(Property.ofValue(List.of("out.txt")))
             .spec(TestUtils.convert(
                 ObjectMeta.class,
@@ -659,7 +701,8 @@ class PodCreateTest {
 
         final PodCreate.Output[] run = new PodCreate.Output[1];
         ExecutorService executorService = Executors.newSingleThreadExecutor();
-        executorService.submit(() -> {
+        executorService.submit(() ->
+        {
             try {
                 run[0] = task.run(finalRunContext);
             } catch (Exception e) {
@@ -670,7 +713,8 @@ class PodCreateTest {
         String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
 
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 if (pods.isEmpty()) {
                     return false;
@@ -697,8 +741,10 @@ class PodCreateTest {
             assertThat(sideReqs.getRequests().get("cpu"), is(Quantity.parse("100m")));
             assertThat(sideReqs.getRequests().get("memory"), is(Quantity.parse("128Mi")));
 
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(1));
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(1)
+            );
 
             logger.info("Pod {} has successfully completed.", podName);
         }
@@ -717,20 +763,22 @@ class PodCreateTest {
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("**.txt")))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: file-writer",
-                "  image: debian:stable-slim",
-                "  command: [\"/bin/sh\"]",
-                "  args:",
-                "    - -c",
-                "    - >-",
-                "      echo 'I am fulfilled' > {{ workingDir }}/special\\ file.txt &&",
-                "      mkdir {{ workingDir }}/sub\\ dir &&",
-                "      echo 'I have content' > {{ workingDir }}/sub\\ dir/more\\ special\\ file.txt",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: file-writer",
+                    "  image: debian:stable-slim",
+                    "  command: [\"/bin/sh\"]",
+                    "  args:",
+                    "    - -c",
+                    "    - >-",
+                    "      echo 'I am fulfilled' > {{ workingDir }}/special\\ file.txt &&",
+                    "      mkdir {{ workingDir }}/sub\\ dir &&",
+                    "      echo 'I have content' > {{ workingDir }}/sub\\ dir/more\\ special\\ file.txt",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
@@ -763,17 +811,19 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'echo start kestra task && sleep 60 && echo end kestra test'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo start kestra task && sleep 60 && echo end kestra test'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
@@ -784,7 +834,8 @@ class PodCreateTest {
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
-        Future<?> taskFuture = executorService.submit(() -> {
+        Future<?> taskFuture = executorService.submit(() ->
+        {
             try {
                 task.run(finalRunContext);
             } catch (Exception e) {
@@ -795,7 +846,8 @@ class PodCreateTest {
         String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
 
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 return !pods.isEmpty() && pods.get(0).getStatus().getPhase().equals("Running");
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
@@ -807,8 +859,10 @@ class PodCreateTest {
 
             task.kill();
 
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(1));
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(1)
+            );
 
             logger.info("Pod {} has been successfully deleted after kill.", podName);
         } finally {
@@ -824,17 +878,19 @@ class PodCreateTest {
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: special-char-container",
-                "  image: debian:stable-slim",
-                "  command:",
-                "    - 'bash'",
-                "    - '-c'",
-                "    - \"echo '::{\\\"outputs\\\": {\\\"PROJECT_ID\\\": 101, \\\"PROJECT_NAME\\\": \\\"One O One\\\", \\\"LABEL\\\": \\\"4004\\\"}}::'\"",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: special-char-container",
+                    "  image: debian:stable-slim",
+                    "  command:",
+                    "    - 'bash'",
+                    "    - '-c'",
+                    "    - \"echo '::{\\\"outputs\\\": {\\\"PROJECT_ID\\\": 101, \\\"PROJECT_NAME\\\": \\\"One O One\\\", \\\"LABEL\\\": \\\"4004\\\"}}::'\"",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
@@ -965,9 +1021,11 @@ class PodCreateTest {
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
 
         // Wait for all 20 numbered logs (ignores DEBUG/system logs from queue)
-        TestsUtils.awaitLogs(logs,
+        TestsUtils.awaitLogs(
+            logs,
             log -> log.getMessage() != null && log.getMessage().contains("Quick termination log line"),
-            20);
+            20
+        );
 
         // Wait for Flux completion (ensures FINAL and any remaining logs are processed)
         receive.blockLast();
@@ -997,17 +1055,19 @@ class PodCreateTest {
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'echo start && sleep 120 && echo end'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo start && sleep 120 && echo end'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
@@ -1018,7 +1078,8 @@ class PodCreateTest {
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
-        Future<?> taskFuture = executorService.submit(() -> {
+        Future<?> taskFuture = executorService.submit(() ->
+        {
             try {
                 task.run(finalRunContext);
             } catch (Exception e) {
@@ -1030,7 +1091,8 @@ class PodCreateTest {
 
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
             // Wait for pod to be running
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 return !pods.isEmpty() && pods.get(0).getStatus().getPhase().equals("Running");
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
@@ -1049,7 +1111,8 @@ class PodCreateTest {
 
             // Verify that pod deletion was successfully initiated
             // Pod should either be completely removed OR have deletionTimestamp set
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 if (pods.isEmpty()) {
                     logger.info("Pod {} has been completely removed", podName);
@@ -1059,8 +1122,10 @@ class PodCreateTest {
                 boolean isTerminating = pod.getMetadata().getDeletionTimestamp() != null;
 
                 if (isTerminating) {
-                    logger.info("Pod {} is terminating (deletionTimestamp: {})",
-                        podName, pod.getMetadata().getDeletionTimestamp());
+                    logger.info(
+                        "Pod {} is terminating (deletionTimestamp: {})",
+                        podName, pod.getMetadata().getDeletionTimestamp()
+                    );
                     return true;
                 }
 
@@ -1079,8 +1144,10 @@ class PodCreateTest {
                 .filter(log -> log.getMessage() != null && log.getMessage().contains("Unable to delete pod"))
                 .count();
 
-            assertThat("Pod deletion should succeed without warnings when thread is interrupted",
-                      deletionWarnings, is(0L));
+            assertThat(
+                "Pod deletion should succeed without warnings when thread is interrupted",
+                deletionWarnings, is(0L)
+            );
 
         } finally {
             taskFuture.cancel(true);
@@ -1105,20 +1172,22 @@ class PodCreateTest {
             .namespace(Property.ofValue("default"))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
-            .waitUntilRunning(Property.ofValue(Duration.ofSeconds(60)))  // Allow time for pod startup
-            .waitRunning(Property.ofValue(Duration.ofSeconds(3)))        // Short wait to keep test fast
+            .waitUntilRunning(Property.ofValue(Duration.ofSeconds(60))) // Allow time for pod startup
+            .waitRunning(Property.ofValue(Duration.ofSeconds(3))) // Short wait to keep test fast
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'echo start && sleep 300'",  // Sleep longer than waitRunning
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo start && sleep 300'", // Sleep longer than waitRunning
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
@@ -1134,7 +1203,8 @@ class PodCreateTest {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         long startTime = System.currentTimeMillis();
 
-        Future<?> taskFuture = executorService.submit(() -> {
+        Future<?> taskFuture = executorService.submit(() ->
+        {
             try {
                 task.run(finalRunContext);
             } catch (Exception e) {
@@ -1152,9 +1222,12 @@ class PodCreateTest {
             // If we reach here, task completed successfully (unexpected)
             long elapsedTime = System.currentTimeMillis() - startTime;
             throw new AssertionError(
-                String.format("Task unexpectedly completed successfully after %dms. " +
-                             "It should have failed because pod runs longer than waitRunning.",
-                             elapsedTime));
+                String.format(
+                    "Task unexpectedly completed successfully after %dms. " +
+                        "It should have failed because pod runs longer than waitRunning.",
+                    elapsedTime
+                )
+            );
 
         } catch (java.util.concurrent.ExecutionException e) {
             // Expected: Task failed because waitRunning expired
@@ -1170,17 +1243,21 @@ class PodCreateTest {
             taskFuture.cancel(true);
 
             throw new AssertionError(
-                String.format("Task hung for %dms without failing. " +
-                             "This indicates waitRunning is not enforcing a maximum duration. " +
-                             "Expected task to fail after waitRunning expired.",
-                             elapsedTime));
+                String.format(
+                    "Task hung for %dms without failing. " +
+                        "This indicates waitRunning is not enforcing a maximum duration. " +
+                        "Expected task to fail after waitRunning expired.",
+                    elapsedTime
+                )
+            );
         } finally {
             executorService.shutdownNow();
         }
 
         // Verify pod is deleted after failure
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 if (pods.isEmpty()) {
                     return true;
@@ -1203,27 +1280,33 @@ class PodCreateTest {
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
-            .containerDefaultSpec(Property.ofValue(Map.of(
-                "securityContext", Map.of(
-                    "runAsUser", 1000,
-                    "runAsGroup", 1000,
-                    "allowPrivilegeEscalation", false
+            .containerDefaultSpec(
+                Property.ofValue(
+                    Map.of(
+                        "securityContext", Map.of(
+                            "runAsUser", 1000,
+                            "runAsGroup", 1000,
+                            "allowPrivilegeEscalation", false
+                        )
+                    )
                 )
-            )))
+            )
             .inputFiles(Map.of("in.txt", "test content"))
             .outputFiles(Property.ofValue(List.of("out.txt")))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: main",
-                "  image: debian:stable-slim",
-                "  command: [\"/bin/sh\"]",
-                "  args:",
-                "    - -c",
-                "    - >-",
-                "      cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: main",
+                    "  image: debian:stable-slim",
+                    "  command: [\"/bin/sh\"]",
+                    "  args:",
+                    "    - -c",
+                    "    - >-",
+                    "      cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -1235,7 +1318,8 @@ class PodCreateTest {
 
         final PodCreate.Output[] run = new PodCreate.Output[1];
         ExecutorService executorService = Executors.newSingleThreadExecutor();
-        executorService.submit(() -> {
+        executorService.submit(() ->
+        {
             try {
                 run[0] = task.run(finalRunContext);
             } catch (Exception e) {
@@ -1247,7 +1331,8 @@ class PodCreateTest {
 
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
             // Wait for pod to be running
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 if (pods.isEmpty()) {
                     return false;
@@ -1289,8 +1374,10 @@ class PodCreateTest {
             assertThat(sidecarContainer.getSecurityContext().getAllowPrivilegeEscalation(), is(false));
 
             // Wait for pod deletion
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(1));
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(1)
+            );
 
             logger.info("containerDefaultSpec securityContext test passed");
         }
@@ -1308,28 +1395,34 @@ class PodCreateTest {
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
-            .containerDefaultSpec(Property.ofValue(Map.of(
-                "volumeMounts", List.of(
-                    Map.of("name", "shared-tmp", "mountPath", "/tmp")
+            .containerDefaultSpec(
+                Property.ofValue(
+                    Map.of(
+                        "volumeMounts", List.of(
+                            Map.of("name", "shared-tmp", "mountPath", "/tmp")
+                        )
+                    )
                 )
-            )))
+            )
             .inputFiles(Map.of("in.txt", "test content"))
             .outputFiles(Property.ofValue(List.of("out.txt")))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "volumes:",
-                "  - name: shared-tmp",
-                "    emptyDir: {}",
-                "containers:",
-                "- name: main",
-                "  image: debian:stable-slim",
-                "  command: [\"/bin/sh\"]",
-                "  args:",
-                "    - -c",
-                "    - >-",
-                "      echo 'temp file' > /tmp/test.txt && cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "volumes:",
+                    "  - name: shared-tmp",
+                    "    emptyDir: {}",
+                    "containers:",
+                    "- name: main",
+                    "  image: debian:stable-slim",
+                    "  command: [\"/bin/sh\"]",
+                    "  args:",
+                    "    - -c",
+                    "    - >-",
+                    "      echo 'temp file' > /tmp/test.txt && cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -1341,7 +1434,8 @@ class PodCreateTest {
 
         final PodCreate.Output[] run = new PodCreate.Output[1];
         ExecutorService executorService = Executors.newSingleThreadExecutor();
-        executorService.submit(() -> {
+        executorService.submit(() ->
+        {
             try {
                 run[0] = task.run(finalRunContext);
             } catch (Exception e) {
@@ -1353,7 +1447,8 @@ class PodCreateTest {
 
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
             // Wait for pod to be running
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 if (pods.isEmpty()) {
                     return false;
@@ -1398,8 +1493,10 @@ class PodCreateTest {
             assertThat("Sidecar container should have /tmp volume mount", sidecarTmpMount.isPresent(), is(true));
 
             // Wait for pod deletion
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(1));
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(1)
+            );
 
             logger.info("containerDefaultSpec volumeMounts test passed");
         }
@@ -1418,26 +1515,32 @@ class PodCreateTest {
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
-            .containerDefaultSpec(Property.ofValue(Map.of(
-                "securityContext", Map.of(
-                    "runAsUser", 1000,
-                    "runAsGroup", 1000,
-                    "allowPrivilegeEscalation", false
+            .containerDefaultSpec(
+                Property.ofValue(
+                    Map.of(
+                        "securityContext", Map.of(
+                            "runAsUser", 1000,
+                            "runAsGroup", 1000,
+                            "allowPrivilegeEscalation", false
+                        )
+                    )
                 )
-            )))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: main",
-                "  image: debian:stable-slim",
-                "  securityContext:",
-                "    allowPrivilegeEscalation: true",  // Override the default allowPrivilegeEscalation
-                "  command: [\"/bin/sh\"]",
-                "  args:",
-                "    - -c",
-                "    - 'id && echo done'",
-                "restartPolicy: Never"
-            ))
+            )
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: main",
+                    "  image: debian:stable-slim",
+                    "  securityContext:",
+                    "    allowPrivilegeEscalation: true", // Override the default allowPrivilegeEscalation
+                    "  command: [\"/bin/sh\"]",
+                    "  args:",
+                    "    - -c",
+                    "    - 'id && echo done'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -1449,7 +1552,8 @@ class PodCreateTest {
 
         final PodCreate.Output[] run = new PodCreate.Output[1];
         ExecutorService executorService = Executors.newSingleThreadExecutor();
-        executorService.submit(() -> {
+        executorService.submit(() ->
+        {
             try {
                 run[0] = task.run(finalRunContext);
             } catch (Exception e) {
@@ -1461,9 +1565,11 @@ class PodCreateTest {
 
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
             // Wait for pod to be running or completed
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                if (pods.isEmpty()) return false;
+                if (pods.isEmpty())
+                    return false;
                 String phase = pods.getFirst().getStatus().getPhase();
                 return "Running".equals(phase) || "Succeeded".equals(phase);
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
@@ -1483,8 +1589,10 @@ class PodCreateTest {
             assertThat("Default runAsGroup should be preserved", mainContainer.getSecurityContext().getRunAsGroup(), is(1000L));
 
             // Wait for pod deletion
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(1));
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(1)
+            );
 
             logger.info("containerDefaultSpec override test passed");
         }
@@ -1500,19 +1608,23 @@ class PodCreateTest {
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
             .delete(Property.ofValue(true))
             .resume(Property.ofValue(false))
-            .containerDefaultSpec(Property.ofValue(Map.of(
-                "securityContext", Map.of(
-                    "runAsUser", 1000,
-                    "allowPrivilegeEscalation", false
-                ),
-                "volumeMounts", List.of(
-                    Map.of("name", "shared-tmp", "mountPath", "/tmp")
-                ),
-                "resources", Map.of(
-                    "limits", Map.of("memory", "128Mi"),
-                    "requests", Map.of("memory", "64Mi")
+            .containerDefaultSpec(
+                Property.ofValue(
+                    Map.of(
+                        "securityContext", Map.of(
+                            "runAsUser", 1000,
+                            "allowPrivilegeEscalation", false
+                        ),
+                        "volumeMounts", List.of(
+                            Map.of("name", "shared-tmp", "mountPath", "/tmp")
+                        ),
+                        "resources", Map.of(
+                            "limits", Map.of("memory", "128Mi"),
+                            "requests", Map.of("memory", "64Mi")
+                        )
+                    )
                 )
-            )))
+            )
             .inputFiles(Map.of("in.txt", "test content"))
             .outputFiles(Property.ofValue(List.of("out.txt")))
             .spec(TestUtils.convert(
@@ -1541,7 +1653,8 @@ class PodCreateTest {
 
         final PodCreate.Output[] run = new PodCreate.Output[1];
         ExecutorService executorService = Executors.newSingleThreadExecutor();
-        executorService.submit(() -> {
+        executorService.submit(() ->
+        {
             try {
                 run[0] = task.run(finalRunContext);
             } catch (Exception e) {
@@ -1553,7 +1666,8 @@ class PodCreateTest {
 
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
             // Wait for pod to be running
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
                 if (pods.isEmpty()) {
                     return false;
@@ -1587,8 +1701,10 @@ class PodCreateTest {
             assertThat(mainContainer.getResources().getRequests().get("memory"), is(Quantity.parse("64Mi")));
 
             // Wait for pod deletion
-            Await.until(() -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(200), Duration.ofMinutes(1));
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(1)
+            );
 
             logger.info("containerDefaultSpec multiple fields test passed");
         }

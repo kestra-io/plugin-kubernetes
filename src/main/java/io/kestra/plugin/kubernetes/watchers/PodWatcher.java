@@ -1,7 +1,8 @@
 package io.kestra.plugin.kubernetes.watchers;
 
-import io.fabric8.kubernetes.api.model.Pod;
 import org.slf4j.Logger;
+
+import io.fabric8.kubernetes.api.model.Pod;
 
 public class PodWatcher extends AbstractWatch<Pod> {
     public PodWatcher(Logger logger) {

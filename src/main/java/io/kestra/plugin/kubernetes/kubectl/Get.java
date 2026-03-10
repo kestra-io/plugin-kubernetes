@@ -1,7 +1,17 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import io.fabric8.kubernetes.client.KubernetesClientException;
-import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.net.URI;
+import java.time.Duration;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import org.slf4j.Logger;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Metric;
 import io.kestra.core.models.annotations.Plugin;
@@ -16,23 +26,15 @@ import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.ResourceStatus;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.services.ResourceWaitService;
+
+import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.slf4j.Logger;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
-
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.net.URI;
-import java.time.Duration;
-import java.util.AbstractMap;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 
 import static io.kestra.core.models.tasks.common.FetchType.NONE;
 
@@ -245,39 +247,46 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                 logger.info("Fetched {} resource(s) of kind '{}' in namespace '{}'", metadataList.size(), rResourceType, rNamespace);
 
             } else {
-                rResourcesNames.forEach(name -> {
-                        logger.debug("Fetching resource of kind '{}' with name '{}' in namespace '{}'",
-                            rResourceType, name, rNamespace);
+                rResourcesNames.forEach(name ->
+                {
+                    logger.debug(
+                        "Fetching resource of kind '{}' with name '{}' in namespace '{}'",
+                        rResourceType, name, rNamespace
+                    );
 
-                        var resource = client.genericKubernetesResources(resourceDefinitionContext)
-                            .inNamespace(rNamespace)
-                            .withName(name)
-                            .get();
+                    var resource = client.genericKubernetesResources(resourceDefinitionContext)
+                        .inNamespace(rNamespace)
+                        .withName(name)
+                        .get();
 
-                        if (resource != null && resource.getMetadata() != null) {
-                            // Optionally wait for resource to become ready
-                            if (!rWaitUntilReady.isZero()) {
-                                runContext.logger().info("Waiting for resource '{}' to become ready (timeout: {})...", name, rWaitUntilReady);
-                                resource = ResourceWaitService.waitForReady(
-                                    client,
-                                    resourceDefinitionContext,
-                                    rNamespace,
-                                    name,
-                                    rWaitUntilReady,
-                                    runContext.logger()
-                                );
-                                runContext.logger().info("Resource '{}' is ready", name);
-                            }
-
-                            metadataList.add(Metadata.from(resource.getMetadata()));
-                            statusList.add(ResourceStatus.from(resource));
-                            logger.info("Fetched resource of kind '{}' with name '{}' in namespace '{}'",
-                                rResourceType, name, rNamespace);
-                        } else {
-                            logger.warn("Resource of kind '{}' with name '{}' not found in namespace '{}'",
-                                rResourceType, name, rNamespace);
+                    if (resource != null && resource.getMetadata() != null) {
+                        // Optionally wait for resource to become ready
+                        if (!rWaitUntilReady.isZero()) {
+                            runContext.logger().info("Waiting for resource '{}' to become ready (timeout: {})...", name, rWaitUntilReady);
+                            resource = ResourceWaitService.waitForReady(
+                                client,
+                                resourceDefinitionContext,
+                                rNamespace,
+                                name,
+                                rWaitUntilReady,
+                                runContext.logger()
+                            );
+                            runContext.logger().info("Resource '{}' is ready", name);
                         }
+
+                        metadataList.add(Metadata.from(resource.getMetadata()));
+                        statusList.add(ResourceStatus.from(resource));
+                        logger.info(
+                            "Fetched resource of kind '{}' with name '{}' in namespace '{}'",
+                            rResourceType, name, rNamespace
+                        );
+                    } else {
+                        logger.warn(
+                            "Resource of kind '{}' with name '{}' not found in namespace '{}'",
+                            rResourceType, name, rNamespace
+                        );
                     }
+                }
                 );
             }
 
@@ -379,10 +388,12 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         // Combine metadata and status into ResourceInfo objects
         List<ResourceInfo> resourceInfoList = new ArrayList<>();
         for (int i = 0; i < metadataList.size(); i++) {
-            resourceInfoList.add(ResourceInfo.builder()
-                .metadata(metadataList.get(i))
-                .status(i < statusList.size() ? statusList.get(i) : null)
-                .build());
+            resourceInfoList.add(
+                ResourceInfo.builder()
+                    .metadata(metadataList.get(i))
+                    .status(i < statusList.size() ? statusList.get(i) : null)
+                    .build()
+            );
         }
 
         try (
@@ -390,7 +401,8 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         ) {
             var flowable = Flux
                 .create(
-                    s -> {
+                    s ->
+                    {
                         resourceInfoList.forEach(s::next);
                         s.complete();
                     },

@@ -1,9 +1,18 @@
 package io.kestra.plugin.kubernetes.core;
 
+import java.io.InterruptedIOException;
+import java.net.URI;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+
 import com.google.common.collect.ImmutableMap;
-import io.fabric8.kubernetes.api.model.*;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.Watch;
+
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -25,21 +34,15 @@ import io.kestra.plugin.kubernetes.services.InstanceService;
 import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.watchers.PodWatcher;
+
+import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.Watch;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-
-import java.io.InterruptedIOException;
-import java.net.URI;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
@@ -49,22 +52,22 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
  *
  * <h2>Key Features</h2>
  * <ul>
- *   <li>Creates pods from YAML specifications with template variable support</li>
- *   <li>Supports input file upload and output file download via init containers and sidecars</li>
- *   <li>Streams logs in real-time during pod execution</li>
- *   <li>Can resume execution of existing pods when task is restarted</li>
- *   <li>Handles graceful cleanup and pod deletion after completion or failure</li>
+ * <li>Creates pods from YAML specifications with template variable support</li>
+ * <li>Supports input file upload and output file download via init containers and sidecars</li>
+ * <li>Streams logs in real-time during pod execution</li>
+ * <li>Can resume execution of existing pods when task is restarted</li>
+ * <li>Handles graceful cleanup and pod deletion after completion or failure</li>
  * </ul>
  *
  * <h2>File Transfer Mechanism</h2>
  * When inputFiles or outputFiles are specified, the pod is configured with additional containers:
  * <ul>
- *   <li><b>Init container (init-files):</b> Waits for input files to be uploaded before starting main containers.
- *       Files are uploaded to {@code /kestra/working-dir} via Kubernetes exec API.</li>
- *   <li><b>Sidecar container (out-files):</b> Waits for an "ended" marker file before allowing pod deletion,
- *       ensuring output files are collected. The sidecar exits gracefully when signaled.</li>
- *   <li><b>Shared volume:</b> A volume named "kestra-files" is mounted at {@code /kestra} in all containers
- *       to enable file sharing between Kestra and the pod.</li>
+ * <li><b>Init container (init-files):</b> Waits for input files to be uploaded before starting main containers.
+ * Files are uploaded to {@code /kestra/working-dir} via Kubernetes exec API.</li>
+ * <li><b>Sidecar container (out-files):</b> Waits for an "ended" marker file before allowing pod deletion,
+ * ensuring output files are collected. The sidecar exits gracefully when signaled.</li>
+ * <li><b>Shared volume:</b> A volume named "kestra-files" is mounted at {@code /kestra} in all containers
+ * to enable file sharing between Kestra and the pod.</li>
  * </ul>
  *
  * <h2>Resume Behavior</h2>
@@ -74,13 +77,13 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
  *
  * <h2>Pod Lifecycle</h2>
  * <ol>
- *   <li>Pod is created (or existing pod is found if resuming)</li>
- *   <li>Wait for pod to reach Running state (timeout: waitUntilRunning)</li>
- *   <li>Upload input files if specified</li>
- *   <li>Stream logs from all containers</li>
- *   <li>Wait for pod completion (timeout: waitRunning)</li>
- *   <li>Download output files if specified</li>
- *   <li>Delete pod if delete=true</li>
+ * <li>Pod is created (or existing pod is found if resuming)</li>
+ * <li>Wait for pod to reach Running state (timeout: waitUntilRunning)</li>
+ * <li>Upload input files if specified</li>
+ * <li>Stream logs from all containers</li>
+ * <li>Wait for pod completion (timeout: waitRunning)</li>
+ * <li>Download output files if specified</li>
+ * <li>Delete pod if delete=true</li>
  * </ol>
  *
  * @see io.kestra.plugin.kubernetes.AbstractPod for file transfer implementation details
@@ -97,7 +100,7 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
     description = "Creates or resumes a pod from the provided spec, streams container logs, and handles file upload/download via init and sidecar containers. Deletes the pod by default after completion and waits briefly for late-arriving logs."
 )
 @Plugin(
-    aliases = {"io.kestra.plugin.kubernetes.PodCreate"},
+    aliases = { "io.kestra.plugin.kubernetes.PodCreate" },
     examples = {
         @Example(
             title = "Create a Pod with a service account.",
@@ -308,29 +311,32 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     /**
      * Executes the pod creation task and manages its complete lifecycle.
      *
-     * <p>This method orchestrates the following workflow:
+     * <p>
+     * This method orchestrates the following workflow:
      * <ol>
-     *   <li>Validates and prepares input files (if specified)</li>
-     *   <li>Creates a new pod or resumes an existing one (if resume=true)</li>
-     *   <li>Waits for pod initialization and uploads input files</li>
-     *   <li>Starts log streaming from all containers</li>
-     *   <li>Waits for pod completion with timeout enforcement</li>
-     *   <li>Downloads output files (if specified)</li>
-     *   <li>Cleans up and deletes the pod (if delete=true)</li>
+     * <li>Validates and prepares input files (if specified)</li>
+     * <li>Creates a new pod or resumes an existing one (if resume=true)</li>
+     * <li>Waits for pod initialization and uploads input files</li>
+     * <li>Starts log streaming from all containers</li>
+     * <li>Waits for pod completion with timeout enforcement</li>
+     * <li>Downloads output files (if specified)</li>
+     * <li>Cleans up and deletes the pod (if delete=true)</li>
      * </ol>
      *
-     * <p><b>Thread Safety:</b> This method can be interrupted via {@link #kill()}, which will attempt
+     * <p>
+     * <b>Thread Safety:</b> This method can be interrupted via {@link #kill()}, which will attempt
      * to delete the pod. The interrupt flag is temporarily cleared during cleanup to ensure
      * pod deletion succeeds even when the thread is interrupted.
      *
-     * <p><b>Error Handling:</b> If the pod fails or times out, this method throws an exception
+     * <p>
+     * <b>Error Handling:</b> If the pod fails or times out, this method throws an exception
      * after attempting cleanup. The pod is deleted (if delete=true) regardless of success or failure.
      *
      * @param runContext the execution context providing access to variables, storage, and logging
      * @return Output containing pod metadata, status, output files, and any variables extracted from logs
-     * @throws Exception             if pod creation fails, times out, or terminates with a non-zero exit code
+     * @throws Exception if pod creation fails, times out, or terminates with a non-zero exit code
      * @throws IllegalStateException if input files are invalid or if pod fails to reach Running state
-     * @throws InterruptedException  if the task is interrupted and returns null
+     * @throws InterruptedException if the task is interrupted and returns null
      * @see #kill() for handling task interruption
      */
     @Override
@@ -367,7 +373,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                     if (entry.getValue() == null || entry.getValue().isEmpty()) {
                         throw new IllegalStateException(
                             "Input file '" + entry.getKey() + "' references a null or empty value. " +
-                                "Please verify that the upstream task output exists.");
+                                "Please verify that the upstream task output exists."
+                        );
                     }
                 }
 
@@ -380,8 +387,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 );
             }
 
-            try (KubernetesClient client = PodService.client(runContext, this.getConnection());
-                 PodLogService podLogService = new PodLogService()) {
+            try (
+                KubernetesClient client = PodService.client(runContext, this.getConnection());
+                PodLogService podLogService = new PodLogService()
+            ) {
 
                 Pod pod = findOrCreatePod(runContext, client, namespace, additionalVars, logger);
                 currentPodName.set(pod.getMetadata().getName());
@@ -462,8 +471,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                         if (hasSidecar) {
                             try {
-                                PodService.uploadMarker(runContext, PodService.podRef(client, pod),
-                                    logger, ENDED_MARKER, SIDECAR_FILES_CONTAINER_NAME);
+                                PodService.uploadMarker(
+                                    runContext, PodService.podRef(client, pod),
+                                    logger, ENDED_MARKER, SIDECAR_FILES_CONTAINER_NAME
+                                );
                                 logger.debug("Signaled sidecar to exit gracefully before pod deletion");
                             } catch (Exception markerException) {
                                 // Failure is acceptable - pod might already be terminating
@@ -503,15 +514,16 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     /**
      * Finds an existing pod to resume or creates a new pod.
      *
-     * <p>When {@code resume=true}, this method searches for an existing pod matching the current
+     * <p>
+     * When {@code resume=true}, this method searches for an existing pod matching the current
      * taskrun ID and attempt count. If exactly one matching pod is found, it is returned for resumption.
      * If no pod or multiple pods are found, a new pod is created.
      *
-     * @param runContext     execution context for rendering properties and accessing variables
-     * @param client         Kubernetes client for pod operations
-     * @param namespace      namespace to search for or create the pod in
+     * @param runContext execution context for rendering properties and accessing variables
+     * @param client Kubernetes client for pod operations
+     * @param namespace namespace to search for or create the pod in
      * @param additionalVars additional variables to use for pod template rendering
-     * @param logger         logger for diagnostic messages
+     * @param logger logger for diagnostic messages
      * @return the pod to use (either found for resumption or newly created)
      * @throws Exception if pod creation fails or label selector construction fails
      */
@@ -520,8 +532,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         KubernetesClient client,
         String namespace,
         Map<String, Object> additionalVars,
-        Logger logger
-    ) throws Exception {
+        Logger logger) throws Exception {
         if (runContext.render(this.resume).as(Boolean.class).orElseThrow()) {
             // Try to locate an existing pod for this taskrun and attempt
             // Safe cast: runContext.getVariables() returns Map<String, Object> where "taskrun" is always a Map
@@ -553,28 +564,31 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     /**
      * Maps output files from the pod's working directory to Kestra internal storage.
      *
-     * <p>This method is adapted from {@code FilesService.outputFiles()} to handle file paths
+     * <p>
+     * This method is adapted from {@code FilesService.outputFiles()} to handle file paths
      * containing special characters (spaces, unicode) that are URL-encoded during transfer
      * from Kubernetes pods. The {@code pathMap} parameter preserves the mapping between
      * sanitized paths (used internally) and original unsanitized paths (for user visibility).
      *
-     * <p><b>Why this exists:</b> When files are downloaded from Kubernetes pods via the exec API,
+     * <p>
+     * <b>Why this exists:</b> When files are downloaded from Kubernetes pods via the exec API,
      * paths containing spaces or special characters are URL-encoded. This method uses the pathMap
      * to restore original file names when storing files in Kestra, ensuring users see the correct
      * file names in task outputs.
      *
      * @param runContext execution context for storage access and template rendering
-     * @param outputs    list of glob patterns matching files to capture (supports wildcards like {@code *.txt})
-     * @param pathMap    mapping from sanitized (encoded) paths to original unsanitized relative paths
+     * @param outputs list of glob patterns matching files to capture (supports wildcards like {@code *.txt})
+     * @param pathMap mapping from sanitized (encoded) paths to original unsanitized relative paths
      * @return map of original file paths to their storage URIs in Kestra's internal storage
-     * @throws Exception             if file matching fails, storage upload fails, or pathMap is missing entries
+     * @throws Exception if file matching fails, storage upload fails, or pathMap is missing entries
      * @throws IllegalStateException if a file path has no corresponding entry in pathMap
      */
     public static Map<String, URI> outputFiles(RunContext runContext, List<String> outputs, Map<Path, Path> pathMap) throws Exception {
         List<String> renderedOutputs = outputs != null ? runContext.render(outputs) : null;
         List<Path> allFilesMatching = runContext.workingDir().findAllFilesMatching(renderedOutputs);
         var outputFiles = allFilesMatching.stream()
-            .map(throwFunction(path -> {
+            .map(throwFunction(path ->
+            {
                 Path unsanitizedRelative = pathMap.get(path);
                 if (unsanitizedRelative == null) {
                     throw new IllegalStateException("No unsanitized relative file path found for " + path);
@@ -597,7 +611,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         return IdUtils.from(path.toString()) + "-" + path.toFile().getName();
     }
 
-    private Pod createPod(RunContext runContext, KubernetesClient client, String namespace, Map<String, Object> additionalVars) throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException {
+    private Pod createPod(RunContext runContext, KubernetesClient client, String namespace, Map<String, Object> additionalVars)
+        throws java.io.IOException, io.kestra.core.exceptions.IllegalVariableEvaluationException {
         ObjectMeta metadata = InstanceService.fromMap(
             ObjectMeta.class,
             runContext,
@@ -624,10 +639,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
         return client.pods()
             .inNamespace(namespace)
-            .resource(new PodBuilder()
-                .withMetadata(metadata)
-                .withSpec(spec)
-                .build()
+            .resource(
+                new PodBuilder()
+                    .withMetadata(metadata)
+                    .withSpec(spec)
+                    .build()
             )
             .create();
     }
@@ -716,29 +732,35 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
     private static boolean isFailed(PodStatus podStatus) {
         return podStatus.getConditions().stream().anyMatch(podCondition -> Objects.equals(podCondition.getReason(), "PodFailed")) ||
-            podStatus.getContainerStatuses().stream().anyMatch(containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun"));
+            podStatus.getContainerStatuses().stream().anyMatch(
+                containerStatus -> containerStatus.getState().getTerminated() != null && Objects.equals(containerStatus.getState().getTerminated().getReason(), "ContainerCannotRun")
+            );
     }
 
     /**
      * Terminates the running pod immediately when the task is killed.
      *
-     * <p>This method is called by the Kestra framework when a task needs to be terminated,
+     * <p>
+     * This method is called by the Kestra framework when a task needs to be terminated,
      * typically due to:
      * <ul>
-     *   <li>Task-level timeout configured in the flow</li>
-     *   <li>Manual task cancellation by a user</li>
-     *   <li>Execution cancellation</li>
+     * <li>Task-level timeout configured in the flow</li>
+     * <li>Manual task cancellation by a user</li>
+     * <li>Execution cancellation</li>
      * </ul>
      *
-     * <p><b>Thread Safety:</b> This method uses {@link AtomicBoolean#compareAndSet(boolean, boolean)}
+     * <p>
+     * <b>Thread Safety:</b> This method uses {@link AtomicBoolean#compareAndSet(boolean, boolean)}
      * to ensure the pod is deleted exactly once, even if kill() is called multiple times or
      * concurrently from different threads.
      *
-     * <p><b>Grace Period:</b> The pod is deleted with a grace period of 0 seconds, which forces
+     * <p>
+     * <b>Grace Period:</b> The pod is deleted with a grace period of 0 seconds, which forces
      * immediate termination. This is intentional for kill operations to stop the pod as quickly
      * as possible without waiting for graceful shutdown.
      *
-     * <p><b>Error Handling:</b> If pod deletion fails (e.g., pod already deleted, API error),
+     * <p>
+     * <b>Error Handling:</b> If pod deletion fails (e.g., pod already deleted, API error),
      * the error is logged but not thrown, allowing the kill operation to complete without
      * disrupting the task cancellation process.
      *

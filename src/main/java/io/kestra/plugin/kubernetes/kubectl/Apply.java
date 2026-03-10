@@ -1,6 +1,11 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.slf4j.Logger;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.property.Property;
@@ -10,16 +15,12 @@ import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.services.ResourceWaitService;
+
+import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.slf4j.Logger;
-
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 
 @SuperBuilder
 @ToString
@@ -42,7 +43,7 @@ import java.util.Map;
                       masterUrl: "{{ secret('K8S_MASTER_URL') }}"
                       oauthToken: "{{ secret('K8S_TOKEN') }}"
                     namespace: default
-                    spec: |- 
+                    spec: |-
                       apiVersion: apps/v1
                       kind: Deployment
                       metadata:

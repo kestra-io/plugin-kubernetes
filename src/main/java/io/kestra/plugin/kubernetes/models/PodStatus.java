@@ -1,14 +1,14 @@
 package io.kestra.plugin.kubernetes.models;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+
 import io.fabric8.kubernetes.api.model.ContainerStatus;
 import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.PodIP;
 import lombok.Builder;
 import lombok.Getter;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
 
 @Builder
 @Getter

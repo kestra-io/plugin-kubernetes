@@ -1,10 +1,5 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
-
 import java.time.Duration;
 import java.util.List;
 
@@ -13,11 +8,14 @@ import org.junit.jupiter.api.Test;
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContextFactory;
+
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 
 @KestraTest
 @Slf4j
@@ -33,31 +31,33 @@ class ApplyTest {
             .id(Apply.class.getSimpleName())
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
-            .spec(Property.ofValue(
-                """
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: my-deployment
-                      labels:
-                        app: myapp
-                    spec:
-                      replicas: 3
-                      selector:
-                        matchLabels:
-                          app: myapp
-                      template:
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: apps/v1
+                        kind: Deployment
                         metadata:
+                          name: my-deployment
                           labels:
                             app: myapp
                         spec:
-                          containers:
-                          - name: mycontainer
-                            image: nginx:latest
-                            ports:
-                            - containerPort: 80
-                    """
-            ))
+                          replicas: 3
+                          selector:
+                            matchLabels:
+                              app: myapp
+                          template:
+                            metadata:
+                              labels:
+                                app: myapp
+                            spec:
+                              containers:
+                              - name: mycontainer
+                                image: nginx:latest
+                                ports:
+                                - containerPort: 80
+                        """
+                )
+            )
             .build();
 
         var runOutput = task.run(runContext);
@@ -78,25 +78,29 @@ class ApplyTest {
             .id(Apply.class.getSimpleName())
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
-            .waitUntilReady(Property.ofValue(Duration.ZERO))  // Don't wait
-            .spec(Property.ofValue(String.format(
-                """
-                    apiVersion: v1
-                    kind: Pod
-                    metadata:
-                      name: %s
-                    spec:
-                      containers:
-                      - name: nginx
-                        image: nginx:latest
-                        readinessProbe:
-                          httpGet:
-                            path: /
-                            port: 80
-                          initialDelaySeconds: 10
-                          periodSeconds: 5
-                    """, podName)
-            ))
+            .waitUntilReady(Property.ofValue(Duration.ZERO)) // Don't wait
+            .spec(
+                Property.ofValue(
+                    String.format(
+                        """
+                            apiVersion: v1
+                            kind: Pod
+                            metadata:
+                              name: %s
+                            spec:
+                              containers:
+                              - name: nginx
+                                image: nginx:latest
+                                readinessProbe:
+                                  httpGet:
+                                    path: /
+                                    port: 80
+                                  initialDelaySeconds: 10
+                                  periodSeconds: 5
+                            """, podName
+                    )
+                )
+            )
             .build();
 
         var runOutput = task.run(runContext);
@@ -144,26 +148,30 @@ class ApplyTest {
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
             .waitUntilReady(Property.ofValue(Duration.ofMinutes(2)))
-            .spec(Property.ofValue(String.format(
-                """
-                    apiVersion: v1
-                    kind: Pod
-                    metadata:
-                      name: %s
-                    spec:
-                      containers:
-                      - name: nginx
-                        image: nginx:latest
-                        ports:
-                        - containerPort: 80
-                        readinessProbe:
-                          httpGet:
-                            path: /
-                            port: 80
-                          initialDelaySeconds: 5
-                          periodSeconds: 3
-                    """, podName)
-            ))
+            .spec(
+                Property.ofValue(
+                    String.format(
+                        """
+                            apiVersion: v1
+                            kind: Pod
+                            metadata:
+                              name: %s
+                            spec:
+                              containers:
+                              - name: nginx
+                                image: nginx:latest
+                                ports:
+                                - containerPort: 80
+                                readinessProbe:
+                                  httpGet:
+                                    path: /
+                                    port: 80
+                                  initialDelaySeconds: 5
+                                  periodSeconds: 3
+                            """, podName
+                    )
+                )
+            )
             .build();
 
         // This should wait for the Pod to become Ready before returning

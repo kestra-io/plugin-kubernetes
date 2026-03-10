@@ -1,20 +1,22 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import io.fabric8.kubernetes.client.KubernetesClient;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.utils.Await;
 import io.kestra.plugin.kubernetes.models.PatchStrategy;
 import io.kestra.plugin.kubernetes.services.PodService;
-import jakarta.inject.Inject;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
 
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -58,7 +60,8 @@ class PatchTest {
         resourcesToCleanup.add(new ResourceToCleanup(type, name, namespace));
     }
 
-    private record ResourceToCleanup(String type, String name, String namespace) {}
+    private record ResourceToCleanup(String type, String name, String namespace) {
+    }
 
     /**
      * Test strategic merge patch (default strategy).
@@ -75,29 +78,31 @@ class PatchTest {
             .id("create-deployment")
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
-            .spec(Property.ofValue(
-                String.format("""
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: %s
-                      labels:
-                        app: patch-test
-                    spec:
-                      replicas: 1
-                      selector:
-                        matchLabels:
-                          app: patch-test
-                      template:
+            .spec(
+                Property.ofValue(
+                    String.format("""
+                        apiVersion: apps/v1
+                        kind: Deployment
                         metadata:
+                          name: %s
                           labels:
                             app: patch-test
                         spec:
-                          containers:
-                          - name: nginx
-                            image: nginx:1.19
-                    """, deploymentName)
-            ))
+                          replicas: 1
+                          selector:
+                            matchLabels:
+                              app: patch-test
+                          template:
+                            metadata:
+                              labels:
+                                app: patch-test
+                            spec:
+                              containers:
+                              - name: nginx
+                                image: nginx:1.19
+                        """, deploymentName)
+                )
+            )
             .build();
 
         applyTask.run(runContext);
@@ -105,7 +110,8 @@ class PatchTest {
 
         // Wait for deployment to be created
         try (KubernetesClient client = PodService.client(runContext, null)) {
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var deployment = client.apps().deployments()
                     .inNamespace("default")
                     .withName(deploymentName)
@@ -123,29 +129,31 @@ class PatchTest {
             .resourceName(Property.ofValue(deploymentName))
             .apiGroup(Property.ofValue("apps"))
             .patchStrategy(Property.ofValue(PatchStrategy.STRATEGIC_MERGE))
-            .patch(Property.ofValue(
-                """
-                    {
-                      "spec": {
-                        "template": {
+            .patch(
+                Property.ofValue(
+                    """
+                        {
                           "spec": {
-                            "containers": [
-                              {
-                                "name": "nginx",
-                                "resources": {
-                                  "limits": {
-                                    "memory": "256Mi",
-                                    "cpu": "200m"
+                            "template": {
+                              "spec": {
+                                "containers": [
+                                  {
+                                    "name": "nginx",
+                                    "resources": {
+                                      "limits": {
+                                        "memory": "256Mi",
+                                        "cpu": "200m"
+                                      }
+                                    }
                                   }
-                                }
+                                ]
                               }
-                            ]
+                            }
                           }
                         }
-                      }
-                    }
-                    """
-            ))
+                        """
+                )
+            )
             .build();
 
         var output = patchTask.run(runContext);
@@ -170,29 +178,31 @@ class PatchTest {
             .id("create-deployment")
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
-            .spec(Property.ofValue(
-                String.format("""
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: %s
-                      labels:
-                        app: json-patch
-                    spec:
-                      replicas: 2
-                      selector:
-                        matchLabels:
-                          app: json-patch
-                      template:
+            .spec(
+                Property.ofValue(
+                    String.format("""
+                        apiVersion: apps/v1
+                        kind: Deployment
                         metadata:
+                          name: %s
                           labels:
                             app: json-patch
                         spec:
-                          containers:
-                          - name: nginx
-                            image: nginx:latest
-                    """, deploymentName)
-            ))
+                          replicas: 2
+                          selector:
+                            matchLabels:
+                              app: json-patch
+                          template:
+                            metadata:
+                              labels:
+                                app: json-patch
+                            spec:
+                              containers:
+                              - name: nginx
+                                image: nginx:latest
+                        """, deploymentName)
+                )
+            )
             .build();
 
         applyTask.run(runContext);
@@ -200,7 +210,8 @@ class PatchTest {
 
         // Wait for deployment to be created
         try (KubernetesClient client = PodService.client(runContext, null)) {
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var deployment = client.apps().deployments()
                     .inNamespace("default")
                     .withName(deploymentName)
@@ -218,13 +229,15 @@ class PatchTest {
             .resourceName(Property.ofValue(deploymentName))
             .apiGroup(Property.ofValue("apps"))
             .patchStrategy(Property.ofValue(PatchStrategy.JSON_PATCH))
-            .patch(Property.ofValue(
-                """
-                    [
-                      {"op": "replace", "path": "/spec/replicas", "value": 5}
-                    ]
+            .patch(
+                Property.ofValue(
                     """
-            ))
+                        [
+                          {"op": "replace", "path": "/spec/replicas", "value": 5}
+                        ]
+                        """
+                )
+            )
             .build();
 
         var output = patchTask.run(runContext);
@@ -248,32 +261,34 @@ class PatchTest {
             .id("create-deployment")
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
-            .spec(Property.ofValue(
-                String.format("""
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: %s
-                      labels:
-                        app: json-merge
-                      annotations:
-                        deprecated: "true"
-                        test-annotation: "value"
-                    spec:
-                      replicas: 1
-                      selector:
-                        matchLabels:
-                          app: json-merge
-                      template:
+            .spec(
+                Property.ofValue(
+                    String.format("""
+                        apiVersion: apps/v1
+                        kind: Deployment
                         metadata:
+                          name: %s
                           labels:
                             app: json-merge
+                          annotations:
+                            deprecated: "true"
+                            test-annotation: "value"
                         spec:
-                          containers:
-                          - name: nginx
-                            image: nginx:latest
-                    """, deploymentName)
-            ))
+                          replicas: 1
+                          selector:
+                            matchLabels:
+                              app: json-merge
+                          template:
+                            metadata:
+                              labels:
+                                app: json-merge
+                            spec:
+                              containers:
+                              - name: nginx
+                                image: nginx:latest
+                        """, deploymentName)
+                )
+            )
             .build();
 
         applyTask.run(runContext);
@@ -281,7 +296,8 @@ class PatchTest {
 
         // Wait for deployment to be created
         try (KubernetesClient client = PodService.client(runContext, null)) {
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var deployment = client.apps().deployments()
                     .inNamespace("default")
                     .withName(deploymentName)
@@ -299,17 +315,19 @@ class PatchTest {
             .resourceName(Property.ofValue(deploymentName))
             .apiGroup(Property.ofValue("apps"))
             .patchStrategy(Property.ofValue(PatchStrategy.JSON_MERGE))
-            .patch(Property.ofValue(
-                """
-                    {
-                      "metadata": {
-                        "annotations": {
-                          "deprecated": null
-                        }
-                      }
-                    }
+            .patch(
+                Property.ofValue(
                     """
-            ))
+                        {
+                          "metadata": {
+                            "annotations": {
+                              "deprecated": null
+                            }
+                          }
+                        }
+                        """
+                )
+            )
             .build();
 
         var output = patchTask.run(runContext);
@@ -333,22 +351,24 @@ class PatchTest {
             .id("create-pod")
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
-            .spec(Property.ofValue(
-                String.format("""
-                    apiVersion: v1
-                    kind: Pod
-                    metadata:
-                      name: %s
-                      labels:
-                        app: patch-wait-test
-                    spec:
-                      containers:
-                      - name: nginx
-                        image: nginx:latest
-                        ports:
-                        - containerPort: 80
-                    """, podName)
-            ))
+            .spec(
+                Property.ofValue(
+                    String.format("""
+                        apiVersion: v1
+                        kind: Pod
+                        metadata:
+                          name: %s
+                          labels:
+                            app: patch-wait-test
+                        spec:
+                          containers:
+                          - name: nginx
+                            image: nginx:latest
+                            ports:
+                            - containerPort: 80
+                        """, podName)
+                )
+            )
             .build();
 
         applyTask.run(runContext);
@@ -356,7 +376,8 @@ class PatchTest {
 
         // Wait for pod to be ready before patching
         try (KubernetesClient client = PodService.client(runContext, null)) {
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var pod = client.pods()
                     .inNamespace("default")
                     .withName(podName)
@@ -380,17 +401,19 @@ class PatchTest {
             .namespace(Property.ofValue("default"))
             .resourceType(Property.ofValue("pod"))
             .resourceName(Property.ofValue(podName))
-            .patch(Property.ofValue(
-                """
-                    {
-                      "metadata": {
-                        "labels": {
-                          "patched": "true"
-                        }
-                      }
-                    }
+            .patch(
+                Property.ofValue(
                     """
-            ))
+                        {
+                          "metadata": {
+                            "labels": {
+                              "patched": "true"
+                            }
+                          }
+                        }
+                        """
+                )
+            )
             .waitUntilReady(Property.ofValue(Duration.ofSeconds(30)))
             .build();
 
@@ -441,29 +464,31 @@ class PatchTest {
             .id("create-deployment")
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
-            .spec(Property.ofValue(
-                String.format("""
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: %s
-                      labels:
-                        app: replica-test
-                    spec:
-                      replicas: 1
-                      selector:
-                        matchLabels:
-                          app: replica-test
-                      template:
+            .spec(
+                Property.ofValue(
+                    String.format("""
+                        apiVersion: apps/v1
+                        kind: Deployment
                         metadata:
+                          name: %s
                           labels:
                             app: replica-test
                         spec:
-                          containers:
-                          - name: nginx
-                            image: nginx:latest
-                    """, deploymentName)
-            ))
+                          replicas: 1
+                          selector:
+                            matchLabels:
+                              app: replica-test
+                          template:
+                            metadata:
+                              labels:
+                                app: replica-test
+                            spec:
+                              containers:
+                              - name: nginx
+                                image: nginx:latest
+                        """, deploymentName)
+                )
+            )
             .build();
 
         applyTask.run(runContext);
@@ -471,7 +496,8 @@ class PatchTest {
 
         // Wait for deployment to be created
         try (KubernetesClient client = PodService.client(runContext, null)) {
-            Await.until(() -> {
+            Await.until(() ->
+            {
                 var deployment = client.apps().deployments()
                     .inNamespace("default")
                     .withName(deploymentName)
@@ -489,13 +515,15 @@ class PatchTest {
             .resourceName(Property.ofValue(deploymentName))
             .apiGroup(Property.ofValue("apps"))
             .patchStrategy(Property.ofValue(PatchStrategy.JSON_PATCH))
-            .patch(Property.ofValue(
-                """
-                    [
-                      {"op": "replace", "path": "/spec/replicas", "value": 3}
-                    ]
+            .patch(
+                Property.ofValue(
                     """
-            ))
+                        [
+                          {"op": "replace", "path": "/spec/replicas", "value": 3}
+                        ]
+                        """
+                )
+            )
             .build();
 
         var output = patchTask.run(runContext);
@@ -530,15 +558,17 @@ class PatchTest {
             .namespace(Property.ofValue("default"))
             .resourceType(Property.ofValue("deployment"))
             .resourceName(Property.ofValue("does-not-exist"))
-            .patch(Property.ofValue(
-                """
-                    {
-                      "spec": {
-                        "replicas": 5
-                      }
-                    }
+            .patch(
+                Property.ofValue(
                     """
-            ))
+                        {
+                          "spec": {
+                            "replicas": 5
+                          }
+                        }
+                        """
+                )
+            )
             .build();
 
         // Should throw an exception
@@ -546,11 +576,13 @@ class PatchTest {
             patchTask.run(runContext);
             throw new AssertionError("Expected exception for non-existent resource");
         } catch (Exception e) {
-            assertThat(e.getMessage(), anyOf(
-                containsString("not found"),
-                containsString("Not Found"),
-                containsString("404")
-            ));
+            assertThat(
+                e.getMessage(), anyOf(
+                    containsString("not found"),
+                    containsString("Not Found"),
+                    containsString("404")
+                )
+            );
         }
     }
 
@@ -570,20 +602,22 @@ class PatchTest {
             .id("create-broken-pod")
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
-            .spec(Property.ofValue(
-                String.format("""
-                    apiVersion: v1
-                    kind: Pod
-                    metadata:
-                      name: %s
-                      labels:
-                        app: refresh-test
-                    spec:
-                      containers:
-                      - name: app
-                        image: nonexistent-image-that-will-never-exist:v999
-                    """, podName)
-            ))
+            .spec(
+                Property.ofValue(
+                    String.format("""
+                        apiVersion: v1
+                        kind: Pod
+                        metadata:
+                          name: %s
+                          labels:
+                            app: refresh-test
+                        spec:
+                          containers:
+                          - name: app
+                            image: nonexistent-image-that-will-never-exist:v999
+                        """, podName)
+                )
+            )
             .build();
 
         applyTask.run(runContext);
@@ -621,20 +655,22 @@ class PatchTest {
             .namespace(Property.ofValue("default"))
             .resourceType(Property.ofValue("pod"))
             .resourceName(Property.ofValue(podName))
-            .patch(Property.ofValue(
-                """
-                {
-                  "spec": {
-                    "containers": [
-                      {
-                        "name": "app",
-                        "image": "nginx:latest"
-                      }
-                    ]
-                  }
-                }
-                """
-            ))
+            .patch(
+                Property.ofValue(
+                    """
+                        {
+                          "spec": {
+                            "containers": [
+                              {
+                                "name": "app",
+                                "image": "nginx:latest"
+                              }
+                            ]
+                          }
+                        }
+                        """
+                )
+            )
             .waitUntilReady(Property.ofValue(Duration.ofMinutes(1)))
             .build();
 

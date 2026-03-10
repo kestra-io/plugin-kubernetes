@@ -1,14 +1,16 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContextFactory;
-import jakarta.inject.Inject;
-import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
+import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -30,31 +32,33 @@ public class DeleteTest {
             .id(Apply.class.getSimpleName())
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .spec(Property.ofValue(
-                """
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: my-deployment
-                      labels:
-                        app: myapp
-                    spec:
-                      replicas: 3
-                      selector:
-                        matchLabels:
-                          app: myapp
-                      template:
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: apps/v1
+                        kind: Deployment
                         metadata:
+                          name: my-deployment
                           labels:
                             app: myapp
                         spec:
-                          containers:
-                          - name: mycontainer
-                            image: nginx:latest
-                            ports:
-                            - containerPort: 80
-                    """
-            ))
+                          replicas: 3
+                          selector:
+                            matchLabels:
+                              app: myapp
+                          template:
+                            metadata:
+                              labels:
+                                app: myapp
+                            spec:
+                              containers:
+                              - name: mycontainer
+                                image: nginx:latest
+                                ports:
+                                - containerPort: 80
+                        """
+                )
+            )
             .build();
 
         applyTask.run(runContext);
@@ -71,7 +75,6 @@ public class DeleteTest {
             .apiVersion(Property.ofValue("v1"))
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build();
-
 
         // Then
         var getTaskOutput = getTask.run(runContext);
@@ -111,34 +114,36 @@ public class DeleteTest {
                 .id(Apply.class.getSimpleName())
                 .type(Apply.class.getName())
                 .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-                .spec(Property.ofValue(
-                    String.format(
-                        """
-                            apiVersion: apps/v1
-                            kind: Deployment
-                            metadata:
-                              name: %s
-                              labels:
-                                app: myapp
-                            spec:
-                              replicas: 3
-                              selector:
-                                matchLabels:
-                                  app: myapp
-                              template:
+                .spec(
+                    Property.ofValue(
+                        String.format(
+                            """
+                                apiVersion: apps/v1
+                                kind: Deployment
                                 metadata:
+                                  name: %s
                                   labels:
                                     app: myapp
                                 spec:
-                                  containers:
-                                  - name: mycontainer
-                                    image: nginx:latest
-                                    ports:
-                                    - containerPort: 80
-                            """,
-                        deploymentName
+                                  replicas: 3
+                                  selector:
+                                    matchLabels:
+                                      app: myapp
+                                  template:
+                                    metadata:
+                                      labels:
+                                        app: myapp
+                                    spec:
+                                      containers:
+                                      - name: mycontainer
+                                        image: nginx:latest
+                                        ports:
+                                        - containerPort: 80
+                                """,
+                            deploymentName
+                        )
                     )
-                ))
+                )
                 .build();
 
             applyTask.run(runContext);
@@ -155,7 +160,6 @@ public class DeleteTest {
             .apiVersion(Property.ofValue("v1"))
             .fetchType(Property.ofValue(FetchType.FETCH))
             .build();
-
 
         // Then
         var getTaskOutput = getTask.run(runContext);

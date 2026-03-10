@@ -1,6 +1,8 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import io.fabric8.kubernetes.client.KubernetesClient;
+import java.time.Duration;
+import java.util.List;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.property.Property;
@@ -9,6 +11,8 @@ import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.services.PodService;
+
+import io.fabric8.kubernetes.client.KubernetesClient;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.EqualsAndHashCode;
@@ -16,9 +20,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
-
-import java.time.Duration;
-import java.util.List;
 
 @SuperBuilder
 @ToString
@@ -80,8 +81,10 @@ public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
                 logger.warn("waitUntilReady parameter is not yet supported by Restart task and will be ignored. The task will return immediately after triggering the restart.");
             }
 
-            logger.info("Triggering rolling restart for '{}' resources '{}' in namespace '{}'",
-                rResourceType, rResourcesNames, rNamespace);
+            logger.info(
+                "Triggering rolling restart for '{}' resources '{}' in namespace '{}'",
+                rResourceType, rResourcesNames, rNamespace
+            );
 
             for (String name : rResourcesNames) {
                 logger.info("Restarting {} '{}'", rResourceType, name);

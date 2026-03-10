@@ -1,8 +1,7 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import io.fabric8.kubernetes.client.dsl.base.PatchContext;
-import io.fabric8.kubernetes.client.dsl.base.PatchType;
-import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
+import java.time.Duration;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.property.Property;
@@ -14,12 +13,14 @@ import io.kestra.plugin.kubernetes.models.PatchStrategy;
 import io.kestra.plugin.kubernetes.models.ResourceStatus;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.services.ResourceWaitService;
+
+import io.fabric8.kubernetes.client.dsl.base.PatchContext;
+import io.fabric8.kubernetes.client.dsl.base.PatchType;
+import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-
-import java.time.Duration;
 
 @SuperBuilder
 @ToString
@@ -282,8 +283,10 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
                 .withName(rResourceName);
 
             // Apply patch based on strategy
-            runContext.logger().info("Patching {} '{}' in namespace '{}' using {} strategy",
-                rResourceType, rResourceName, rNamespace, rStrategy);
+            runContext.logger().info(
+                "Patching {} '{}' in namespace '{}' using {} strategy",
+                rResourceType, rResourceName, rNamespace, rStrategy
+            );
             runContext.logger().debug("Patch content: {}", rPatchContent);
 
             var patchedResource = switch (rStrategy) {
@@ -309,8 +312,10 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
 
             // Optionally wait for resource to become ready
             if (!rWaitUntilReady.isZero()) {
-                runContext.logger().info("Waiting for resource '{}' to become ready (timeout: {})...",
-                    rResourceName, rWaitUntilReady);
+                runContext.logger().info(
+                    "Waiting for resource '{}' to become ready (timeout: {})...",
+                    rResourceName, rWaitUntilReady
+                );
                 patchedResource = ResourceWaitService.waitForReady(
                     client,
                     resourceContext,

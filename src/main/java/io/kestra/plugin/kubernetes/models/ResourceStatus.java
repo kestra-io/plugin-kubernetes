@@ -1,11 +1,11 @@
 package io.kestra.plugin.kubernetes.models;
 
+import java.util.Map;
+
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
-
-import java.util.Map;
 
 @Builder
 @Getter

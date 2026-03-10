@@ -16,7 +16,7 @@ abstract public class ClientService {
      *
      * @return {@link KubernetesClient} configured from the cluster configuration
      */
-    public static KubernetesClient of()  {
+    public static KubernetesClient of() {
         return new KubernetesClientBuilder().build();
     }
 
@@ -26,7 +26,7 @@ abstract public class ClientService {
      * @param config The {@link Config} to configure the builder from.
      * @return {@link DefaultKubernetesClient} configured from the provided {@link Config}
      */
-    public static KubernetesClient of(Config config)  {
+    public static KubernetesClient of(Config config) {
         return new KubernetesClientBuilder().withConfig(config).build();
     }
 }

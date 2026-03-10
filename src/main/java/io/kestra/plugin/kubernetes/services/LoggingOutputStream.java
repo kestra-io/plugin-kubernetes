@@ -1,7 +1,5 @@
 package io.kestra.plugin.kubernetes.services;
 
-import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Instant;
@@ -11,6 +9,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+
+import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
 
 /**
  * Output stream for Kubernetes pod logs with hash-based deduplication.
@@ -122,7 +122,7 @@ public class LoggingOutputStream extends java.io.OutputStream {
         if (lastEmissionNanos > 0 && timeSinceLastEmission < MIN_DELAY_BETWEEN_EMISSIONS_NANOS) {
             long sleepNanos = MIN_DELAY_BETWEEN_EMISSIONS_NANOS - timeSinceLastEmission;
             try {
-                Thread.sleep(sleepNanos / 1_000_000, (int)(sleepNanos % 1_000_000));
+                Thread.sleep(sleepNanos / 1_000_000, (int) (sleepNanos % 1_000_000));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

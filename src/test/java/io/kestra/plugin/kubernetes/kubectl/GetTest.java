@@ -1,10 +1,5 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
-
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,8 +12,14 @@ import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.plugin.kubernetes.services.ClientService;
+
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
 
 @KestraTest
 @Slf4j
@@ -41,7 +42,8 @@ public class GetTest {
             .id(Apply.class.getSimpleName())
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .spec(Property.ofValue(
+            .spec(
+                Property.ofValue(
                     String.format(
                         """
                             apiVersion: apps/v1
@@ -87,7 +89,6 @@ public class GetTest {
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build();
 
-
         // Then
         var output = getTask.run(runContext);
         assertThat(output.getMetadataItem().getName(), is(expectedDeploymentName));
@@ -119,34 +120,36 @@ public class GetTest {
                 .id(Apply.class.getSimpleName())
                 .type(Apply.class.getName())
                 .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-                .spec(Property.ofValue(
-                    String.format(
-                        """
-                            apiVersion: apps/v1
-                            kind: Deployment
-                            metadata:
-                              name: %s
-                              labels:
-                                app: myapp
-                            spec:
-                              replicas: 3
-                              selector:
-                                matchLabels:
-                                  app: myapp
-                              template:
+                .spec(
+                    Property.ofValue(
+                        String.format(
+                            """
+                                apiVersion: apps/v1
+                                kind: Deployment
                                 metadata:
+                                  name: %s
                                   labels:
                                     app: myapp
                                 spec:
-                                  containers:
-                                  - name: mycontainer
-                                    image: nginx:latest
-                                    ports:
-                                    - containerPort: 80
-                            """,
-                        deploymentName
+                                  replicas: 3
+                                  selector:
+                                    matchLabels:
+                                      app: myapp
+                                  template:
+                                    metadata:
+                                      labels:
+                                        app: myapp
+                                    spec:
+                                      containers:
+                                      - name: mycontainer
+                                        image: nginx:latest
+                                        ports:
+                                        - containerPort: 80
+                                """,
+                            deploymentName
+                        )
                     )
-                ))
+                )
                 .build();
 
             applyTask.run(runContext);
@@ -163,7 +166,6 @@ public class GetTest {
             .apiVersion(Property.ofValue("v1"))
             .fetchType(Property.ofValue(FetchType.FETCH))
             .build();
-
 
         // Then
         var output = getTask.run(runContext);
@@ -206,43 +208,43 @@ public class GetTest {
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .spec(Property.ofValue(String.format("""
-                    apiVersion: apiextensions.k8s.io/v1
-                    kind: CustomResourceDefinition
-                    metadata:
-                      name: shirts.stable.example.com
-                    spec:
-                      group: %s
-                      scope: Namespaced
-                      names:
-                        plural: shirts
-                        singular: shirt
-                        kind: %s
-                      versions:
-                      - name: %s
-                        served: true
-                        storage: true
-                        schema:
-                          openAPIV3Schema:
+                apiVersion: apiextensions.k8s.io/v1
+                kind: CustomResourceDefinition
+                metadata:
+                  name: shirts.stable.example.com
+                spec:
+                  group: %s
+                  scope: Namespaced
+                  names:
+                    plural: shirts
+                    singular: shirt
+                    kind: %s
+                  versions:
+                  - name: %s
+                    served: true
+                    storage: true
+                    schema:
+                      openAPIV3Schema:
+                        type: object
+                        properties:
+                          spec:
                             type: object
                             properties:
-                              spec:
-                                type: object
-                                properties:
-                                  color: { type: string }
-                                  size: { type: string }
-                        additionalPrinterColumns:
-                          - jsonPath: .spec.color
-                            name: Color
-                            type: string
-                          - jsonPath: .spec.size
-                            name: Size
-                            type: string
-                    """, apiGroup, shirtKind, apiVersion)))
+                              color: { type: string }
+                              size: { type: string }
+                    additionalPrinterColumns:
+                      - jsonPath: .spec.color
+                        name: Color
+                        type: string
+                      - jsonPath: .spec.size
+                        name: Size
+                        type: string
+                """, apiGroup, shirtKind, apiVersion)))
             .build();
 
         applyCrd.run(runContext);
 
-        try(var client = ClientService.of()) {
+        try (var client = ClientService.of()) {
             client.apiextensions().v1().customResourceDefinitions()
                 .withName("shirts.stable.example.com")
                 .waitUntilCondition(
@@ -250,8 +252,9 @@ public class GetTest {
                         && crd.getStatus() != null
                         && crd.getStatus().getConditions() != null
                         && crd.getStatus().getConditions().stream()
-                        .anyMatch(c -> "Established".equals(c.getType()) && "True".equals(c.getStatus())),
-                    30, java.util.concurrent.TimeUnit.SECONDS);
+                            .anyMatch(c -> "Established".equals(c.getType()) && "True".equals(c.getStatus())),
+                    30, java.util.concurrent.TimeUnit.SECONDS
+                );
         }
 
         var applyCr = Apply.builder()
@@ -259,19 +262,18 @@ public class GetTest {
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
             .spec(Property.ofValue(String.format("""
-                    apiVersion: "%s/%s"
-                    kind: Shirt
-                    metadata:
-                      name: %s
-                      namespace: default
-                    spec:
-                      color: blue
-                      size: L
-                    """, apiGroup, apiVersion, crdName)))
+                apiVersion: "%s/%s"
+                kind: Shirt
+                metadata:
+                  name: %s
+                  namespace: default
+                spec:
+                  color: blue
+                  size: L
+                """, apiGroup, apiVersion, crdName)))
             .build();
 
         applyCr.run(runContext);
-
 
         // When
         var getTask = Get.builder()
@@ -283,7 +285,6 @@ public class GetTest {
             .apiVersion(Property.ofValue(apiVersion))
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build();
-
 
         // Then
         var output = getTask.run(runContext);
@@ -307,24 +308,28 @@ public class GetTest {
             .id("apply-pod")
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .spec(Property.ofValue(String.format(
-                """
-                    apiVersion: v1
-                    kind: Pod
-                    metadata:
-                      name: %s
-                    spec:
-                      containers:
-                      - name: nginx
-                        image: nginx:latest
-                        readinessProbe:
-                          httpGet:
-                            path: /
-                            port: 80
-                          initialDelaySeconds: 10
-                          periodSeconds: 5
-                    """, podName
-            )))
+            .spec(
+                Property.ofValue(
+                    String.format(
+                        """
+                            apiVersion: v1
+                            kind: Pod
+                            metadata:
+                              name: %s
+                            spec:
+                              containers:
+                              - name: nginx
+                                image: nginx:latest
+                                readinessProbe:
+                                  httpGet:
+                                    path: /
+                                    port: 80
+                                  initialDelaySeconds: 10
+                                  periodSeconds: 5
+                            """, podName
+                    )
+                )
+            )
             .build();
 
         applyTask.run(runContext);
@@ -338,7 +343,7 @@ public class GetTest {
             .resourceType(Property.ofValue("pods"))
             .resourcesNames(Property.ofValue(List.of(podName)))
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
-            .waitUntilReady(Property.ofValue(Duration.ZERO))  // Don't wait
+            .waitUntilReady(Property.ofValue(Duration.ZERO)) // Don't wait
             .build();
 
         var output = getTask.run(runContext);
@@ -360,8 +365,10 @@ public class GetTest {
 
         // Either no Ready condition yet, or Ready=False
         if (readyCondition.isPresent()) {
-            assertThat("Ready condition should NOT be True in output",
-                readyCondition.get().get("status"), not(is("True")));
+            assertThat(
+                "Ready condition should NOT be True in output",
+                readyCondition.get().get("status"), not(is("True"))
+            );
         }
 
         log.info("Verified output for pod {} shows NOT ready state (as expected with PT0S)", podName);
@@ -379,26 +386,30 @@ public class GetTest {
             .id("apply-pod")
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .spec(Property.ofValue(String.format(
-                """
-                    apiVersion: v1
-                    kind: Pod
-                    metadata:
-                      name: %s
-                    spec:
-                      containers:
-                      - name: nginx
-                        image: nginx:latest
-                        ports:
-                        - containerPort: 80
-                        readinessProbe:
-                          httpGet:
-                            path: /
-                            port: 80
-                          initialDelaySeconds: 5
-                          periodSeconds: 3
-                    """, podName
-            )))
+            .spec(
+                Property.ofValue(
+                    String.format(
+                        """
+                            apiVersion: v1
+                            kind: Pod
+                            metadata:
+                              name: %s
+                            spec:
+                              containers:
+                              - name: nginx
+                                image: nginx:latest
+                                ports:
+                                - containerPort: 80
+                                readinessProbe:
+                                  httpGet:
+                                    path: /
+                                    port: 80
+                                  initialDelaySeconds: 5
+                                  periodSeconds: 3
+                            """, podName
+                    )
+                )
+            )
             .build();
 
         applyTask.run(runContext);

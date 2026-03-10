@@ -1,11 +1,5 @@
 package io.kestra.plugin.kubernetes.services;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.time.Clock;
@@ -18,6 +12,10 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+
+import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
+import io.kestra.core.runners.RunContext;
 
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
@@ -32,22 +30,25 @@ import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.fabric8.kubernetes.client.dsl.TimestampBytesLimitTerminateTimeTailPrettyLoggable;
-import io.kestra.core.junit.annotations.KestraTest;
-import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.utils.ThreadMainFactoryBuilder;
-import jakarta.inject.Inject;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Verifies that {@link PodLogService#close()} cleanly stops the internal listener thread.
  *
- * <p>Background (bug this test guards against):
+ * <p>
+ * Background (bug this test guards against):
  * Historically, {@code close()} used {@code shutdownNow()} on the scheduler while a fixed-rate task
  * was often waiting for its next run. In that situation the underlying {@code ScheduledFuture}
  * could remain non-terminal (neither done nor cancelled), and the listener thread would block
  * forever on {@code future.get()}, preventing shutdown.
  *
- * <p>Expected behavior after the fix:
+ * <p>
+ * Expected behavior after the fix:
  * {@code close()} transitions the scheduled future to a terminal state (or otherwise ensures the
  * listener won't block), so the listener thread terminates shortly after {@code close()}.
  */
@@ -170,7 +171,7 @@ class PodLogServiceTest {
             svc.close();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-        }catch (IOException e) {
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
 
@@ -215,7 +216,8 @@ class PodLogServiceTest {
     /**
      * Verifies that {@link PodLogService} handles pod deletion gracefully.
      *
-     * <p>When watchLog() throws 404 (pod deleted), the service should catch the exception,
+     * <p>
+     * When watchLog() throws 404 (pod deleted), the service should catch the exception,
      * cancel the scheduled task gracefully, and terminate cleanly without ERROR logs.
      */
     @Test

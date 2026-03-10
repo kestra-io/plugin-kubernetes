@@ -1,23 +1,25 @@
 package io.kestra.plugin.kubernetes;
 
-import io.fabric8.kubernetes.client.dsl.ContainerResource;
-import io.fabric8.kubernetes.client.dsl.CopyOrReadable;
-import io.fabric8.kubernetes.client.dsl.PodResource;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.RunContextFactory;
-import io.kestra.plugin.kubernetes.services.PodService;
-import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
-import jakarta.inject.Inject;
-import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
-import org.slf4j.Logger;
-
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
+
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
+import org.slf4j.Logger;
+
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.RunContextFactory;
+import io.kestra.plugin.kubernetes.services.PodService;
+
+import io.fabric8.kubernetes.client.dsl.ContainerResource;
+import io.fabric8.kubernetes.client.dsl.CopyOrReadable;
+import io.fabric8.kubernetes.client.dsl.PodResource;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
 
 @MicronautTest
 class AbstractPodTest {
@@ -65,15 +67,15 @@ class AbstractPodTest {
 
             staticMock.when(() -> PodService.tempDir(runContext)).thenReturn(temp);
 
-            staticMock.when(() ->
-                PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
+            staticMock.when(
+                () -> PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
             ).then(inv -> null);
 
             staticMock.when(() -> PodService.withRetries(Mockito.any(), Mockito.anyString(), Mockito.any())).thenCallRealMethod();
 
             pod.uploadInputFiles(runContext, podResource, logger, inputFiles);
         }
-        
+
         Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/a.txt");
         Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/b.txt");
 

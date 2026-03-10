@@ -1,15 +1,16 @@
 package io.kestra.plugin.kubernetes.services;
 
-import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientException;
-import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
-import org.slf4j.Logger;
-
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+
+import org.slf4j.Logger;
+
+import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 
 /**
  * Service for waiting on Kubernetes resource conditions.
@@ -40,10 +41,11 @@ public abstract class ResourceWaitService {
         String namespace,
         String resourceName,
         Duration timeout,
-        Logger logger
-    ) {
-        logger.info("Waiting up to {} for resource '{}' in namespace '{}' to become ready",
-            timeout, resourceName, namespace);
+        Logger logger) {
+        logger.info(
+            "Waiting up to {} for resource '{}' in namespace '{}' to become ready",
+            timeout, resourceName, namespace
+        );
 
         var resourceClient = client.genericKubernetesResources(resourceContext)
             .inNamespace(namespace)
@@ -71,7 +73,7 @@ public abstract class ResourceWaitService {
                 } catch (KubernetesClientException retryException) {
                     throw new IllegalStateException(
                         "Failed to wait for resource '" + resourceName + "' in namespace '" + namespace +
-                        "' to become ready: " + retryException.getMessage(),
+                            "' to become ready: " + retryException.getMessage(),
                         retryException
                     );
                 }
@@ -86,7 +88,7 @@ public abstract class ResourceWaitService {
         if (readyResource == null || !isResourceReady(readyResource, logger)) {
             throw new IllegalStateException(
                 "Resource '" + resourceName + "' in namespace '" + namespace +
-                "' did not become ready within timeout " + timeout
+                    "' did not become ready within timeout " + timeout
             );
         }
 

@@ -1,13 +1,15 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContextFactory;
-import jakarta.inject.Inject;
-import org.junit.jupiter.api.Test;
 
-import java.util.List;
+import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -29,32 +31,34 @@ public class RestartTest {
             .id(Apply.class.getSimpleName())
             .type(Apply.class.getName())
             .namespace(Property.ofValue(DEFAULT_NAMESPACE))
-            .spec(Property.ofValue(
-                """
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: api
-                      labels:
-                        app: api
-                    spec:
-                      serviceName: "api"
-                      replicas: 3
-                      selector:
-                        matchLabels:
-                          app: api
-                      template:
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: apps/v1
+                        kind: StatefulSet
                         metadata:
+                          name: api
                           labels:
                             app: api
                         spec:
-                          containers:
-                          - name: api
-                            image: nginx:latest
-                            ports:
-                            - containerPort: 80
-                    """
-            ))
+                          serviceName: "api"
+                          replicas: 3
+                          selector:
+                            matchLabels:
+                              app: api
+                          template:
+                            metadata:
+                              labels:
+                                app: api
+                            spec:
+                              containers:
+                              - name: api
+                                image: nginx:latest
+                                ports:
+                                - containerPort: 80
+                        """
+                )
+            )
             .build();
 
         applyTask.run(runContext);
@@ -108,7 +112,9 @@ public class RestartTest {
         Long generationAfter = afterOutput.getMetadataItem().getGeneration();
 
         // Assert that the restart triggered a generation bump (best reliable indicator)
-        assertThat("Generation should increase after restart",
-            generationAfter, greaterThanOrEqualTo(generationBefore));
+        assertThat(
+            "Generation should increase after restart",
+            generationAfter, greaterThanOrEqualTo(generationBefore)
+        );
     }
 }

@@ -24,6 +24,20 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
+import org.slf4j.Logger;
+
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.tasks.retrys.Exponential;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.utils.RetryUtils;
+import io.kestra.plugin.kubernetes.models.Connection;
+
+import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.client.Config;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.dsl.PodResource;
+
 abstract public class PodService {
     private static final List<String> COMPLETED_PHASES = List.of("Succeeded", "Failed", "Unknown"); // see https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase
     private static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
@@ -92,8 +106,7 @@ abstract public class PodService {
                          j.getStatus().getContainerStatuses().stream()
                              .anyMatch(c -> c.getState().getRunning() != null))
                         ||
-                        COMPLETED_PHASES.contains(j.getStatus().getPhase())
-                    ),
+                        COMPLETED_PHASES.contains(j.getStatus().getPhase())),
                 waitUntilRunning.toSeconds(),
                 TimeUnit.SECONDS
             );
@@ -218,7 +231,8 @@ abstract public class PodService {
             .filter(containerStatus -> containerStatus.getState() != null && containerStatus.getState().getTerminated() != null)
             .filter(containerStatus -> containerStatus.getState().getTerminated().getExitCode() != 0)
             .findFirst()
-            .ifPresent(containerStatus -> {
+            .ifPresent(containerStatus ->
+            {
                 ContainerStateTerminated terminated = containerStatus.getState().getTerminated();
                 String errorMsg = "Container '" + containerStatus.getName() + "' failed with exit code " +
                     terminated.getExitCode() +
@@ -248,9 +262,10 @@ abstract public class PodService {
             .delayFactor(2.0)
             .build();
 
-        Boolean upload = RetryUtils.<Boolean, IOException>of(retryPolicy, logger).run(
+        Boolean upload = RetryUtils.<Boolean, IOException> of(retryPolicy, logger).run(
             object -> !object,
-            () -> {
+            () ->
+            {
                 var bool = call.get();
 
                 if (!bool) {
