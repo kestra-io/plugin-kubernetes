@@ -216,7 +216,7 @@ class PodCreateTest {
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c'",
-                "    - 'echo \"Container failing\" && exit 1'",
+                "    - 'echo \"Container failing\" && sleep 1 && exit 1'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -640,7 +640,7 @@ class PodCreateTest {
                 ObjectMeta.class,
                 "containers:",
                 "- name: in-out-files",
-                "  image: debian:stable-slim",
+                "  image: busybox",
                 "  command: [\"/bin/sh\"]",
                 "  args:",
                 "    - -c",
@@ -672,7 +672,12 @@ class PodCreateTest {
         try (KubernetesClient client = PodService.client(finalRunContext, null)) {
             Await.until(() -> {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+                if (pods.isEmpty()) {
+                    return false;
+                }
+
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
@@ -864,7 +869,7 @@ class PodCreateTest {
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c'",
-                "    - 'echo \"Task succeeded\" > {{ workingDir }}/result.txt && exit 0'",
+                "    - 'echo \"Task succeeded\" > {{ workingDir }}/result.txt && sleep 1 && exit 0'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -900,13 +905,13 @@ class PodCreateTest {
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c'",
-                "    - 'echo \"First container succeeded\" && exit 0'",
+                "    - 'echo \"First container succeeded\" && sleep 1 && exit 0'",
                 "- name: container-failure",
                 "  image: debian:stable-slim",
                 "  command: ",
                 "    - 'bash' ",
                 "    - '-c'",
-                "    - 'echo \"Second container failing\" && exit 1'",
+                "    - 'echo \"Second container failing\" && sleep 1 && exit 1'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -947,7 +952,7 @@ class PodCreateTest {
                 "  command:",
                 "    - 'bash'",
                 "    - '-c'",
-                "    - 'seq 1 20 | while read i; do echo \"Quick termination log line $i\"; done; echo \"FINAL\" && exit 1'",
+                "    - 'seq 1 20 | while read i; do echo \"Quick termination log line $i\"; done; echo \"FINAL\" && sleep 1 && exit 1'",
                 "restartPolicy: Never"
             ))
             .build();
@@ -1244,7 +1249,12 @@ class PodCreateTest {
             // Wait for pod to be running
             Await.until(() -> {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+                if (pods.isEmpty()) {
+                    return false;
+                }
+
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
@@ -1345,7 +1355,12 @@ class PodCreateTest {
             // Wait for pod to be running
             Await.until(() -> {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+                if (pods.isEmpty()) {
+                    return false;
+                }
+
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
@@ -1507,7 +1522,7 @@ class PodCreateTest {
                 "    emptyDir: {}",
                 "containers:",
                 "- name: main",
-                "  image: debian:stable-slim",
+                "  image: busybox",
                 "  command: [\"/bin/sh\"]",
                 "  args:",
                 "    - -c",
@@ -1540,7 +1555,12 @@ class PodCreateTest {
             // Wait for pod to be running
             Await.until(() -> {
                 var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
-                return !pods.isEmpty() && pods.getFirst().getStatus().getPhase().equals("Running");
+                if (pods.isEmpty()) {
+                    return false;
+                }
+
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
             }, Duration.ofMillis(200), Duration.ofMinutes(1));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();

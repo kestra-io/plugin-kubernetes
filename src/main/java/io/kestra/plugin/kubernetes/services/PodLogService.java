@@ -164,7 +164,7 @@ public class PodLogService implements AutoCloseable {
 
         PodResource podResource = PodService.podRef(client, pod);
 
-        pod.getSpec().getContainers().forEach(container -> {
+        if (pod.getSpec().getContainers().stream().noneMatch(container -> {
             try {
                 String logs = podResource
                     .inContainer(container.getName())
@@ -173,16 +173,45 @@ public class PodLogService implements AutoCloseable {
                     .getLog();
 
                 if (logs != null && !logs.isEmpty()) {
-                    // Write all logs - hash-based deduplication automatically filters duplicates
                     outputStream.write(logs.getBytes());
                     outputStream.flush();
-                } else {
-                    logger.debug("No logs returned for container '{}'", container.getName());
+                    return true;
                 }
+                logger.debug("No logs returned for container '{}'", container.getName());
             } catch (IOException e) {
                 logger.error("Failed to fetch final logs for container '{}'", container.getName(), e);
             }
-        });
+            return false;
+        })) {
+            // if no container logs were found, the pod likely never started.
+            // we fall back to Kubernetes pod events
+            fetchPodEvents(client, pod, runContext);
+        }
+    }
+
+    private void fetchPodEvents(KubernetesClient client, Pod pod, RunContext runContext) {
+        Logger logger = runContext.logger();
+
+        try {
+            var events = client.v1().events()
+                .inNamespace(pod.getMetadata().getNamespace())
+                .withField("involvedObject.name", pod.getMetadata().getName())
+                .list()
+                .getItems();
+
+            if (events.isEmpty()) {
+                logger.warn("No container logs and no pod events found for pod '{}'", pod.getMetadata().getName());
+                return;
+            }
+
+            logger.info("No container logs available. Pod events:");
+            for (var event : events) {
+                outputStream.write(("[pod-event] " + event.getReason() + ": " + event.getMessage() + "\n").getBytes());
+            }
+            outputStream.flush();
+        } catch (Exception e) {
+            logger.error("Failed to fetch pod events for '{}'", pod.getMetadata().getName(), e);
+        }
     }
 
     @Override
