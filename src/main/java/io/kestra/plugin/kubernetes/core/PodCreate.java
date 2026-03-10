@@ -402,35 +402,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
 
                         if (pod.getStatus() != null) {
-
-                            boolean failedPhase = "Failed".equals(pod.getStatus().getPhase());
-
-                            boolean waitingFailure = pod.getStatus().getContainerStatuses() != null &&
-                                pod.getStatus().getContainerStatuses().stream()
-                                    .anyMatch(cs ->
-                                        cs.getState() != null &&
-                                            cs.getState().getWaiting() != null &&
-                                            cs.getState().getWaiting().getReason() != null &&
-                                            !PodService.TransientWaitingReason.contains(
-                                                cs.getState().getWaiting().getReason()
-                                            )
-                                    );
-
-                            if (failedPhase || waitingFailure) {
-                                podLogService.setLogConsumer(logConsumer);
-
-                                boolean containerStarted = pod.getStatus().getContainerStatuses().stream()
-                                    .anyMatch(cs ->
-                                        cs.getState() != null &&
-                                            (cs.getState().getRunning() != null || cs.getState().getTerminated() != null)
-                                    );
-
-                                if (containerStarted) {
+                            if ("Failed".equals(pod.getStatus().getPhase()) || PodService.hasNonTransientWaitingContainer(pod)) {
+                                if (PodService.hasAnyContainerStarted(pod)) {
                                     podLogService.fetchFinalLogs(client, pod, runContext);
                                 }
-
                                 PodService.logPodEvents(client, pod, logger, logConsumer);
-
                                 throw PodService.failedMessage(pod);
                             }
                         }

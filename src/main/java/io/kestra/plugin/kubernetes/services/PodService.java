@@ -328,6 +328,28 @@ abstract public class PodService {
         }
     }
 
+    public static boolean hasAnyContainerStarted(Pod pod) {
+        if (pod.getStatus() == null || pod.getStatus().getContainerStatuses() == null) {
+            return false;
+        }
+        return pod.getStatus().getContainerStatuses().stream()
+            .anyMatch(cs -> cs.getState() != null &&
+                (cs.getState().getRunning() != null || cs.getState().getTerminated() != null)
+            );
+    }
+
+    public static boolean hasNonTransientWaitingContainer(Pod pod) {
+        if (pod.getStatus() == null || pod.getStatus().getContainerStatuses() == null) {
+            return false;
+        }
+        return pod.getStatus().getContainerStatuses().stream()
+            .anyMatch(cs -> cs.getState() != null &&
+                cs.getState().getWaiting() != null &&
+                cs.getState().getWaiting().getReason() != null &&
+                !TransientWaitingReason.contains(cs.getState().getWaiting().getReason())
+            );
+    }
+
     public static Path tempDir(RunContext runContext) {
         return runContext.workingDir().path().resolve("working-dir");
     }
