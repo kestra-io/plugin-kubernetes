@@ -220,17 +220,19 @@ class PodCreateTest {
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("results.json")))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'echo \"Container failing\" && sleep 1 && exit 1'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo \"Container failing\" && sleep 1 && exit 1'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -678,18 +680,20 @@ class PodCreateTest {
                 )
             )
             .outputFiles(Property.ofValue(List.of("out.txt")))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: in-out-files",
-                "  image: busybox",
-                "  command: [\"/bin/sh\"]",
-                "  args:",
-                "    - -c",
-                "    - >-",
-                "      cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: in-out-files",
+                    "  image: busybox",
+                    "  command: [\"/bin/sh\"]",
+                    "  args:",
+                    "    - -c",
+                    "    - >-",
+                    "      cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -917,17 +921,19 @@ class PodCreateTest {
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'echo \"Task succeeded\" > {{ workingDir }}/result.txt && sleep 1 && exit 0'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo \"Task succeeded\" > {{ workingDir }}/result.txt && sleep 1 && exit 0'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -953,23 +959,25 @@ class PodCreateTest {
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: container-success",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'echo \"First container succeeded\" && sleep 1 && exit 0'",
-                "- name: container-failure",
-                "  image: debian:stable-slim",
-                "  command: ",
-                "    - 'bash' ",
-                "    - '-c'",
-                "    - 'echo \"Second container failing\" && sleep 1 && exit 1'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: container-success",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo \"First container succeeded\" && sleep 1 && exit 0'",
+                    "- name: container-failure",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo \"Second container failing\" && sleep 1 && exit 1'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -1000,17 +1008,19 @@ class PodCreateTest {
             .namespace(Property.ofValue("default"))
             .outputFiles(Property.ofValue(List.of("result.txt")))
             .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "containers:",
-                "- name: unittest",
-                "  image: debian:stable-slim",
-                "  command:",
-                "    - 'bash'",
-                "    - '-c'",
-                "    - 'seq 1 20 | while read i; do echo \"Quick termination log line $i\"; done; echo \"FINAL\" && sleep 1 && exit 1'",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command:",
+                    "    - 'bash'",
+                    "    - '-c'",
+                    "    - 'seq 1 20 | while read i; do echo \"Quick termination log line $i\"; done; echo \"FINAL\" && sleep 1 && exit 1'",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();
@@ -1627,21 +1637,23 @@ class PodCreateTest {
             )
             .inputFiles(Map.of("in.txt", "test content"))
             .outputFiles(Property.ofValue(List.of("out.txt")))
-            .spec(TestUtils.convert(
-                ObjectMeta.class,
-                "volumes:",
-                "  - name: shared-tmp",
-                "    emptyDir: {}",
-                "containers:",
-                "- name: main",
-                "  image: busybox",
-                "  command: [\"/bin/sh\"]",
-                "  args:",
-                "    - -c",
-                "    - >-",
-                "      cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
-                "restartPolicy: Never"
-            ))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "volumes:",
+                    "  - name: shared-tmp",
+                    "    emptyDir: {}",
+                    "containers:",
+                    "- name: main",
+                    "  image: busybox",
+                    "  command: [\"/bin/sh\"]",
+                    "  args:",
+                    "    - -c",
+                    "    - >-",
+                    "      cat {{ workingDir }}/in.txt > {{ workingDir }}/out.txt",
+                    "restartPolicy: Never"
+                )
+            )
             .build();
 
         Flow flow = TestsUtils.mockFlow();

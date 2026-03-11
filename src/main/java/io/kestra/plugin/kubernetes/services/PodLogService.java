@@ -169,7 +169,8 @@ public class PodLogService implements AutoCloseable {
 
         PodResource podResource = PodService.podRef(client, pod);
 
-        if (pod.getSpec().getContainers().stream().noneMatch(container -> {
+        if (pod.getSpec().getContainers().stream().noneMatch(container ->
+        {
             try {
                 String logs = podResource
                     .inContainer(container.getName())

@@ -429,7 +429,6 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         // This ensures we proceed with log collection regardless of pod outcome
                         pod = PodService.waitForContainersStartedOrCompleted(client, pod, rWaitUntilRunning);
 
-
                         // Only start log streaming if pod is actually running
                         // For pods that complete quickly, fetchFinalLogs will handle log collection
                         if (pod.getStatus() != null && PodService.PodPhase.RUNNING.value().equals(pod.getStatus().getPhase())) {

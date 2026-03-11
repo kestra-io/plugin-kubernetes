@@ -1,18 +1,5 @@
 package io.kestra.plugin.kubernetes.services;
 
-import io.fabric8.kubernetes.api.model.*;
-import io.fabric8.kubernetes.client.Config;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientException;
-import io.fabric8.kubernetes.client.dsl.PodResource;
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.models.tasks.retrys.Exponential;
-import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.utils.RetryUtils;
-import io.kestra.plugin.kubernetes.models.Connection;
-import org.slf4j.Logger;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -28,6 +15,7 @@ import org.slf4j.Logger;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.tasks.retrys.Exponential;
+import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.RetryUtils;
 import io.kestra.plugin.kubernetes.models.Connection;
@@ -72,25 +60,24 @@ abstract public class PodService {
         return PodService.podRef(client, pod)
             .waitUntilCondition(
                 j -> j != null &&
-                    j.getStatus() != null && (
-                        PodPhase.FAILED.value().equals(j.getStatus().getPhase()) ||
-                            (j.getStatus().getContainerStatuses() != null &&
-                                j.getStatus().getContainerStatuses().stream()
-                                    .anyMatch(cs -> cs.getState() != null &&
+                    j.getStatus() != null && (PodPhase.FAILED.value().equals(j.getStatus().getPhase()) ||
+                        (j.getStatus().getContainerStatuses() != null &&
+                            j.getStatus().getContainerStatuses().stream()
+                                .anyMatch(
+                                    cs -> cs.getState() != null &&
                                         cs.getState().getWaiting() != null &&
                                         cs.getState().getWaiting().getReason() != null &&
                                         !TransientWaitingReason.contains(cs.getState().getWaiting().getReason())
-                                    )
-                            ) ||
+                                ))
+                        ||
                         j.getStatus()
                             .getConditions()
                             .stream()
-                            .anyMatch(podCondition ->
-                                ("ContainersReady".equals(podCondition.getType()) &&
+                            .anyMatch(
+                                podCondition -> ("ContainersReady".equals(podCondition.getType()) &&
                                     (hasSidecar || "True".equals(podCondition.getStatus()))) ||
                                     ("PodCompleted".equals(podCondition.getReason()))
-                            )
-                    ),
+                            )),
                 waitUntilRunning.toSeconds(),
                 TimeUnit.SECONDS
             );
@@ -100,11 +87,10 @@ abstract public class PodService {
         return PodService.podRef(client, pod)
             .waitUntilCondition(
                 j -> j != null &&
-                    j.getStatus() != null && (
-                        (PodPhase.RUNNING.value().equals(j.getStatus().getPhase()) &&
-                         j.getStatus().getContainerStatuses() != null &&
-                         j.getStatus().getContainerStatuses().stream()
-                             .anyMatch(c -> c.getState().getRunning() != null))
+                    j.getStatus() != null && ((PodPhase.RUNNING.value().equals(j.getStatus().getPhase()) &&
+                        j.getStatus().getContainerStatuses() != null &&
+                        j.getStatus().getContainerStatuses().stream()
+                            .anyMatch(c -> c.getState().getRunning() != null))
                         ||
                         COMPLETED_PHASES.contains(j.getStatus().getPhase())),
                 waitUntilRunning.toSeconds(),
@@ -201,12 +187,15 @@ abstract public class PodService {
             .filter(containerStatus -> containerStatus.getState() != null && containerStatus.getState().getTerminated() != null)
             .map(containerStatus -> containerStatus.getState().getTerminated())
             .findFirst()
-            .map(containerStateTerminated -> new IllegalStateException(
-                "Pods terminated with status '" + pod.getStatus().getPhase() + "', " +
-                    "exitcode '" + containerStateTerminated.getExitCode() + "' & " +
-                    "message '" + containerStateTerminated.getMessage() + "'"
-            ))
-            .orElseGet(() -> {
+            .map(
+                containerStateTerminated -> new IllegalStateException(
+                    "Pods terminated with status '" + pod.getStatus().getPhase() + "', " +
+                        "exitcode '" + containerStateTerminated.getExitCode() + "' & " +
+                        "message '" + containerStateTerminated.getMessage() + "'"
+                )
+            )
+            .orElseGet(() ->
+            {
                 if (pod.getStatus().getContainerStatuses() != null) {
                     Optional<String> waitingReason = pod.getStatus().getContainerStatuses().stream()
                         .filter(cs -> cs.getState() != null && cs.getState().getWaiting() != null)
@@ -324,11 +313,14 @@ abstract public class PodService {
                 .getItems()
                 .stream()
                 .filter(event -> "Warning".equals(event.getType()))
-                .sorted(Comparator.comparing(
-                    Event::getLastTimestamp,
-                    Comparator.nullsLast(Comparator.naturalOrder())
-                ))
-                .forEach(event -> {
+                .sorted(
+                    Comparator.comparing(
+                        Event::getLastTimestamp,
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                    )
+                )
+                .forEach(event ->
+                {
                     String reason = event.getReason() == null ? "" : event.getReason();
                     String message = event.getMessage() == null ? "" : event.getMessage();
 
@@ -348,8 +340,9 @@ abstract public class PodService {
             return false;
         }
         return pod.getStatus().getContainerStatuses().stream()
-            .anyMatch(cs -> cs.getState() != null &&
-                (cs.getState().getRunning() != null || cs.getState().getTerminated() != null)
+            .anyMatch(
+                cs -> cs.getState() != null &&
+                    (cs.getState().getRunning() != null || cs.getState().getTerminated() != null)
             );
     }
 
@@ -358,10 +351,11 @@ abstract public class PodService {
             return false;
         }
         return pod.getStatus().getContainerStatuses().stream()
-            .anyMatch(cs -> cs.getState() != null &&
-                cs.getState().getWaiting() != null &&
-                cs.getState().getWaiting().getReason() != null &&
-                !TransientWaitingReason.contains(cs.getState().getWaiting().getReason())
+            .anyMatch(
+                cs -> cs.getState() != null &&
+                    cs.getState().getWaiting() != null &&
+                    cs.getState().getWaiting().getReason() != null &&
+                    !TransientWaitingReason.contains(cs.getState().getWaiting().getReason())
             );
     }
 
@@ -398,8 +392,12 @@ abstract public class PodService {
 
         private final String value;
 
-        PodPhase(String value) { this.value = value; }
+        PodPhase(String value) {
+            this.value = value;
+        }
 
-        public String value() { return value; }
+        public String value() {
+            return value;
+        }
     }
 }
