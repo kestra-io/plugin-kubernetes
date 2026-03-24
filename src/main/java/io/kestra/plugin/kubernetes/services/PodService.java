@@ -43,11 +43,12 @@ abstract public class PodService {
             .waitUntilCondition(
                 j -> j != null &&
                     j.getStatus() != null &&
+                    j.getStatus().getInitContainerStatuses() != null &&
                     j.getStatus()
                         .getInitContainerStatuses()
                         .stream()
                         .filter(containerStatus -> containerStatus.getName().equals(container))
-                        .anyMatch(containerStatus -> containerStatus.getState().getRunning() != null),
+                        .anyMatch(containerStatus -> containerStatus.getState() != null && containerStatus.getState().getRunning() != null),
                 waitUntilRunning.toSeconds(),
                 TimeUnit.SECONDS
             );
@@ -106,11 +107,16 @@ abstract public class PodService {
             waitRunning,
             j -> j != null &&
                 j.getStatus() != null &&
+                j.getStatus().getContainerStatuses() != null &&
+                j.getStatus()
+                    .getContainerStatuses()
+                    .stream()
+                    .anyMatch(containerStatus -> !containerStatus.getName().equals(except)) &&
                 j.getStatus()
                     .getContainerStatuses()
                     .stream()
                     .filter(containerStatus -> !containerStatus.getName().equals(except))
-                    .allMatch(containerStatus -> containerStatus.getState().getTerminated() != null)
+                    .allMatch(containerStatus -> containerStatus.getState() != null && containerStatus.getState().getTerminated() != null)
         );
     }
 
