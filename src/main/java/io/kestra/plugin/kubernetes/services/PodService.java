@@ -29,6 +29,8 @@ import io.fabric8.kubernetes.client.dsl.PodResource;
 abstract public class PodService {
     private static final List<String> COMPLETED_PHASES = List.of("Succeeded", "Failed", "Unknown"); // see https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase
     private static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
+    // 0 means "don't wait at all"; 30s gives the pod time to become ready before exec connections are established
+    public static final int EXEC_READY_WAIT_TIMEOUT_MS = 30_000;
 
     public static KubernetesClient client(RunContext runContext, Connection connection) throws IllegalVariableEvaluationException {
         return connection != null ? client(connection.toConfig(runContext)) : client(null);
@@ -289,7 +291,7 @@ abstract public class PodService {
             "uploadMarker",
             () -> podResource
                 .inContainer(container)
-                .withReadyWaitTimeout(0)
+                .withReadyWaitTimeout(EXEC_READY_WAIT_TIMEOUT_MS)
                 .file("/kestra/" + marker)
                 .upload(markerFile.toPath())
         );

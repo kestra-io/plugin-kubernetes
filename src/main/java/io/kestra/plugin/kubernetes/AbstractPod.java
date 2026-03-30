@@ -151,7 +151,7 @@ public abstract class AbstractPod extends AbstractConnection {
 
         ContainerResource container = podResource
             .inContainer(INIT_FILES_CONTAINER_NAME)
-            .withReadyWaitTimeout(0);
+            .withReadyWaitTimeout(PodService.EXEC_READY_WAIT_TIMEOUT_MS);
 
         for (Map.Entry<String, List<String>> entry : grouped.entrySet()) {
 

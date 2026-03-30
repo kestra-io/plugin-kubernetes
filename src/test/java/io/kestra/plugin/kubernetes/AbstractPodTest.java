@@ -43,7 +43,7 @@ class AbstractPodTest {
         Mockito.when(podResource.inContainer("init-files"))
             .thenReturn(container);
 
-        Mockito.when(container.withReadyWaitTimeout(0))
+        Mockito.when(container.withReadyWaitTimeout(PodService.EXEC_READY_WAIT_TIMEOUT_MS))
             .thenReturn(container);
 
         Mockito.when(container.file(Mockito.anyString()))
