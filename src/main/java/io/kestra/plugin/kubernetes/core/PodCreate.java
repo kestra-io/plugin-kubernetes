@@ -267,6 +267,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             Kubernetes Pod spec map defining containers, volumes, restart policy, and related settings.
             Must declare at least one container. Template expressions are allowed, including {{ workingDir }} resolving to '/kestra/working-dir' when inputFiles or outputFiles are configured.
             See [using pods](https://kubernetes.io/docs/concepts/workloads/pods/#using-pods) in the Kubernetes documentation for the full spec format.
+
+            When inputFiles or outputFiles are configured, Kestra automatically injects file-transfer containers
+            named `init-files` (init container) and `out-files` (sidecar). Any user-provided containers with
+            those reserved names will be silently removed and replaced by Kestra's own containers.
+            Additional containers you define alongside your main container are fully preserved as sidecars.
             """
     )
     @PluginProperty(dynamic = true)
@@ -634,6 +639,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         // Apply default container spec to user-defined containers before adding file handling containers
         this.applyContainerDefaultSpec(runContext, spec);
 
+        // Remove any user-provided containers that use Kestra's reserved file-transfer names.
+        // This prevents conflicts when inputFiles or outputFiles are configured, since Kestra
+        // injects its own init-files and out-files containers with those exact names.
+        removeReservedContainers(spec, runContext.logger());
+
         this.handleFiles(runContext, spec);
 
         return client.pods()
@@ -645,6 +655,27 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                     .build()
             )
             .create();
+    }
+
+    /**
+     * Removes user-provided containers whose names conflict with Kestra's reserved file-transfer containers.
+     * This ensures that when inputFiles or outputFiles are configured, Kestra can safely inject its own
+     * init-files and out-files containers without duplicates. A warning is logged for each removed container.
+     */
+    private void removeReservedContainers(PodSpec spec, Logger logger) {
+        var reserved = Set.of(INIT_FILES_CONTAINER_NAME, SIDECAR_FILES_CONTAINER_NAME);
+        var containers = spec.getContainers();
+        var toRemove = containers.stream()
+            .filter(c -> reserved.contains(c.getName()))
+            .toList();
+        toRemove.forEach(c -> {
+            logger.warn(
+                "User-provided container '{}' uses a name reserved by Kestra for file transfer. " +
+                    "It will be replaced by Kestra's own container.",
+                c.getName()
+            );
+            containers.remove(c);
+        });
     }
 
     private void delete(KubernetesClient client, Logger logger, Pod pod, RunContext runContext) throws IllegalVariableEvaluationException {
