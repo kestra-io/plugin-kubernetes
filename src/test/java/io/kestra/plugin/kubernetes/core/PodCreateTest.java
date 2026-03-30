@@ -1724,4 +1724,196 @@ class PodCreateTest {
         assertThat(run[0].getOutputFiles(), hasKey("out.txt"));
     }
 
+    @Test
+    void podSpecSidecarsPreserved() throws Exception {
+        // Verify that user-defined sidecar containers (not using reserved names) are preserved
+        // alongside Kestra's file-transfer containers when inputFiles/outputFiles are configured.
+        PodCreate task = PodCreate.builder()
+            .id(IdUtils.create())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .outputFiles(Property.ofValue(List.of("out.txt")))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: main",
+                    "  image: debian:stable-slim",
+                    "  command: [\"/bin/sh\"]",
+                    "  args:",
+                    "    - -c",
+                    "    - >-",
+                    "      echo 'hello' > {{ workingDir }}/out.txt && sleep 2",
+                    "- name: my-sidecar",
+                    "  image: busybox",
+                    "  command: ['sh', '-c', 'echo sidecar-done']",
+                    "restartPolicy: Never"
+                )
+            )
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        RunContext finalRunContext = runContextInitializer.forWorker(
+            (DefaultRunContext) runContext,
+            WorkerTask.builder().task(task).taskRun(taskRun).build()
+        );
+        Logger logger = finalRunContext.logger();
+
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        executorService.submit(() ->
+        {
+            try {
+                task.run(finalRunContext);
+            } catch (Exception e) {
+                logger.debug("Task completed.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod to be running
+            Await.until(() ->
+            {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                if (pods.isEmpty()) {
+                    return false;
+                }
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
+            logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
+
+            var containerNames = createdPod.getSpec().getContainers().stream()
+                .map(c -> c.getName())
+                .toList();
+
+            // User sidecar must be preserved
+            assertThat("User-defined sidecar 'my-sidecar' should be present", containerNames, hasItem("my-sidecar"));
+            // Kestra's out-files sidecar must also be present
+            assertThat("Kestra 'out-files' container should be present", containerNames, hasItem("out-files"));
+            // Main container must be present
+            assertThat("User 'main' container should be present", containerNames, hasItem("main"));
+
+            // Wait for pod deletion
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(200), Duration.ofMinutes(2)
+            );
+
+            logger.info("podSpecSidecarsPreserved test passed");
+        } finally {
+            executorService.shutdownNow();
+        }
+    }
+
+    @Test
+    void containerDefaultSpecEnvMerging() throws Exception {
+        // Verify that when a container defines an env var with the same name as one in
+        // containerDefaultSpec, the container-specific value wins (not the default).
+        // Also verifies that env vars only present in the default are passed through.
+        PodCreate task = PodCreate.builder()
+            .id(IdUtils.create())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .delete(Property.ofValue(true))
+            .resume(Property.ofValue(false))
+            .containerDefaultSpec(
+                Property.ofValue(
+                    Map.of(
+                        "env", List.of(
+                            Map.of("name", "MY_VAR", "value", "from-default"),
+                            Map.of("name", "DEFAULT_ONLY_VAR", "value", "default-value")
+                        )
+                    )
+                )
+            )
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: main",
+                    "  image: debian:stable-slim",
+                    "  env:",
+                    "    - name: MY_VAR",
+                    "      value: from-container",
+                    "  command: ['sleep', '300']",
+                    "restartPolicy: Never"
+                )
+            )
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        RunContext finalRunContext = runContextInitializer.forWorker(
+            (DefaultRunContext) runContext,
+            WorkerTask.builder().task(task).taskRun(taskRun).build()
+        );
+        Logger logger = finalRunContext.logger();
+
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        executorService.submit(() ->
+        {
+            try {
+                task.run(finalRunContext);
+            } catch (Exception e) {
+                logger.debug("Task completed.", e);
+            }
+        });
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(finalRunContext, null)) {
+            // Wait for pod to be running
+            Await.until(() ->
+            {
+                var pods = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems();
+                if (pods.isEmpty()) {
+                    return false;
+                }
+                String phase = pods.getFirst().getStatus().getPhase();
+                return "Running".equals(phase) || "Succeeded".equals(phase);
+            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+
+            var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
+            logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
+
+            var mainContainer = createdPod.getSpec().getContainers().stream()
+                .filter(c -> c.getName().equals("main"))
+                .findFirst()
+                .orElseThrow();
+
+            var envVars = mainContainer.getEnv();
+
+            // MY_VAR should appear exactly once (deduplication), with the container-specific value winning
+            var myVarEntries = envVars.stream()
+                .filter(e -> "MY_VAR".equals(e.getName()))
+                .toList();
+            assertThat("MY_VAR should appear exactly once after deduplication", myVarEntries, hasSize(1));
+            assertThat("Container-specific MY_VAR value should win over the default", myVarEntries.getFirst().getValue(), is("from-container"));
+
+            // DEFAULT_ONLY_VAR should be present (contributed by containerDefaultSpec)
+            var defaultOnlyEntries = envVars.stream()
+                .filter(e -> "DEFAULT_ONLY_VAR".equals(e.getName()))
+                .toList();
+            assertThat("DEFAULT_ONLY_VAR from containerDefaultSpec should be present", defaultOnlyEntries, hasSize(1));
+            assertThat(defaultOnlyEntries.getFirst().getValue(), is("default-value"));
+
+            logger.info("containerDefaultSpecEnvMerging assertions passed");
+        } finally {
+            executorService.shutdownNow();
+        }
+    }
+
 }
