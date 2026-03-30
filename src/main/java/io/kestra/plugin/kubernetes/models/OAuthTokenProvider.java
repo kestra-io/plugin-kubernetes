@@ -2,11 +2,13 @@ package io.kestra.plugin.kubernetes.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.Output;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 
 import java.time.Duration;
@@ -21,6 +23,15 @@ public class OAuthTokenProvider implements io.fabric8.kubernetes.client.OAuthTok
 
     private String output;
 
+    @Schema(
+        title = "Token cache duration",
+        description = """
+            How long a fetched token is cached before the underlying task is called again. \
+            Defaults to 5 minutes. Set to `PT0S` or a negative duration to disable caching \
+            and re-fetch a token on every request.\
+            """
+    )
+    @PluginProperty
     @Builder.Default
     private Duration cache = Duration.ofMinutes(5);
 
