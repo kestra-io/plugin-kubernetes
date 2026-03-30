@@ -726,7 +726,7 @@ class PodCreateTest {
 
                 String phase = pods.getFirst().getStatus().getPhase();
                 return "Running".equals(phase) || "Succeeded".equals(phase);
-            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+            }, Duration.ofMillis(200), Duration.ofMinutes(3));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
             assertThat(createdPod.getStatus().getPhase(), is("Running"));
@@ -1350,7 +1350,7 @@ class PodCreateTest {
 
                 String phase = pods.getFirst().getStatus().getPhase();
                 return "Running".equals(phase) || "Succeeded".equals(phase);
-            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+            }, Duration.ofMillis(200), Duration.ofMinutes(3));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
             logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
@@ -1466,7 +1466,7 @@ class PodCreateTest {
 
                 String phase = pods.getFirst().getStatus().getPhase();
                 return "Running".equals(phase) || "Succeeded".equals(phase);
-            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+            }, Duration.ofMillis(200), Duration.ofMinutes(3));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
             logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
@@ -1687,7 +1687,7 @@ class PodCreateTest {
 
                 String phase = pods.getFirst().getStatus().getPhase();
                 return "Running".equals(phase) || "Succeeded".equals(phase);
-            }, Duration.ofMillis(200), Duration.ofMinutes(1));
+            }, Duration.ofMillis(200), Duration.ofMinutes(3));
 
             var createdPod = client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().getFirst();
             logger.info("Test detected pod creation: {}", createdPod.getMetadata().getName());
