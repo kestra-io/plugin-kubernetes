@@ -108,7 +108,8 @@ public abstract class AbstractPod extends AbstractConnection {
 
             Merge behavior:
             - For nested objects (like securityContext): deep merge, container-specific values take precedence
-            - For lists (like volumeMounts, env): concatenated, with defaults added first
+            - For volumeMounts: concatenated, with defaults added first
+            - For env: deduplicated by name — container-specific values always win over defaults on collision
             - Container-specific values always override defaults
 
             Example configuration:
@@ -330,7 +331,7 @@ public abstract class AbstractPod extends AbstractConnection {
             }
         }
 
-        // Handle env - concatenate lists
+        // Handle env - merge with container-specific values winning on name collision
         if (defaultSpecMap.containsKey("env")) {
             List<Map<String, Object>> defaultEnv = (List<Map<String, Object>>) defaultSpecMap.get("env");
             List<EnvVar> defaultEnvVars = defaultEnv.stream()
@@ -348,10 +349,8 @@ public abstract class AbstractPod extends AbstractConnection {
             if (existingEnv == null) {
                 existingEnv = new ArrayList<>();
             }
-            // Prepend defaults, then add existing (allows container to override by having same name)
-            List<EnvVar> mergedEnv = new ArrayList<>(defaultEnvVars);
-            mergedEnv.addAll(existingEnv);
-            container.setEnv(mergedEnv);
+            // Container-specific values take precedence over defaults on name collision
+            container.setEnv(mergeEnvVars(defaultEnvVars, existingEnv));
         }
     }
 
@@ -369,6 +368,22 @@ public abstract class AbstractPod extends AbstractConnection {
         } catch (Exception e) {
             return new HashMap<>();
         }
+    }
+
+    /**
+     * Merges two env var lists, with the override list winning on name collision.
+     * Variables present only in the base list are included as-is.
+     * The resulting order is: override vars first, then base-only vars.
+     */
+    private List<EnvVar> mergeEnvVars(List<EnvVar> base, List<EnvVar> override) {
+        var overrideNames = override.stream()
+            .map(EnvVar::getName)
+            .collect(java.util.stream.Collectors.toSet());
+        var merged = new ArrayList<>(override);
+        base.stream()
+            .filter(e -> !overrideNames.contains(e.getName()))
+            .forEach(merged::add);
+        return merged;
     }
 
     /**
@@ -558,7 +573,7 @@ public abstract class AbstractPod extends AbstractConnection {
             container.setResources(InstanceService.fromMap(ResourceRequirements.class, runContext, Map.of(), resourcesMap));
         }
 
-        // Apply env vars - prepend to existing
+        // Apply env vars - merge with container-specific values winning on name collision
         if (defaultSpecMap.containsKey("env")) {
             List<Map<String, Object>> defaultEnv = (List<Map<String, Object>>) defaultSpecMap.get("env");
             List<EnvVar> defaultEnvVars = defaultEnv.stream()
@@ -576,9 +591,8 @@ public abstract class AbstractPod extends AbstractConnection {
             if (existingEnv == null) {
                 existingEnv = new ArrayList<>();
             }
-            List<EnvVar> mergedEnv = new ArrayList<>(defaultEnvVars);
-            mergedEnv.addAll(existingEnv);
-            container.setEnv(mergedEnv);
+            // Container-specific values take precedence over defaults on name collision
+            container.setEnv(mergeEnvVars(defaultEnvVars, existingEnv));
         }
     }
 
