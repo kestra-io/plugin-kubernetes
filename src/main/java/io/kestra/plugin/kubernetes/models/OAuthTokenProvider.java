@@ -9,6 +9,9 @@ import io.kestra.core.runners.RunContext;
 
 import lombok.*;
 
+import java.time.Duration;
+import java.time.Instant;
+
 @Getter
 @Builder
 @NoArgsConstructor
@@ -18,18 +21,41 @@ public class OAuthTokenProvider implements io.fabric8.kubernetes.client.OAuthTok
 
     private String output;
 
+    @Builder.Default
+    private Duration cache = Duration.ofMinutes(5);
+
     @With
     private transient RunContext runContext;
 
+    private transient String cachedToken;
+
+    private transient Instant cacheExpiry;
+
     @Override
     @JsonIgnore
-    public String getToken() {
+    public synchronized String getToken() {
+        // Return cached token if caching is enabled and the token has not expired yet
+        if (isCachingEnabled() && cachedToken != null && cacheExpiry != null && Instant.now().isBefore(cacheExpiry)) {
+            return cachedToken;
+        }
+
         try {
             RunnableTask<?> runnableTask = (RunnableTask<?>) task;
             Output run = runnableTask.run(runContext);
-            return runContext.render(this.output, run.toMap());
+            var token = runContext.render(this.output, run.toMap());
+
+            if (isCachingEnabled()) {
+                cachedToken = token;
+                cacheExpiry = Instant.now().plus(cache);
+            }
+
+            return token;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private boolean isCachingEnabled() {
+        return cache != null && !cache.isZero() && !cache.isNegative();
     }
 }
