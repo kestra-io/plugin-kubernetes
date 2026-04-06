@@ -37,6 +37,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
 import static io.kestra.core.models.tasks.common.FetchType.NONE;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -177,24 +178,28 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         description = "Kubernetes kind (e.g., Pod, Deployment, Service). Case-insensitive."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> resourceType;
 
     @Schema(
         title = "Resource names",
         description = "Optional list of names to fetch. When empty, all resources of the kind in the namespace are returned."
     )
+    @PluginProperty(group = "source")
     private Property<List<String>> resourcesNames;
 
     @Schema(
         title = "API group",
         description = "Group for the resource kind (empty for core resources)."
     )
+    @PluginProperty(group = "advanced")
     private Property<String> apiGroup;
 
     @Schema(
         title = "API version",
         description = "Version for the resource kind. Defaults to v1 when omitted."
     )
+    @PluginProperty(group = "advanced")
     private Property<String> apiVersion;
 
     @Schema(
@@ -203,6 +208,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     )
     @NotNull
     @Builder.Default
+    @PluginProperty(group = "processing")
     protected Property<FetchType> fetchType = Property.ofValue(NONE);
 
     @Override

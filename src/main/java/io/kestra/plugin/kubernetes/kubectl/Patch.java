@@ -21,6 +21,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -216,12 +217,14 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
         title = "Resource kind",
         description = "Namespaced Kubernetes kind (e.g., Deployment, StatefulSet, Pod). Cluster-scoped kinds are not supported."
     )
+    @PluginProperty(group = "main")
     private Property<String> resourceType;
 
     @NotNull
     @Schema(
         title = "Resource name"
     )
+    @PluginProperty(group = "main")
     private Property<String> resourceName;
 
     @NotNull
@@ -229,6 +232,7 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
         title = "Patch content",
         description = "The format depends on the patchStrategy. For STRATEGIC_MERGE and JSON_MERGE, provide a JSON object with the fields to update. For JSON_PATCH, provide a JSON array of operations with 'op', 'path', and 'value' fields."
     )
+    @PluginProperty(group = "main")
     private Property<String> patch;
 
     @Builder.Default
@@ -236,18 +240,21 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
         title = "Patch strategy",
         description = "STRATEGIC_MERGE (default): Kubernetes strategic merge patch, most user-friendly. Understands K8s resource structure and intelligently merges lists by merge keys. JSON_MERGE: Simple merge with null-deletion semantics (RFC 7386). JSON_PATCH: Precision operations with add/remove/replace/test (RFC 6902)."
     )
+    @PluginProperty(group = "advanced")
     private Property<PatchStrategy> patchStrategy = Property.ofValue(PatchStrategy.STRATEGIC_MERGE);
 
     @Schema(
         title = "API group",
         description = "Group for the resource kind. Leave empty for core resources."
     )
+    @PluginProperty(group = "advanced")
     private Property<String> apiGroup;
 
     @Schema(
         title = "API version",
         description = "Version for the resource kind (e.g., v1). Defaults to v1 when omitted."
     )
+    @PluginProperty(group = "advanced")
     private Property<String> apiVersion;
 
     @Override
