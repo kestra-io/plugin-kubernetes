@@ -6,6 +6,7 @@ import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @Builder
 @Getter
@@ -14,6 +15,7 @@ public class ResourceStatus {
         title = "The status of the Kubernetes resource",
         description = "Contains the current state of the resource as a generic map structure"
     )
+    @PluginProperty(group = "advanced")
     private final Map<String, Object> status;
 
     /**

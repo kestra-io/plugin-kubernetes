@@ -258,7 +258,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         title = "Pod metadata",
         description = "Name, labels, and annotations applied to the pod. Name is auto-generated from the task run when omitted. Supports template expressions."
     )
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "advanced")
     private Map<String, Object> metadata;
 
     @Schema(
@@ -274,7 +274,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             Additional containers you define alongside your main container are fully preserved as sidecars.
             """
     )
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "main")
     @NotNull
     private Map<String, Object> spec;
 
@@ -284,6 +284,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     )
     @NotNull
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private final Property<Boolean> delete = Property.ofValue(true);
 
     @Schema(
@@ -292,6 +293,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     )
     @NotNull
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private final Property<Boolean> resume = Property.ofValue(true);
 
     @Schema(
@@ -300,6 +302,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     )
     @NotNull
     @Builder.Default
+    @PluginProperty(group = "execution")
     private Property<Duration> waitForLogInterval = Property.ofValue(Duration.ofSeconds(30));
 
     // Constants for file paths and working directory
@@ -308,9 +311,13 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private static final String OUTPUT_FILES_VAR = "outputFiles";
 
     // Kill handling state
+    @PluginProperty(group = "advanced")
     private final AtomicBoolean killed = new AtomicBoolean(false);
+    @PluginProperty(group = "advanced")
     private final AtomicReference<String> currentPodName = new AtomicReference<>();
+    @PluginProperty(group = "source")
     private volatile String currentNamespace;
+    @PluginProperty(group = "connection")
     private volatile Connection currentConnection;
 
     /**

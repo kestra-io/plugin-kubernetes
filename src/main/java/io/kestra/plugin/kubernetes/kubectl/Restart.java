@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -58,10 +59,12 @@ public class Restart extends AbstractPod implements RunnableTask<VoidOutput> {
 
     @Schema(title = "Workload type", description = "Deployment or StatefulSet.")
     @NotNull
+    @PluginProperty(group = "main")
     private Property<ResourceType> resourceType;
 
     @Schema(title = "Resource names", description = "Names of workloads to restart in the namespace.")
     @NotNull
+    @PluginProperty(group = "main")
     private Property<List<String>> resourcesNames;
 
     @Override

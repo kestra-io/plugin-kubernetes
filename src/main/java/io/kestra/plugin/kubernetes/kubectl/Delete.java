@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -88,6 +89,7 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
         description = "Kubernetes kind (e.g., Pod, Deployment, Service). Case-insensitive."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> resourceType;
 
     @Schema(
@@ -95,18 +97,21 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
         description = "List of resource names to delete in the target namespace."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<List<String>> resourcesNames;
 
     @Schema(
         title = "API group",
         description = "Group for the resource kind (empty for core resources)."
     )
+    @PluginProperty(group = "advanced")
     private Property<String> apiGroup;
 
     @Schema(
         title = "API version",
         description = "Version for the resource kind. Defaults to v1 when omitted."
     )
+    @PluginProperty(group = "advanced")
     private Property<String> apiVersion;
 
     @Override

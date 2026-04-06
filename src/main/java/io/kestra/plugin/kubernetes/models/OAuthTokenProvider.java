@@ -31,7 +31,7 @@ public class OAuthTokenProvider implements io.fabric8.kubernetes.client.OAuthTok
             and re-fetch a token on every request.\
             """
     )
-    @PluginProperty
+    @PluginProperty(group = "advanced")
     @Builder.Default
     private Duration cache = Duration.ofMinutes(5);
 

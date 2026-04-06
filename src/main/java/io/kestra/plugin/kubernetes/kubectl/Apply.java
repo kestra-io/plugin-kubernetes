@@ -21,6 +21,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -183,6 +184,7 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
         title = "Resource manifest",
         description = "YAML or JSON manifest to apply. Can include multiple documents separated by '---'. Supports template expressions before apply."
     )
+    @PluginProperty(group = "main")
     private Property<String> spec;
 
     @Override

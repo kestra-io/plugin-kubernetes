@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -25,6 +26,7 @@ public abstract class AbstractConnection extends Task {
         title = "Kubernetes connection",
         description = "Connection settings for the cluster. If omitted, the client resolves credentials in order: system properties, environment variables, kubeconfig, then in-cluster service account."
     )
+    @PluginProperty(group = "advanced")
     private Connection connection;
 
     @Schema(
@@ -33,6 +35,7 @@ public abstract class AbstractConnection extends Task {
     )
     @NotNull
     @Builder.Default
+    @PluginProperty(group = "main")
     protected final Property<Duration> waitUntilRunning = Property.ofValue(Duration.ofMinutes(10));
 
     @Schema(
@@ -41,6 +44,7 @@ public abstract class AbstractConnection extends Task {
     )
     @NotNull
     @Builder.Default
+    @PluginProperty(group = "main")
     protected final Property<Duration> waitRunning = Property.ofValue(Duration.ofHours(1));
 
     protected ListOptions listOptions(RunContext runContext) throws IllegalVariableEvaluationException {

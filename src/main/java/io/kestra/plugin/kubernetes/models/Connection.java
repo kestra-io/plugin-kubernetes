@@ -18,12 +18,14 @@ public class Connection {
         title = "Trust all certificates",
         description = "When true, skips TLS cert validation. Use only for testing."
     )
+    @PluginProperty(group = "advanced")
     private final Property<Boolean> trustCerts;
 
     @Schema(
         title = "Disable hostname verification",
         description = "Disables TLS hostname checks. Avoid in production clusters."
     )
+    @PluginProperty(group = "advanced")
     private final Property<Boolean> disableHostnameVerification;
 
     @Schema(
@@ -31,6 +33,7 @@ public class Connection {
         description = "API server endpoint. Default `https://kubernetes.default.svc`."
     )
     @Builder.Default
+    @PluginProperty(group = "connection")
     private final Property<String> masterUrl = Property.ofValue("https://kubernetes.default.svc");
 
     @Schema(
@@ -38,46 +41,54 @@ public class Connection {
         description = "API group version used by the client. Default v1."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private final Property<String> apiVersion = Property.ofValue("v1");
 
     @Schema(
         title = "Default namespace",
         description = "Namespace used when resources omit a namespace."
     )
+    @PluginProperty(group = "connection")
     private final Property<String> namespace;
 
     @Schema(
         title = "CA certificate file",
         description = "Path to a PEM CA bundle."
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> caCertFile;
 
     @Schema(
         title = "CA certificate data",
         description = "Base64-encoded PEM CA bundle. Whitespace is stripped automatically."
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> caCertData;
 
     @Schema(
         title = "Client certificate file"
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> clientCertFile;
 
     @Schema(
         title = "Client certificate data",
         description = "Base64-encoded client cert. Whitespace is stripped automatically."
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> clientCertData;
 
     @Schema(
         title = "Client key file"
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> clientKeyFile;
 
     @Schema(
         title = "Client key data",
         description = "Base64-encoded client key. Whitespace is stripped automatically."
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> clientKeyData;
 
     @Schema(
@@ -85,52 +96,61 @@ public class Connection {
         description = "Algorithm for the client key. Default RSA."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private final Property<String> clientKeyAlgo = Property.ofValue("RSA");
 
     @Schema(
         title = "Client key passphrase"
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> clientKeyPassphrase;
 
     @Schema(
         title = "Truststore file"
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> trustStoreFile;
 
     @Schema(
         title = "Truststore passphrase"
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> trustStorePassphrase;
 
     @Schema(
         title = "Keystore file"
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> keyStoreFile;
 
     @Schema(
         title = "Keystore passphrase"
     )
+    @PluginProperty(group = "advanced")
     private final Property<String> keyStorePassphrase;
 
     @Schema(
         title = "OAuth token"
     )
+    @PluginProperty(group = "connection")
     private final Property<String> oauthToken;
 
     @Schema(
         title = "OAuth token provider"
     )
-    @PluginProperty
+    @PluginProperty(group = "connection")
     private final OAuthTokenProvider oauthTokenProvider;
 
     @Schema(
         title = "Username"
     )
+    @PluginProperty(group = "connection")
     private Property<String> username;
 
     @Schema(
         title = "Password"
     )
+    @PluginProperty(group = "connection")
     private Property<String> password;
 
     public Config toConfig(RunContext runContext) throws IllegalVariableEvaluationException {

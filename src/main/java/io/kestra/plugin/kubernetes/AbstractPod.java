@@ -54,6 +54,7 @@ public abstract class AbstractPod extends AbstractConnection {
     )
     @NotNull
     @Builder.Default
+    @PluginProperty(group = "main")
     protected Property<String> namespace = Property.ofValue("default");
 
     @Schema(
@@ -61,13 +62,14 @@ public abstract class AbstractPod extends AbstractConnection {
         description = "Only files created inside the `kestra/working-dir` directory of the container can be retrieved.\n" +
             "Must be a list of [glob](https://en.wikipedia.org/wiki/Glob_(programming)) expressions relative to the current working directory, some examples: `my-dir/**`, `my-dir/*/**` or `my-dir/my-file.txt`.."
     )
+    @PluginProperty(group = "destination")
     protected Property<List<String>> outputFiles;
 
     @Schema(
         title = "The files to create on the local filesystem – it can be a map or a JSON object.",
         description = "The files will be available inside the `kestra/working-dir` directory of the container. You can use the special variable `{{workingDir}}` in your command to refer to it."
     )
-    @PluginProperty(
+    @PluginProperty(group = "source", 
         additionalProperties = String.class,
         dynamic = true
     )
@@ -76,7 +78,7 @@ public abstract class AbstractPod extends AbstractConnection {
     @Schema(
         title = "The configuration of the file sidecar container that handles the download and upload of files"
     )
-    @PluginProperty
+    @PluginProperty(group = "advanced")
     @Builder.Default
     protected SideCar fileSidecar = SideCar.builder().build();
 
@@ -88,6 +90,7 @@ public abstract class AbstractPod extends AbstractConnection {
             "Supports Pods, StatefulSets, and custom resources that use the Ready condition. " +
             "Note: Deployments are not supported as they use the Available condition instead of Ready."
     )
+    @PluginProperty(group = "advanced")
     protected Property<Duration> waitUntilReady = Property.ofValue(Duration.ZERO);
 
     @Schema(
@@ -132,6 +135,7 @@ public abstract class AbstractPod extends AbstractConnection {
             ```
             """
     )
+    @PluginProperty(group = "advanced")
     protected Property<Map<String, Object>> containerDefaultSpec;
 
     @SuppressWarnings("ResultOfMethodCallIgnored")

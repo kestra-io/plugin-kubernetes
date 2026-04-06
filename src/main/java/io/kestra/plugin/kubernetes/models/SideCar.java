@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.jackson.Jacksonized;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @Getter
 @Builder
@@ -18,12 +19,14 @@ public class SideCar {
         description = "Container image used by the init/sidecar that handles file transfer. Defaults to busybox."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> image = Property.ofValue("busybox");
 
     @Schema(
         title = "Configure sidecar resource requests/limits",
         description = "Optional Kubernetes resources block applied to the file transfer sidecar."
     )
+    @PluginProperty(group = "advanced")
     private Property<Map<String, Object>> resources;
 
     @Schema(
@@ -42,5 +45,6 @@ public class SideCar {
                     mountPath: /tmp
             """
     )
+    @PluginProperty(group = "advanced")
     private Property<Map<String, Object>> defaultSpec;
 }
