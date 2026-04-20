@@ -24,6 +24,7 @@ import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.KubernetesClientTimeoutException;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 
 abstract public class PodService {
@@ -87,18 +88,42 @@ abstract public class PodService {
     }
 
     public static Pod waitForContainersStartedOrCompleted(KubernetesClient client, Pod pod, Duration waitUntilRunning) {
-        return PodService.podRef(client, pod)
-            .waitUntilCondition(
-                j -> j != null &&
-                    j.getStatus() != null && ((PodPhase.RUNNING.value().equals(j.getStatus().getPhase()) &&
-                        j.getStatus().getContainerStatuses() != null &&
-                        j.getStatus().getContainerStatuses().stream()
-                            .anyMatch(c -> c.getState().getRunning() != null))
-                        ||
-                        COMPLETED_PHASES.contains(j.getStatus().getPhase())),
-                waitUntilRunning.toSeconds(),
-                TimeUnit.SECONDS
-            );
+        var podResource = podRef(client, pod);
+        var remaining = waitUntilRunning;
+        var chunk = Duration.ofMinutes(5);
+
+        while (remaining.toSeconds() > 0) {
+            var waitTime = remaining.compareTo(chunk) < 0 ? remaining : chunk;
+            remaining = remaining.minus(waitTime);
+
+            try {
+                var result = podResource.waitUntilCondition(
+                    j -> j != null &&
+                        j.getStatus() != null && ((PodPhase.RUNNING.value().equals(j.getStatus().getPhase()) &&
+                            j.getStatus().getContainerStatuses() != null &&
+                            j.getStatus().getContainerStatuses().stream()
+                                .anyMatch(c -> c.getState().getRunning() != null))
+                            ||
+                            COMPLETED_PHASES.contains(j.getStatus().getPhase())),
+                    waitTime.toSeconds(),
+                    TimeUnit.SECONDS
+                );
+                if (result != null) {
+                    return result;
+                }
+            } catch (KubernetesClientTimeoutException e) {
+                // chunk expired — fall through to GET check
+            } catch (KubernetesClientException e) {
+                // watch error — fall through to GET check
+            }
+
+            podResource = podRef(client, pod);
+            if (podResource.get() == null) {
+                throw new KubernetesClientException("Pod was deleted while waiting for containers to start: " + pod.getMetadata().getName());
+            }
+        }
+
+        throw new KubernetesClientTimeoutException(pod, waitUntilRunning.toSeconds(), TimeUnit.SECONDS);
     }
 
     public static Pod waitForCompletionExcept(KubernetesClient client, Logger logger, Pod pod, Duration waitRunning, String except) {
@@ -135,54 +160,39 @@ abstract public class PodService {
     }
 
     public static Pod waitForCompletion(KubernetesClient client, Logger logger, Pod pod, Duration waitRunning, Predicate<Pod> condition) {
-        Pod ended = null;
-        PodResource podResource = podRef(client, pod);
-        long startTime = System.currentTimeMillis();
-        long maxWaitMillis = waitRunning.toMillis();
+        var podResource = podRef(client, pod);
+        var remaining = waitRunning;
+        var chunk = Duration.ofMinutes(5);
 
-        while (ended == null) {
-            // Calculate elapsed and remaining time
-            long elapsed = System.currentTimeMillis() - startTime;
-            long remaining = maxWaitMillis - elapsed;
-
-            // Fail if maximum duration exceeded
-            if (remaining <= 0) {
-                throw new IllegalStateException(
-                    String.format("Pod did not complete within waitRunning duration of %s", waitRunning)
-                );
-            }
+        while (remaining.toSeconds() > 0) {
+            var waitTime = remaining.compareTo(chunk) < 0 ? remaining : chunk;
+            remaining = remaining.minus(waitTime);
 
             try {
-                // Wait for REMAINING time, not full duration
-                ended = podResource
-                    .waitUntilCondition(
-                        condition,
-                        remaining,
-                        TimeUnit.MILLISECONDS
-                    );
+                var ended = podResource.waitUntilCondition(condition, waitTime.toSeconds(), TimeUnit.SECONDS);
+                if (ended != null) {
+                    return ended;
+                }
+            } catch (KubernetesClientTimeoutException e) {
+                // chunk expired — fall through to GET check below
             } catch (KubernetesClientException e) {
-                // Check if we've exceeded the maximum duration after the failed wait
-                elapsed = System.currentTimeMillis() - startTime;
-                if (elapsed >= maxWaitMillis) {
-                    throw new IllegalStateException(
-                        String.format("Pod did not complete within waitRunning duration of %s", waitRunning),
-                        e
-                    );
-                }
+                // watch error — fall through to GET check below
+                logger.debug("Watch error while waiting for pod completion, checking pod state", e);
+            }
 
-                // Retry with remaining time
-                podResource = podRef(client, pod);
-                if (podResource.get() != null) {
-                    long remainingSeconds = (maxWaitMillis - elapsed) / 1000;
-                    logger.debug("Pod is still alive, waiting for remaining {}s", remainingSeconds);
-                } else {
-                    logger.warn("Unable to refresh pods, no pods were found!", e);
-                    throw e;
-                }
+            podResource = podRef(client, pod);
+            var current = podResource.get();
+            if (current == null) {
+                var podName = pod.getMetadata().getName();
+                logger.warn("Pod '{}' was deleted before reaching a terminal phase", podName);
+                throw new KubernetesClientException("Pod was deleted before reaching a terminal phase: " + podName);
+            }
+            if (condition.test(current)) {
+                return current;
             }
         }
 
-        return ended;
+        throw new KubernetesClientTimeoutException(pod, waitRunning.toSeconds(), TimeUnit.SECONDS);
     }
 
     public static IllegalStateException failedMessage(Pod pod) throws IllegalStateException {
