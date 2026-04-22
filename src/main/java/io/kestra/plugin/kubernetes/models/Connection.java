@@ -102,7 +102,7 @@ public class Connection {
     @Schema(
         title = "Client key passphrase"
     )
-    @PluginProperty(group = "advanced")
+    @PluginProperty(secret = true, group = "advanced")
     private final Property<String> clientKeyPassphrase;
 
     @Schema(
@@ -114,7 +114,7 @@ public class Connection {
     @Schema(
         title = "Truststore passphrase"
     )
-    @PluginProperty(group = "advanced")
+    @PluginProperty(secret = true, group = "advanced")
     private final Property<String> trustStorePassphrase;
 
     @Schema(
@@ -126,31 +126,31 @@ public class Connection {
     @Schema(
         title = "Keystore passphrase"
     )
-    @PluginProperty(group = "advanced")
+    @PluginProperty(secret = true, group = "advanced")
     private final Property<String> keyStorePassphrase;
 
     @Schema(
         title = "OAuth token"
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(secret = true, group = "connection")
     private final Property<String> oauthToken;
 
     @Schema(
         title = "OAuth token provider"
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(secret = true, group = "connection")
     private final OAuthTokenProvider oauthTokenProvider;
 
     @Schema(
         title = "Username"
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(secret = true, group = "connection")
     private Property<String> username;
 
     @Schema(
         title = "Password"
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(group = "connection", secret = true)
     private Property<String> password;
 
     public Config toConfig(RunContext runContext) throws IllegalVariableEvaluationException {
