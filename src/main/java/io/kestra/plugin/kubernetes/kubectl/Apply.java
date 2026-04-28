@@ -1,5 +1,7 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -300,7 +302,8 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
         var rWaitUntilReady = runContext.render(this.waitUntilReady).as(Duration.class).orElse(Duration.ZERO);
 
         try (var client = PodService.client(runContext, this.getConnection())) {
-            var resources = parseSpec(runContext.render(this.spec).as(String.class).orElseThrow());
+            var specStr = runContext.render(this.spec).as(String.class).orElseThrow();
+            var resources = client.load(new ByteArrayInputStream(specStr.getBytes(StandardCharsets.UTF_8))).items();
             Logger logger = runContext.logger();
             logger.debug("Parsed resources: {}", resources);
 
