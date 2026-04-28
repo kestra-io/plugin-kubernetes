@@ -1,5 +1,7 @@
 package io.kestra.plugin.kubernetes.kubectl;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -170,6 +172,113 @@ import io.kestra.core.models.annotations.PluginProperty;
                       spec:
                         foo: bar
                 """
+        ),
+        @Example(
+            title = "Deploy an application to an OpenShift cluster, exposing it via a TLS-terminated Route.",
+            full = true,
+            code = """
+                id: openshift_deploy_python_app
+                namespace: company.devops
+
+                inputs:
+                  - id: image
+                    type: STRING
+                    description: "Full image reference to deploy, e.g. my-registry.example.com/company/python-app:1.0.0"
+
+                tasks:
+                  - id: deploy_to_openshift
+                    type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    connection:
+                      masterUrl: "{{ secret('OPENSHIFT_API_URL') }}"
+                      oauthToken: "{{ secret('OPENSHIFT_TOKEN') }}"
+                    namespace: my-project
+                    spec: |-
+                      apiVersion: apps/v1
+                      kind: Deployment
+                      metadata:
+                        name: python-app
+                        labels:
+                          app: python-app
+                      spec:
+                        replicas: 2
+                        selector:
+                          matchLabels:
+                            app: python-app
+                        strategy:
+                          type: RollingUpdate
+                          rollingUpdate:
+                            maxSurge: 1
+                            maxUnavailable: 0
+                        template:
+                          metadata:
+                            labels:
+                              app: python-app
+                          spec:
+                            containers:
+                              # To track and proxy images through OpenShift's internal registry,
+                              # replace this with an ImageStream (image.openshift.io/v1) that imports
+                              # the tag via spec.tags, set lookupPolicy.local: true, and reference
+                              # the short name here instead of the full registry path.
+                              - name: python-app
+                                image: "{{ inputs.image }}"
+                                imagePullPolicy: Always
+                                ports:
+                                  - name: http
+                                    containerPort: 8080
+                                    protocol: TCP
+                                resources:
+                                  requests:
+                                    cpu: "100m"
+                                    memory: "128Mi"
+                                  limits:
+                                    cpu: "500m"
+                                    memory: "256Mi"
+                                readinessProbe:
+                                  httpGet:
+                                    path: /health
+                                    port: http
+                                  initialDelaySeconds: 10
+                                  periodSeconds: 5
+                                livenessProbe:
+                                  httpGet:
+                                    path: /health
+                                    port: http
+                                  initialDelaySeconds: 30
+                                  periodSeconds: 10
+                      ---
+                      apiVersion: v1
+                      kind: Service
+                      metadata:
+                        name: python-app-service
+                        labels:
+                          app: python-app
+                      spec:
+                        selector:
+                          app: python-app
+                        ports:
+                          - name: http
+                            port: 8080
+                            targetPort: http
+                        type: ClusterIP
+                      ---
+                      apiVersion: route.openshift.io/v1
+                      kind: Route
+                      metadata:
+                        name: python-app-route
+                        labels:
+                          app: python-app
+                      spec:
+                        to:
+                          kind: Service
+                          name: python-app-service
+                          weight: 100
+                        port:
+                          targetPort: http
+                        tls:
+                          termination: edge
+                          insecureEdgeTerminationPolicy: Redirect
+                        wildcardPolicy: None
+                """
         )
     }
 )
@@ -193,7 +302,8 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
         var rWaitUntilReady = runContext.render(this.waitUntilReady).as(Duration.class).orElse(Duration.ZERO);
 
         try (var client = PodService.client(runContext, this.getConnection())) {
-            var resources = parseSpec(runContext.render(this.spec).as(String.class).orElseThrow());
+            var specStr = runContext.render(this.spec).as(String.class).orElseThrow();
+            var resources = client.load(new ByteArrayInputStream(specStr.getBytes(StandardCharsets.UTF_8))).items();
             Logger logger = runContext.logger();
             logger.debug("Parsed resources: {}", resources);
 
