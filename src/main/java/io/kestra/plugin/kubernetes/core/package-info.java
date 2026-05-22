@@ -1,4 +1,5 @@
 @PluginSubGroup(
+    title = "Kubernetes Core",
     description = "This subgroup of plugins contains core tasks for interacting with a Kubernetes cluster.",
     categories = { PluginSubGroup.PluginCategory.INFRASTRUCTURE }
 )
