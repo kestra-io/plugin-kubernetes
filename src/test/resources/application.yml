@@ -3,6 +3,12 @@ kestra:
     type: memory
   queue:
     type: memory
+  worker:
+    controllers:
+      type: STATIC
+      static:
+        endpoints:
+          - host: localhost
   storage:
     type: local
     local:
