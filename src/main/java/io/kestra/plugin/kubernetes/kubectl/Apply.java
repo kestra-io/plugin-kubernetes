@@ -267,15 +267,26 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 
     private static HasMetadata applyResource(KubernetesClient client, HasMetadata resource, String namespace) {
         if (resource instanceof GenericKubernetesResource generic) {
+            // KubernetesSerialization.unmarshal() returns GenericKubernetesResource for CRDs and unknown kinds.
+            // Use metadata.namespace to detect cluster-scoped resources (Namespace, PersistentVolume, Node, ClusterRole, etc.):
+            // cluster-scoped specs have no namespace in their metadata, so calling .inNamespace() would route to the wrong API path.
+            var resourceNamespace = generic.getMetadata().getNamespace();
+            var isNamespaced = resourceNamespace != null;
             var apiVersion = generic.getApiVersion();
             var context = new ResourceDefinitionContext.Builder()
                 .withGroup(parseGroup(apiVersion))
                 .withVersion(parseVersion(apiVersion))
                 .withKind(generic.getKind())
-                .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
+                .withNamespaced(isNamespaced)
                 .build();
-            return client.genericKubernetesResources(context).inNamespace(namespace).resource(generic).serverSideApply();
+            var resourceClient = client.genericKubernetesResources(context);
+            return isNamespaced
+                ? resourceClient.inNamespace(resourceNamespace).resource(generic).serverSideApply()
+                : resourceClient.resource(generic).serverSideApply();
         }
+
+        // KubernetesSerialization.unmarshal() returns typed HasMetadata (Deployment, Service, ConfigMap, ...) for known built-in kinds.
+        // These are always namespaced; use the task-level namespace since specs typically omit metadata.namespace.
         return client.resource(resource).inNamespace(namespace).unlock().serverSideApply();
     }
 
