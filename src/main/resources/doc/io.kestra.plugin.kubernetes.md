@@ -12,6 +12,6 @@ Store credentials in [secrets](https://kestra.io/docs/concepts/secret) and refer
 
 ## Tasks
 
-`core.PodCreate` creates a pod, streams its logs, and waits for completion — use it when you need direct control over the pod spec (resource limits, volumes, init containers, node selectors). For simply running a script inside a container as part of a flow, prefer a [Kubernetes task runner](https://kestra.io/docs/workflow-components/task-runners) configured on a script task rather than `PodCreate` directly.
+`core.PodCreate` creates a pod, streams its logs, and waits for completion — use it when you need direct control over the pod spec (resource limits, volumes, init containers, node selectors). For simply running a script inside a container as part of a flow, prefer a [Kubernetes task runner](https://kestra.io/docs/task-runners) configured on a script task rather than `PodCreate` directly.
 
 The `kubectl` package covers resource management: `Apply` creates or updates resources from a manifest, `Get` reads resource state, `Patch` modifies a live resource, `Delete` removes it, and `Restart` triggers a rollout restart. All kubectl tasks accept a `namespace` property to scope the operation.
