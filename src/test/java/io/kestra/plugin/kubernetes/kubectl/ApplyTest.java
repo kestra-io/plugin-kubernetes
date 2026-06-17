@@ -3,7 +3,11 @@ package io.kestra.plugin.kubernetes.kubectl;
 import java.time.Duration;
 import java.util.List;
 
+import java.util.concurrent.TimeUnit;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.parallel.ResourceLock;
 
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
@@ -19,6 +23,8 @@ import static org.hamcrest.Matchers.notNullValue;
 
 @KestraTest
 @Slf4j
+@Timeout(value = 15, unit = TimeUnit.MINUTES)
+@ResourceLock("kubectl-my-deployment")
 class ApplyTest {
     @Inject
     private RunContextFactory runContextFactory;
