@@ -16,6 +16,9 @@ import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.services.ResourceWaitService;
 
+import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
+import io.fabric8.kubernetes.api.model.HasMetadata;
+import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -66,6 +69,34 @@ import io.kestra.core.models.annotations.PluginProperty;
                                 image: nginx:stable-alpine
                                 ports:
                                   - containerPort: 80
+                """
+        ),
+        @Example(
+            title = "Apply a core-group v1 Service.",
+            full = true,
+            code = """
+                id: create_or_replace_service
+                namespace: company.team
+
+                tasks:
+                  - id: apply
+                    type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
+                    namespace: default
+                    spec: |-
+                      apiVersion: v1
+                      kind: Service
+                      metadata:
+                        name: my-service
+                      spec:
+                        selector:
+                          app: myapp
+                        ports:
+                          - protocol: TCP
+                            port: 80
+                            targetPort: 8080
                 """
         ),
         @Example(
@@ -199,10 +230,8 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 
             List<Metadata> metadataList = new ArrayList<>();
             for (var resource : resources) {
-                var resourceClient = client.resource(resource).inNamespace(rNamespace);
-
                 try {
-                    var hasMetadata = resourceClient.unlock().serverSideApply();
+                    var hasMetadata = applyResource(client, resource, rNamespace);
                     metadataList.add(Metadata.from(hasMetadata.getMetadata()));
                     logger.info("Applied resource: {}", hasMetadata);
 
@@ -243,6 +272,27 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
                 .metadata(metadataList)
                 .build();
         }
+    }
+
+    private static HasMetadata applyResource(KubernetesClient client, HasMetadata resource, String namespace) {
+        if (resource instanceof GenericKubernetesResource generic) {
+            var apiVersion = generic.getApiVersion();
+            String group = "";
+            String version = apiVersion;
+            if (apiVersion != null && apiVersion.contains("/")) {
+                var parts = apiVersion.split("/", 2);
+                group = parts[0];
+                version = parts[1];
+            }
+            var context = new ResourceDefinitionContext.Builder()
+                .withGroup(group)
+                .withVersion(version)
+                .withKind(generic.getKind())
+                .withNamespaced(true)
+                .build();
+            return client.genericKubernetesResources(context).inNamespace(namespace).resource(generic).serverSideApply();
+        }
+        return client.resource(resource).inNamespace(namespace).unlock().serverSideApply();
     }
 
     @Getter

@@ -74,6 +74,68 @@ class ApplyTest {
     }
 
     @Test
+    void runCoreGroupService() throws Exception {
+        var runContext = runContextFactory.of();
+
+        var task = Apply.builder()
+            .id(Apply.class.getSimpleName())
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: v1
+                        kind: Service
+                        metadata:
+                          name: my-test-service
+                        spec:
+                          selector:
+                            app: myapp
+                          ports:
+                            - protocol: TCP
+                              port: 80
+                              targetPort: 8080
+                        """
+                )
+            )
+            .build();
+
+        var runOutput = task.run(runContext);
+
+        assertThat(runOutput.getMetadata(), notNullValue());
+        assertThat(runOutput.getMetadata().getFirst().getName(), is("my-test-service"));
+    }
+
+    @Test
+    void runCoreGroupConfigMap() throws Exception {
+        var runContext = runContextFactory.of();
+
+        var task = Apply.builder()
+            .id(Apply.class.getSimpleName())
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: v1
+                        kind: ConfigMap
+                        metadata:
+                          name: my-test-configmap
+                        data:
+                          key1: value1
+                          key2: value2
+                        """
+                )
+            )
+            .build();
+
+        var runOutput = task.run(runContext);
+
+        assertThat(runOutput.getMetadata(), notNullValue());
+        assertThat(runOutput.getMetadata().getFirst().getName(), is("my-test-configmap"));
+    }
+
+    @Test
     void runWithWaitUntilReadyZero() throws Exception {
         // Test that waitUntilReady with PT0S returns immediately without waiting for pod to be ready
         var runContext = runContextFactory.of();
