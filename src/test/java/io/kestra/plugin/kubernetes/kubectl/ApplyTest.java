@@ -12,6 +12,7 @@ import org.junit.jupiter.api.parallel.ResourceLock;
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.utils.IdUtils;
 
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -78,7 +79,7 @@ class ApplyTest {
         var runContext = runContextFactory.of();
 
         var task = Apply.builder()
-            .id(Apply.class.getSimpleName())
+            .id(IdUtils.create())
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
             .spec(
@@ -111,7 +112,7 @@ class ApplyTest {
         var runContext = runContextFactory.of();
 
         var task = Apply.builder()
-            .id(Apply.class.getSimpleName())
+            .id(IdUtils.create())
             .type(Apply.class.getName())
             .namespace(Property.ofValue("default"))
             .spec(

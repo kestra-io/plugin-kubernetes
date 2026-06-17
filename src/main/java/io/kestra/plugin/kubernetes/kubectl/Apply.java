@@ -242,18 +242,9 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
                         var apiVersion = hasMetadata.getApiVersion();
                         var kind = hasMetadata.getKind();
 
-                        // Parse apiVersion to extract group and version
-                        String group = "";
-                        String version = apiVersion;
-                        if (apiVersion != null && apiVersion.contains("/")) {
-                            String[] parts = apiVersion.split("/", 2);
-                            group = parts[0];
-                            version = parts[1];
-                        }
-
                         var resourceContext = new ResourceDefinitionContext.Builder()
-                            .withGroup(group)
-                            .withVersion(version)
+                            .withGroup(parseGroup(apiVersion))
+                            .withVersion(parseVersion(apiVersion))
                             .withKind(kind)
                             .withNamespaced(true)
                             .build();
@@ -277,22 +268,29 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
     private static HasMetadata applyResource(KubernetesClient client, HasMetadata resource, String namespace) {
         if (resource instanceof GenericKubernetesResource generic) {
             var apiVersion = generic.getApiVersion();
-            String group = "";
-            String version = apiVersion;
-            if (apiVersion != null && apiVersion.contains("/")) {
-                var parts = apiVersion.split("/", 2);
-                group = parts[0];
-                version = parts[1];
-            }
             var context = new ResourceDefinitionContext.Builder()
-                .withGroup(group)
-                .withVersion(version)
+                .withGroup(parseGroup(apiVersion))
+                .withVersion(parseVersion(apiVersion))
                 .withKind(generic.getKind())
-                .withNamespaced(true)
+                .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
                 .build();
             return client.genericKubernetesResources(context).inNamespace(namespace).resource(generic).serverSideApply();
         }
         return client.resource(resource).inNamespace(namespace).unlock().serverSideApply();
+    }
+
+    private static String parseGroup(String apiVersion) {
+        if (apiVersion != null && apiVersion.contains("/")) {
+            return apiVersion.split("/", 2)[0];
+        }
+        return "";
+    }
+
+    private static String parseVersion(String apiVersion) {
+        if (apiVersion != null && apiVersion.contains("/")) {
+            return apiVersion.split("/", 2)[1];
+        }
+        return apiVersion != null ? apiVersion : "";
     }
 
     @Getter
