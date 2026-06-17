@@ -409,8 +409,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                 try (Watch ignored = PodService.podRef(client, pod).watch(listOptions(runContext), new PodWatcher(logger))) {
                     try {
-                        // in case of resuming an already running pod, the status will be running
-                        if (!PodService.PodPhase.RUNNING.value().equals(pod.getStatus().getPhase())) {
+                        // Skip init-container setup and waitForPodReady for pods already running or completed (e.g. on resume).
+                        // Snapshot phase from the list call — fast-path GET in waitForContainersStartedOrCompleted is authoritative.
+                        var podPhase = Optional.ofNullable(pod.getStatus()).map(io.fabric8.kubernetes.api.model.PodStatus::getPhase).orElse(null);
+                        if (!PodService.PodPhase.RUNNING.value().equals(podPhase) && !PodService.isCompletedPhase(podPhase)) {
                             // wait for init container and upload files
                             if (validatedInputFiles != null) {
                                 // Files already validated and created before pod creation
@@ -439,7 +441,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                         // Wait for containers to start (Running) or pod to reach terminal state (Succeeded/Failed/Unknown)
                         // This ensures we proceed with log collection regardless of pod outcome
-                        pod = PodService.waitForContainersStartedOrCompleted(client, pod, rWaitUntilRunning);
+                        pod = PodService.waitForContainersStartedOrCompleted(client, logger, pod, rWaitUntilRunning);
 
                         // Only start log streaming if pod is actually running
                         // For pods that complete quickly, fetchFinalLogs will handle log collection
