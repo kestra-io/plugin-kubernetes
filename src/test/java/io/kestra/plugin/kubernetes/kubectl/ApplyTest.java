@@ -117,6 +117,17 @@ class ApplyTest {
 
         assertThat(runOutput.getMetadata(), notNullValue());
         assertThat(runOutput.getMetadata().getFirst().getName(), is("regression-named-group-deployment"));
+
+        Delete.builder()
+            .id(Delete.class.getSimpleName())
+            .type(Delete.class.getName())
+            .namespace(Property.ofValue("default"))
+            .resourceType(Property.ofValue("deployments"))
+            .resourcesNames(Property.ofValue(List.of("regression-named-group-deployment")))
+            .apiGroup(Property.ofValue("apps"))
+            .apiVersion(Property.ofValue("v1"))
+            .build()
+            .run(runContext);
     }
 
     @Test
