@@ -268,26 +268,28 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
     }
 
     private static HasMetadata applyResource(KubernetesClient client, HasMetadata resource, String namespace) {
-        if (resource instanceof GenericKubernetesResource generic) {
-            // KubernetesSerialization.unmarshal() returns GenericKubernetesResource for CRDs and unknown kinds.
-            // Cluster-scoped specs have no namespace in their metadata, so calling .inNamespace() would route to the wrong API path.
-            var resourceNamespace = generic.getMetadata().getNamespace();
-            var isNamespaced = resourceNamespace != null;
-            var apiVersion = generic.getApiVersion();
+        if (resource instanceof GenericKubernetesResource generic && parseGroup(generic.getApiVersion()).isEmpty()) {
+            // Core-group v1 resources (Service, ConfigMap, Pod, ...) must go through genericKubernetesResources()
+            // because Fabric8 routes them through /api/v1/... not /apis/.
+            // Named-group resources (apps/v1 Deployment, etc.) fall through to client.resource() below even when
+            // unmarshal() returns GenericKubernetesResource, since client.resource() correctly uses /apis/<group>/...
+            var effectiveNamespace = generic.getMetadata().getNamespace() != null
+                ? generic.getMetadata().getNamespace()
+                : namespace;
             var context = new ResourceDefinitionContext.Builder()
-                .withGroup(parseGroup(apiVersion))
-                .withVersion(parseVersion(apiVersion))
+                .withGroup("")
+                .withVersion(parseVersion(generic.getApiVersion()))
                 .withKind(generic.getKind())
-                .withNamespaced(isNamespaced)
+                .withNamespaced(true)
                 .build();
-            var resourceClient = client.genericKubernetesResources(context);
-            return isNamespaced
-                ? resourceClient.inNamespace(resourceNamespace).resource(generic).serverSideApply()
-                : resourceClient.resource(generic).serverSideApply();
+            return client.genericKubernetesResources(context)
+                .inNamespace(effectiveNamespace)
+                .resource(generic)
+                .serverSideApply();
         }
 
-        // KubernetesSerialization.unmarshal() returns typed HasMetadata (Deployment, Service, ConfigMap, ...) for known built-in kinds.
-        // Typed HasMetadata objects use the task-level namespace since specs typically omit metadata.namespace.
+        // Named-group resources (apps/v1 etc.) and typed HasMetadata objects both go here.
+        // Specs typically omit metadata.namespace, so we use the task-level namespace.
         return client.resource(resource).inNamespace(namespace).unlock().serverSideApply();
     }
 

@@ -75,6 +75,51 @@ class ApplyTest {
     }
 
     @Test
+    void runNamedGroupDeployment() throws Exception {
+        // Regression test: apps/v1 Deployment must use the namespaced URL (/apis/apps/v1/namespaces/.../deployments),
+        // not the cluster-scope one — which would produce "forbidden: ... at the cluster scope".
+        var runContext = runContextFactory.of();
+
+        var task = Apply.builder()
+            .id(IdUtils.create())
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: apps/v1
+                        kind: Deployment
+                        metadata:
+                          name: regression-named-group-deployment
+                          labels:
+                            app: regression-test
+                        spec:
+                          replicas: 1
+                          selector:
+                            matchLabels:
+                              app: regression-test
+                          template:
+                            metadata:
+                              labels:
+                                app: regression-test
+                            spec:
+                              containers:
+                              - name: app
+                                image: nginx:stable-alpine
+                                ports:
+                                - containerPort: 80
+                        """
+                )
+            )
+            .build();
+
+        var runOutput = task.run(runContext);
+
+        assertThat(runOutput.getMetadata(), notNullValue());
+        assertThat(runOutput.getMetadata().getFirst().getName(), is("regression-named-group-deployment"));
+    }
+
+    @Test
     void runCoreGroupService() throws Exception {
         var runContext = runContextFactory.of();
 
