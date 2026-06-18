@@ -12,6 +12,7 @@ import org.junit.jupiter.api.parallel.ResourceLock;
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.utils.IdUtils;
 
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -71,6 +72,68 @@ class ApplyTest {
         Thread.sleep(500);
 
         assertThat(runOutput.getMetadata().getFirst().getName(), containsString("my-deployment"));
+    }
+
+    @Test
+    void runCoreGroupService() throws Exception {
+        var runContext = runContextFactory.of();
+
+        var task = Apply.builder()
+            .id(IdUtils.create())
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: v1
+                        kind: Service
+                        metadata:
+                          name: my-test-service
+                        spec:
+                          selector:
+                            app: myapp
+                          ports:
+                            - protocol: TCP
+                              port: 80
+                              targetPort: 8080
+                        """
+                )
+            )
+            .build();
+
+        var runOutput = task.run(runContext);
+
+        assertThat(runOutput.getMetadata(), notNullValue());
+        assertThat(runOutput.getMetadata().getFirst().getName(), is("my-test-service"));
+    }
+
+    @Test
+    void runCoreGroupConfigMap() throws Exception {
+        var runContext = runContextFactory.of();
+
+        var task = Apply.builder()
+            .id(IdUtils.create())
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: v1
+                        kind: ConfigMap
+                        metadata:
+                          name: my-test-configmap
+                        data:
+                          key1: value1
+                          key2: value2
+                        """
+                )
+            )
+            .build();
+
+        var runOutput = task.run(runContext);
+
+        assertThat(runOutput.getMetadata(), notNullValue());
+        assertThat(runOutput.getMetadata().getFirst().getName(), is("my-test-configmap"));
     }
 
     @Test
