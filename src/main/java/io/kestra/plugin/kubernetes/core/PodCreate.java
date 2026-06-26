@@ -35,6 +35,7 @@ import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.watchers.PodWatcher;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
@@ -310,14 +311,14 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private static final String WORKING_DIR_VAR = "workingDir";
     private static final String OUTPUT_FILES_VAR = "outputFiles";
 
-    // Kill handling state
-    @PluginProperty(group = "advanced")
+    // Kill handling state (internal runtime state, not user-configurable)
+    @JsonIgnore
     private final AtomicBoolean killed = new AtomicBoolean(false);
-    @PluginProperty(group = "advanced")
+    @JsonIgnore
     private final AtomicReference<String> currentPodName = new AtomicReference<>();
-    @PluginProperty(group = "source")
+    @JsonIgnore
     private volatile String currentNamespace;
-    @PluginProperty(group = "connection")
+    @JsonIgnore
     private volatile Connection currentConnection;
 
     /**
