@@ -88,7 +88,7 @@ public class Connection {
         title = "Client key data",
         description = "Base64-encoded client key. Whitespace is stripped automatically."
     )
-    @PluginProperty(group = "advanced")
+    @PluginProperty(secret = true, group = "advanced")
     private final Property<String> clientKeyData;
 
     @Schema(
@@ -157,11 +157,19 @@ public class Connection {
         ConfigBuilder builder = new ConfigBuilder(Config.empty());
 
         if (trustCerts != null) {
-            builder.withTrustCerts(runContext.render(trustCerts).as(Boolean.class).orElseThrow());
+            boolean trustCertsValue = runContext.render(trustCerts).as(Boolean.class).orElseThrow();
+            if (trustCertsValue) {
+                runContext.logger().warn("Kubernetes connection is configured with trustCerts=true: TLS certificate validation is disabled. This should only be used for testing, never in production.");
+            }
+            builder.withTrustCerts(trustCertsValue);
         }
 
         if (disableHostnameVerification != null) {
-            builder.withDisableHostnameVerification(runContext.render(disableHostnameVerification).as(Boolean.class).orElseThrow());
+            boolean disableHostnameVerificationValue = runContext.render(disableHostnameVerification).as(Boolean.class).orElseThrow();
+            if (disableHostnameVerificationValue) {
+                runContext.logger().warn("Kubernetes connection is configured with disableHostnameVerification=true: TLS hostname checks are disabled. Avoid this in production clusters.");
+            }
+            builder.withDisableHostnameVerification(disableHostnameVerificationValue);
         }
 
         if (masterUrl != null) {

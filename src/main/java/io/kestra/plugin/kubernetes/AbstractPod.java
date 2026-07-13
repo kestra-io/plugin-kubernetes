@@ -66,7 +66,7 @@ public abstract class AbstractPod extends AbstractConnection {
     protected Property<List<String>> outputFiles;
 
     @Schema(
-        title = "The files to create on the local filesystem – it can be a map or a JSON object.",
+        title = "The files to create on the local filesystem – it can be a map or a JSON object",
         description = "The files will be available inside the `kestra/working-dir` directory of the container. You can use the special variable `{{workingDir}}` in your command to refer to it."
     )
     @PluginProperty(group = "source", 
