@@ -27,8 +27,7 @@ import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.executions.TaskRun;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.property.Property;
-import io.kestra.core.queues.QueueFactoryInterface;
-import io.kestra.core.queues.QueueInterface;
+import io.kestra.core.queues.DispatchQueueInterface;
 import io.kestra.core.runners.*;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
@@ -44,8 +43,6 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
-import reactor.core.publisher.Flux;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -59,8 +56,7 @@ class PodCreateTest {
     private RunContextFactory runContextFactory;
 
     @Inject
-    @Named(QueueFactoryInterface.WORKERTASKLOG_NAMED)
-    private QueueInterface<LogEntry> workerTaskLogQueue;
+    private DispatchQueueInterface<LogEntry> workerTaskLogQueue;
 
     @Inject
     private StorageInterface storageInterface;
@@ -100,7 +96,8 @@ class PodCreateTest {
 
     @Test
     void run() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        workerTaskLogQueue.addListener(logs::add);
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -127,13 +124,17 @@ class PodCreateTest {
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
-        runContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+        runContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).data(WorkerTaskData.from(runContext)).build());
 
         PodCreate.Output runOutput = task.run(runContext);
 
         assertThat(runOutput.getMetadata().getName(), containsString("podcreate"));
 
-        List<LogEntry> logs = receive.collectList().block();
+        TestsUtils.awaitLogs(
+            logs,
+            log -> log.getMessage() != null && (log.getMessage().startsWith("Log line ") || log.getMessage().equals("error")),
+            21
+        );
 
         // Verify all 20 log lines are present exactly once (no duplicates, no missing)
         for (int i = 1; i <= 20; i++) {
@@ -171,7 +172,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext runContextFinal = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
 
         String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
 
@@ -211,7 +212,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+        RunContext runContextFinal = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).data(WorkerTaskData.from(runContext)).build());
 
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
     }
@@ -242,7 +243,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+        RunContext runContextFinal = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).data(WorkerTaskData.from(runContext)).build());
 
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
     }
@@ -276,7 +277,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -345,7 +346,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -462,7 +463,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
@@ -490,7 +491,8 @@ class PodCreateTest {
 
     @Test
     void resume() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        workerTaskLogQueue.addListener(logs::add);
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -518,16 +520,16 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
 
-        runContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+        runContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).data(WorkerTaskData.from(runContext)).build());
 
         RunContext finalRunContext = runContext;
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
 
-        Flux<LogEntry> shutdownReceive = TestsUtils.receive(workerTaskLogQueue, logEntry ->
+        workerTaskLogQueue.addListener(logEntry ->
         {
-            if (logEntry.getLeft().getMessage() != null && logEntry.getLeft().getMessage().equals("Resume log line 1")) {
+            if ("Resume log line 1".equals(logEntry.getMessage())) {
                 executorService.shutdownNow();
             }
         });
@@ -542,11 +544,10 @@ class PodCreateTest {
         });
 
         Await.until(executorService::isShutdown, Duration.ofMillis(100), Duration.ofMinutes(1));
-        shutdownReceive.blockLast();
 
         task.run(finalRunContext);
 
-        List<LogEntry> logs = receive.toStream().toList();
+        TestsUtils.awaitLog(logs, log -> "Resume log line 10".equals(log.getMessage()));
         assertLogExactlyOnce(logs, "Resume log line 10");
     }
 
@@ -592,7 +593,7 @@ class PodCreateTest {
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
-        runContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+        runContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).data(WorkerTaskData.from(runContext)).build());
 
         PodCreate.Output run = task.run(runContext);
 
@@ -643,9 +644,7 @@ class PodCreateTest {
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
-        runContext = runContextInitializer.forWorker(
-            (DefaultRunContext) runContext,
-            WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build()
+        runContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).data(WorkerTaskData.from(runContext)).build()
         );
 
         PodCreate.Output run = task.run(runContext);
@@ -704,7 +703,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         final PodCreate.Output[] run = new PodCreate.Output[1];
@@ -793,10 +792,7 @@ class PodCreateTest {
 
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
-        runContext = runContextInitializer.forWorker(
-            (DefaultRunContext) runContext,
-            WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build()
-        );
+        runContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).data(WorkerTaskData.from(runContext)).build());
 
         PodCreate.Output run = task.run(runContext);
 
@@ -838,7 +834,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -904,10 +900,7 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
-        runContext = runContextInitializer.forWorker(
-            (DefaultRunContext) runContext,
-            WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build()
-        );
+        runContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).data(WorkerTaskData.from(runContext)).build());
 
         PodCreate.Output runOutput = task.run(runContext);
 
@@ -943,7 +936,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+        RunContext runContextFinal = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).data(WorkerTaskData.from(runContext)).build());
 
         PodCreate.Output output = task.run(runContextFinal);
 
@@ -955,7 +948,8 @@ class PodCreateTest {
 
     @Test
     void multipleContainersOneFailsWithOutputFiles() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        workerTaskLogQueue.addListener(logs::add);
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -987,13 +981,20 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
+        RunContext runContextFinal = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).data(WorkerTaskData.from(runContext)).build());
 
         IllegalStateException exception = assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
         assertThat(exception.getMessage(), containsString("container-failure"));
         assertThat(exception.getMessage(), containsString("exit code 1"));
 
-        List<LogEntry> logs = receive.collectList().block();
+        TestsUtils.awaitLogs(
+            logs,
+            log -> log.getMessage() != null && (
+                log.getMessage().equals("First container succeeded") ||
+                    log.getMessage().equals("Second container failing")
+            ),
+            2
+        );
 
         // Verify logs from both containers were collected exactly once (no duplicates)
         assertLogExactlyOnce(logs, "First container succeeded");
@@ -1003,7 +1004,7 @@ class PodCreateTest {
     @Test
     void completeLogCollectionAfterQuickTermination() throws Exception {
         List<LogEntry> logs = new CopyOnWriteArrayList<>();
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
+        workerTaskLogQueue.addListener(logs::add);
 
         // Generate exactly 20 identifiable log lines in quick succession, then fail
         PodCreate task = PodCreate.builder()
@@ -1031,7 +1032,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext runContextFinal = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
 
         // Wait for all 20 numbered logs (ignores DEBUG/system logs from queue)
@@ -1041,8 +1042,7 @@ class PodCreateTest {
             20
         );
 
-        // Wait for Flux completion (ensures FINAL and any remaining logs are processed)
-        receive.blockLast();
+        TestsUtils.awaitLog(logs, log -> "FINAL".equals(log.getMessage()));
 
         // Verify all 20 log lines are present exactly once (no duplicates, no missing)
         for (int i = 1; i <= 20; i++) {
@@ -1060,7 +1060,7 @@ class PodCreateTest {
         // still successfully delete the pod, despite the interrupt flag being set.
 
         List<LogEntry> logs = new CopyOnWriteArrayList<>();
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
+        workerTaskLogQueue.addListener(logs::add);
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -1088,7 +1088,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -1150,8 +1150,7 @@ class PodCreateTest {
 
             logger.info("Pod {} deletion was initiated successfully", podName);
 
-            // Wait for log collection to complete (with timeout)
-            receive.blockLast(Duration.ofSeconds(30));
+            TestsUtils.awaitLog(logs, log -> "start".equals(log.getMessage()));
 
             // Verify no deletion warnings were logged
             long deletionWarnings = logs.stream()
@@ -1208,7 +1207,7 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
@@ -1327,7 +1326,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         final PodCreate.Output[] run = new PodCreate.Output[1];
@@ -1443,7 +1442,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         final PodCreate.Output[] run = new PodCreate.Output[1];
@@ -1561,7 +1560,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         final PodCreate.Output[] run = new PodCreate.Output[1];
@@ -1664,7 +1663,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext finalRunContext = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         final PodCreate.Output[] run = new PodCreate.Output[1];
@@ -1763,10 +1762,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext finalRunContext = runContextInitializer.forWorker(
-            (DefaultRunContext) runContext,
-            WorkerTask.builder().task(task).taskRun(taskRun).build()
-        );
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -1860,10 +1856,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
-        RunContext finalRunContext = runContextInitializer.forWorker(
-            (DefaultRunContext) runContext,
-            WorkerTask.builder().task(task).taskRun(taskRun).build()
-        );
+        RunContext finalRunContext = runContextInitializer.forWorker(WorkerTask.builder().task(task).taskRun(taskRun).data(WorkerTaskData.from(runContext)).build());
         Logger logger = finalRunContext.logger();
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
