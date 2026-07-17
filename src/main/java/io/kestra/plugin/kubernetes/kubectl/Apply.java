@@ -17,6 +17,9 @@ import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.services.ResourceWaitService;
 
+import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
+import io.fabric8.kubernetes.api.model.HasMetadata;
+import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -66,6 +69,34 @@ import lombok.experimental.SuperBuilder;
                                 image: nginx:stable-alpine
                                 ports:
                                   - containerPort: 80
+                """
+        ),
+        @Example(
+            title = "Apply a core-group v1 Service.",
+            full = true,
+            code = """
+                id: create_or_replace_service
+                namespace: company.team
+
+                tasks:
+                  - id: apply
+                    type: io.kestra.plugin.kubernetes.kubectl.Apply
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
+                    namespace: default
+                    spec: |-
+                      apiVersion: v1
+                      kind: Service
+                      metadata:
+                        name: my-service
+                      spec:
+                        selector:
+                          app: myapp
+                        ports:
+                          - protocol: TCP
+                            port: 80
+                            targetPort: 8080
                 """
         ),
         @Example(
@@ -199,10 +230,8 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
 
             List<Metadata> metadataList = new ArrayList<>();
             for (var resource : resources) {
-                var resourceClient = client.resource(resource).inNamespace(rNamespace);
-
                 try {
-                    var hasMetadata = resourceClient.unlock().serverSideApply();
+                    var hasMetadata = applyResource(client, resource, rNamespace);
                     metadataList.add(Metadata.from(hasMetadata.getMetadata()));
                     logger.info("Applied resource: {}", hasMetadata);
 
@@ -212,25 +241,18 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
                         var resourceName = resourceMetadata.getName();
                         var apiVersion = hasMetadata.getApiVersion();
                         var kind = hasMetadata.getKind();
-
-                        // Parse apiVersion to extract group and version
-                        String group = "";
-                        String version = apiVersion;
-                        if (apiVersion != null && apiVersion.contains("/")) {
-                            String[] parts = apiVersion.split("/", 2);
-                            group = parts[0];
-                            version = parts[1];
-                        }
+                        var isNamespaced = resourceMetadata.getNamespace() != null;
 
                         var resourceContext = new ResourceDefinitionContext.Builder()
-                            .withGroup(group)
-                            .withVersion(version)
+                            .withGroup(parseGroup(apiVersion))
+                            .withVersion(parseVersion(apiVersion))
                             .withKind(kind)
-                            .withNamespaced(true)
+                            .withNamespaced(isNamespaced)
                             .build();
 
+                        var waitNamespace = isNamespaced ? resourceMetadata.getNamespace() : rNamespace;
                         logger.info("Waiting for resource '{}' to become ready (timeout: {})...", resourceName, rWaitUntilReady);
-                        ResourceWaitService.waitForReady(client, resourceContext, rNamespace, resourceName, rWaitUntilReady, logger);
+                        ResourceWaitService.waitForReady(client, resourceContext, waitNamespace, resourceName, rWaitUntilReady, logger);
                         logger.info("Resource '{}' is ready", resourceName);
                     }
                 } catch (Exception exception) {
@@ -243,6 +265,46 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
                 .metadata(metadataList)
                 .build();
         }
+    }
+
+    private static HasMetadata applyResource(KubernetesClient client, HasMetadata resource, String namespace) {
+        if (resource instanceof GenericKubernetesResource generic && parseGroup(generic.getApiVersion()).isEmpty()) {
+            // Core-group v1 resources (Service, ConfigMap, Pod, ...) must go through genericKubernetesResources()
+            // because Fabric8 routes them through /api/v1/... not /apis/.
+            // Named-group resources (apps/v1 Deployment, etc.) fall through to client.resource() below even when
+            // unmarshal() returns GenericKubernetesResource, since client.resource() correctly uses /apis/<group>/...
+            var effectiveNamespace = generic.getMetadata().getNamespace() != null
+                ? generic.getMetadata().getNamespace()
+                : namespace;
+            var context = new ResourceDefinitionContext.Builder()
+                .withGroup("")
+                .withVersion(parseVersion(generic.getApiVersion()))
+                .withKind(generic.getKind())
+                .withNamespaced(true)
+                .build();
+            return client.genericKubernetesResources(context)
+                .inNamespace(effectiveNamespace)
+                .resource(generic)
+                .serverSideApply();
+        }
+
+        // Named-group resources (apps/v1 etc.) and typed HasMetadata objects both go here.
+        // Specs typically omit metadata.namespace, so we use the task-level namespace.
+        return client.resource(resource).inNamespace(namespace).unlock().serverSideApply();
+    }
+
+    private static String parseGroup(String apiVersion) {
+        if (apiVersion != null && apiVersion.contains("/")) {
+            return apiVersion.split("/", 2)[0];
+        }
+        return "";
+    }
+
+    private static String parseVersion(String apiVersion) {
+        if (apiVersion != null && apiVersion.contains("/")) {
+            return apiVersion.split("/", 2)[1];
+        }
+        return apiVersion != null ? apiVersion : "";
     }
 
     @Getter

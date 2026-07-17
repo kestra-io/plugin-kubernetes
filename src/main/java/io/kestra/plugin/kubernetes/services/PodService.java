@@ -91,8 +91,36 @@ abstract public class PodService {
             );
     }
 
-    public static Pod waitForContainersStartedOrCompleted(KubernetesClient client, Pod pod, Duration waitUntilRunning) {
+    public static boolean isCompletedPhase(String phase) {
+        return phase != null && COMPLETED_PHASES.contains(phase);
+    }
+
+    private static boolean isStartedOrCompleted(Pod pod) {
+        if (pod == null || pod.getStatus() == null) {
+            return false;
+        }
+        var phase = pod.getStatus().getPhase();
+        if (isCompletedPhase(phase)) {
+            return true;
+        }
+        return PodPhase.RUNNING.value().equals(phase) &&
+            pod.getStatus().getContainerStatuses() != null &&
+            pod.getStatus().getContainerStatuses().stream()
+                .anyMatch(c -> c.getState() != null && c.getState().getRunning() != null);
+    }
+
+    public static Pod waitForContainersStartedOrCompleted(KubernetesClient client, Logger logger, Pod pod, Duration waitUntilRunning) {
         var podResource = podRef(client, pod);
+
+        // Fast path: pod already satisfies the condition (e.g. on resume with a Running/Succeeded pod)
+        var current = podResource.get();
+        if (current == null) {
+            throw new KubernetesClientException("Pod was deleted while waiting for containers to start: " + pod.getMetadata().getName());
+        }
+        if (isStartedOrCompleted(current)) {
+            return current;
+        }
+
         var remaining = waitUntilRunning;
         var chunk = Duration.ofMinutes(5);
 
@@ -102,13 +130,7 @@ abstract public class PodService {
 
             try {
                 var result = podResource.waitUntilCondition(
-                    j -> j != null &&
-                        j.getStatus() != null && ((PodPhase.RUNNING.value().equals(j.getStatus().getPhase()) &&
-                            j.getStatus().getContainerStatuses() != null &&
-                            j.getStatus().getContainerStatuses().stream()
-                                .anyMatch(c -> c.getState().getRunning() != null))
-                            ||
-                            COMPLETED_PHASES.contains(j.getStatus().getPhase())),
+                    PodService::isStartedOrCompleted,
                     waitTime.toSeconds(),
                     TimeUnit.SECONDS
                 );
@@ -118,12 +140,16 @@ abstract public class PodService {
             } catch (KubernetesClientTimeoutException e) {
                 // chunk expired — fall through to GET check
             } catch (KubernetesClientException e) {
-                // watch error — fall through to GET check
+                logger.debug("Watch error while waiting for containers to start after {}s, rechecking pod state", waitTime.toSeconds(), e);
             }
 
             podResource = podRef(client, pod);
-            if (podResource.get() == null) {
+            var polled = podResource.get();
+            if (polled == null) {
                 throw new KubernetesClientException("Pod was deleted while waiting for containers to start: " + pod.getMetadata().getName());
+            }
+            if (isStartedOrCompleted(polled)) {
+                return polled;
             }
         }
 

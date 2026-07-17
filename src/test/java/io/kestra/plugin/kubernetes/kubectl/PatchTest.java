@@ -3,9 +3,11 @@ package io.kestra.plugin.kubernetes.kubectl;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 
 import io.kestra.core.junit.annotations.KestraTest;
@@ -22,6 +24,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 @KestraTest
+@Timeout(value = 15, unit = TimeUnit.MINUTES)
 class PatchTest {
     @Inject
     private RunContextFactory runContextFactory;

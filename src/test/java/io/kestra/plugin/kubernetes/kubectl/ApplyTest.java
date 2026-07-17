@@ -2,12 +2,16 @@ package io.kestra.plugin.kubernetes.kubectl;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.parallel.ResourceLock;
 
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.utils.IdUtils;
 
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +23,8 @@ import static org.hamcrest.Matchers.notNullValue;
 
 @KestraTest
 @Slf4j
+@Timeout(value = 15, unit = TimeUnit.MINUTES)
+@ResourceLock("kubectl-my-deployment")
 class ApplyTest {
     @Inject
     private RunContextFactory runContextFactory;
@@ -65,6 +71,124 @@ class ApplyTest {
         Thread.sleep(500);
 
         assertThat(runOutput.getMetadata().getFirst().getName(), containsString("my-deployment"));
+    }
+
+    @Test
+    void runNamedGroupDeployment() throws Exception {
+        // Regression test: apps/v1 Deployment must use the namespaced URL (/apis/apps/v1/namespaces/.../deployments),
+        // not the cluster-scope one — which would produce "forbidden: ... at the cluster scope".
+        var runContext = runContextFactory.of();
+
+        var task = Apply.builder()
+            .id(IdUtils.create())
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: apps/v1
+                        kind: Deployment
+                        metadata:
+                          name: regression-named-group-deployment
+                          labels:
+                            app: regression-test
+                        spec:
+                          replicas: 1
+                          selector:
+                            matchLabels:
+                              app: regression-test
+                          template:
+                            metadata:
+                              labels:
+                                app: regression-test
+                            spec:
+                              containers:
+                              - name: app
+                                image: nginx:stable-alpine
+                                ports:
+                                - containerPort: 80
+                        """
+                )
+            )
+            .build();
+
+        var runOutput = task.run(runContext);
+
+        assertThat(runOutput.getMetadata(), notNullValue());
+        assertThat(runOutput.getMetadata().getFirst().getName(), is("regression-named-group-deployment"));
+
+        Delete.builder()
+            .id(Delete.class.getSimpleName())
+            .type(Delete.class.getName())
+            .namespace(Property.ofValue("default"))
+            .resourceType(Property.ofValue("deployments"))
+            .resourcesNames(Property.ofValue(List.of("regression-named-group-deployment")))
+            .apiGroup(Property.ofValue("apps"))
+            .apiVersion(Property.ofValue("v1"))
+            .build()
+            .run(runContext);
+    }
+
+    @Test
+    void runCoreGroupService() throws Exception {
+        var runContext = runContextFactory.of();
+
+        var task = Apply.builder()
+            .id(IdUtils.create())
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: v1
+                        kind: Service
+                        metadata:
+                          name: my-test-service
+                        spec:
+                          selector:
+                            app: myapp
+                          ports:
+                            - protocol: TCP
+                              port: 80
+                              targetPort: 8080
+                        """
+                )
+            )
+            .build();
+
+        var runOutput = task.run(runContext);
+
+        assertThat(runOutput.getMetadata(), notNullValue());
+        assertThat(runOutput.getMetadata().getFirst().getName(), is("my-test-service"));
+    }
+
+    @Test
+    void runCoreGroupConfigMap() throws Exception {
+        var runContext = runContextFactory.of();
+
+        var task = Apply.builder()
+            .id(IdUtils.create())
+            .type(Apply.class.getName())
+            .namespace(Property.ofValue("default"))
+            .spec(
+                Property.ofValue(
+                    """
+                        apiVersion: v1
+                        kind: ConfigMap
+                        metadata:
+                          name: my-test-configmap
+                        data:
+                          key1: value1
+                          key2: value2
+                        """
+                )
+            )
+            .build();
+
+        var runOutput = task.run(runContext);
+
+        assertThat(runOutput.getMetadata(), notNullValue());
+        assertThat(runOutput.getMetadata().getFirst().getName(), is("my-test-configmap"));
     }
 
     @Test

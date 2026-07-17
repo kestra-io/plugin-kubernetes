@@ -88,7 +88,7 @@ public class Connection {
         title = "Client key data",
         description = "Base64-encoded client key. Whitespace is stripped automatically."
     )
-    @PluginProperty(group = "advanced")
+    @PluginProperty(secret = true, group = "advanced")
     private final Property<String> clientKeyData;
 
     @Schema(
@@ -102,7 +102,7 @@ public class Connection {
     @Schema(
         title = "Client key passphrase"
     )
-    @PluginProperty(group = "advanced")
+    @PluginProperty(secret = true, group = "advanced")
     private final Property<String> clientKeyPassphrase;
 
     @Schema(
@@ -114,7 +114,7 @@ public class Connection {
     @Schema(
         title = "Truststore passphrase"
     )
-    @PluginProperty(group = "advanced")
+    @PluginProperty(secret = true, group = "advanced")
     private final Property<String> trustStorePassphrase;
 
     @Schema(
@@ -126,31 +126,31 @@ public class Connection {
     @Schema(
         title = "Keystore passphrase"
     )
-    @PluginProperty(group = "advanced")
+    @PluginProperty(secret = true, group = "advanced")
     private final Property<String> keyStorePassphrase;
 
     @Schema(
         title = "OAuth token"
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(secret = true, group = "connection")
     private final Property<String> oauthToken;
 
     @Schema(
         title = "OAuth token provider"
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(secret = true, group = "connection")
     private final OAuthTokenProvider oauthTokenProvider;
 
     @Schema(
         title = "Username"
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(secret = true, group = "connection")
     private Property<String> username;
 
     @Schema(
         title = "Password"
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(group = "connection", secret = true)
     private Property<String> password;
 
     public Config toConfig(RunContext runContext) throws IllegalVariableEvaluationException {
@@ -163,11 +163,20 @@ public class Connection {
         ConfigBuilder builder = new ConfigBuilder(inheritClusterConfig ? Config.autoConfigure(null) : Config.empty());
 
         if (trustCerts != null) {
-            builder.withTrustCerts(runContext.render(trustCerts).as(Boolean.class).orElseThrow());
+            boolean trustCertsValue = runContext.render(trustCerts).as(Boolean.class).orElseThrow();
+            if (trustCertsValue) {
+                runContext.logger()
+                    .warn("Kubernetes connection is configured with trustCerts=true: TLS certificate validation is disabled. This should only be used for testing, never in production.");
+            }
+            builder.withTrustCerts(trustCertsValue);
         }
 
         if (disableHostnameVerification != null) {
-            builder.withDisableHostnameVerification(runContext.render(disableHostnameVerification).as(Boolean.class).orElseThrow());
+            boolean disableHostnameVerificationValue = runContext.render(disableHostnameVerification).as(Boolean.class).orElseThrow();
+            if (disableHostnameVerificationValue) {
+                runContext.logger().warn("Kubernetes connection is configured with disableHostnameVerification=true: TLS hostname checks are disabled. Avoid this in production clusters.");
+            }
+            builder.withDisableHostnameVerification(disableHostnameVerificationValue);
         }
 
         if (masterUrl != null) {
