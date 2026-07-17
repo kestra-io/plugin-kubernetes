@@ -4,6 +4,7 @@ import java.util.List;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
@@ -20,7 +21,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -117,7 +117,7 @@ public class Delete extends AbstractPod implements RunnableTask<VoidOutput> {
     @Override
     public VoidOutput run(RunContext runContext) throws Exception {
 
-        try (KubernetesClient client = PodService.client(runContext, this.getConnection())) {
+        try (KubernetesClient client = PodService.client(runContext, this.getConnection(), renderInheritClusterConfig(runContext))) {
 
             var rNamespace = runContext.render(this.namespace).as(String.class)
                 .orElseThrow(() -> new IllegalArgumentException("namespace must be provided and rendered."));

@@ -319,6 +319,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private volatile String currentNamespace;
     @PluginProperty(group = "connection")
     private volatile Connection currentConnection;
+    private volatile boolean currentInheritClusterConfig;
 
     /**
      * Executes the pod creation task and manages its complete lifecycle.
@@ -358,6 +359,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
         try {
             this.currentConnection = this.getConnection();
+            this.currentInheritClusterConfig = renderInheritClusterConfig(runContext);
 
             super.init(runContext);
             Map<String, Object> additionalVars = new HashMap<>();
@@ -400,7 +402,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             }
 
             try (
-                KubernetesClient client = PodService.client(runContext, this.getConnection());
+                KubernetesClient client = PodService.client(runContext, this.getConnection(), renderInheritClusterConfig(runContext));
                 PodLogService podLogService = new PodLogService()
             ) {
 
@@ -519,6 +521,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             currentPodName.set(null);
             currentNamespace = null;
             currentConnection = null;
+            currentInheritClusterConfig = false;
         }
     }
 
@@ -675,7 +678,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         var toRemove = containers.stream()
             .filter(c -> reserved.contains(c.getName()))
             .toList();
-        toRemove.forEach(c -> {
+        toRemove.forEach(c ->
+        {
             logger.warn(
                 "User-provided container '{}' uses a name reserved by Kestra for file transfer. " +
                     "It will be replaced by Kestra's own container.",
@@ -816,7 +820,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
         log.warn("Task was killed, deleting the pod '{}' in namespace '{}'.", currentPodName.get(), currentNamespace);
 
-        try (KubernetesClient client = PodService.client(null, currentConnection)) {
+        try (KubernetesClient client = PodService.client(null, currentConnection, currentInheritClusterConfig)) {
             client.pods()
                 .inNamespace(currentNamespace)
                 .withName(currentPodName.get())

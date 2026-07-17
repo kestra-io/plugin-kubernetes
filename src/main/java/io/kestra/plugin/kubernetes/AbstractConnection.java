@@ -3,6 +3,7 @@ package io.kestra.plugin.kubernetes;
 import java.time.Duration;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
@@ -14,7 +15,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -28,6 +28,17 @@ public abstract class AbstractConnection extends Task {
     )
     @PluginProperty(group = "advanced")
     private Connection connection;
+
+    @Schema(
+        title = "Inherit cluster auto-config",
+        description = "When true and a `connection` is set, the client config is seeded from the ambient auto-config " +
+            "(system properties, env, kubeconfig, in-cluster service account) before applying `connection`, so a partial " +
+            "`connection` (e.g. only a namespace) keeps the resolved credentials instead of starting blank. Default false."
+    )
+    @NotNull
+    @Builder.Default
+    @PluginProperty(group = "advanced")
+    private final Property<Boolean> inheritClusterConfig = Property.ofValue(false);
 
     @Schema(
         title = "Wait for pod to reach Running",
@@ -51,5 +62,10 @@ public abstract class AbstractConnection extends Task {
         return new ListOptionsBuilder()
             .withTimeoutSeconds(runContext.render(this.waitRunning).as(Duration.class).orElseThrow().toSeconds())
             .build();
+    }
+
+    protected boolean renderInheritClusterConfig(RunContext runContext) throws IllegalVariableEvaluationException {
+        return this.inheritClusterConfig != null
+            && runContext.render(this.inheritClusterConfig).as(Boolean.class).orElse(false);
     }
 }
