@@ -3,6 +3,7 @@ package io.kestra.plugin.kubernetes.models;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Isolated;
 
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
@@ -12,6 +13,10 @@ import jakarta.inject.Inject;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+// Mutates JVM-global system properties (kubernetes.master, auth.*); @Isolated keeps it from
+// running alongside the concurrent kubectl integration tests, whose client build would otherwise
+// read the poisoned values. See junit-platform.properties (parallel execution enabled).
+@Isolated
 @MicronautTest
 class ConnectionTest {
     @Inject
