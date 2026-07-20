@@ -168,6 +168,7 @@ public abstract class AbstractPod extends AbstractConnection {
             Path topAbsolute = tempDir.resolve(top);
             String containerTop = "/kestra/working-dir/" + top;
 
+            boolean isBulkFallback = false;
             if (Files.isDirectory(topAbsolute)) {
                 try {
                     withRetries(
@@ -176,10 +177,17 @@ public abstract class AbstractPod extends AbstractConnection {
                             .dir(containerTop)
                             .upload(topAbsolute)
                     );
+                    // A genuine truncation won't self-heal across retries — every attempt re-runs the same
+                    // 'find | wc -l' to the same wrong count, burning the full backoff before falling back.
+                    // Retrying here anyway is intentional: it's the only thing that catches the transient
+                    // race where 'find' runs just before the tar extraction is fully visible on the pod.
+                    // Accepted tradeoff — correctness for the race case over shaving a few seconds off a
+                    // failure path that already falls back to a slower per-file re-upload regardless.
                     withVerificationRetries(logger, "verifyDirectoryUpload", () -> verifyDirectoryUpload(container, logger, containerTop, topAbsolute));
                     continue;
                 } catch (Exception e) {
                     logger.info("Bulk upload failed for '{}', falling back to per-file upload. Reason: {}", top, e.getMessage());
+                    isBulkFallback = true;
                 }
             }
 
@@ -196,7 +204,15 @@ public abstract class AbstractPod extends AbstractConnection {
                         }
                     }
                 );
-                withVerificationRetries(logger, "verifyFileUpload", () -> verifyFileUpload(container, logger, target, tempDir.resolve(file)));
+
+                // Only cross-check per-file uploads when this is a fallback from a failed bulk-directory
+                // verification. Verifying every standalone top-level inputFile the same way would double
+                // pod round-trips on the common case (many unrelated individual inputFiles), for
+                // comparatively low risk since a single-file fabric8 upload is far less prone to silent
+                // truncation than the tar-based bulk-directory case.
+                if (isBulkFallback) {
+                    withVerificationRetries(logger, "verifyFileUpload", () -> verifyFileUpload(container, logger, target, tempDir.resolve(file)));
+                }
             }
         }
 
@@ -211,6 +227,10 @@ public abstract class AbstractPod extends AbstractConnection {
      * own entry (type 'l') rather than dereferencing it, so counting only regular files locally (which
      * follows symlinks by default) would overcount against the pod-side 'find -type f' and falsely flag
      * a correct upload as truncated whenever the directory contains symlinks (e.g. a Python venv).
+     *
+     * This is a count-only check: a truncation that drops bytes from a file's content while keeping its
+     * entry (correct count, short file) is not caught here — only the single-file path ({@link
+     * #verifyFileUpload}) compares byte size.
      */
     private void verifyDirectoryUpload(ContainerResource container, Logger logger, String containerPath, Path localPath) throws IOException {
         long expectedFileCount;
