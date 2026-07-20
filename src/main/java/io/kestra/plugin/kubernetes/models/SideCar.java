@@ -16,7 +16,11 @@ import io.kestra.core.models.annotations.PluginProperty;
 public class SideCar {
     @Schema(
         title = "Image for file sidecar",
-        description = "Container image used by the init/sidecar that handles file transfer. Defaults to busybox."
+        description = """
+            Container image used by the init container (uploads input files) and the sidecar (downloads output files). Defaults to busybox.
+
+            The image must provide, on its `PATH`: a POSIX shell (`sh`), `test`/`[`, and `sleep` — required by the polling script that waits for the transfer to complete before the container exits. `find` and `wc` are also used, on a best-effort basis, to verify that uploaded files were fully transferred; if they're missing, verification is skipped rather than failing the task.
+            """
     )
     @Builder.Default
     @PluginProperty(group = "advanced")

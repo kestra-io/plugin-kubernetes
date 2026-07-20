@@ -1,7 +1,9 @@
 package io.kestra.plugin.kubernetes.services;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -9,6 +11,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
 import org.slf4j.Logger;
@@ -25,6 +29,7 @@ import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.KubernetesClientTimeoutException;
+import io.fabric8.kubernetes.client.dsl.ContainerResource;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 
 abstract public class PodService {
@@ -32,6 +37,8 @@ abstract public class PodService {
     private static final String SIDECAR_FILES_CONTAINER_NAME = "out-files";
     // 0 means "don't wait at all"; 30s gives the pod time to become ready before exec connections are established
     public static final int EXEC_READY_WAIT_TIMEOUT_MS = 30_000;
+
+    private static final int UPLOAD_RETRY_MAX_ATTEMPTS = 5;
 
     public static KubernetesClient client(RunContext runContext, Connection connection) throws IllegalVariableEvaluationException {
         return client(runContext, connection, false);
@@ -292,33 +299,147 @@ abstract public class PodService {
      * Retry file operations with exponential backoff optimized for freshly provisioned nodes.
      */
     public static Boolean withRetries(Logger logger, String where, RetryUtils.CheckedSupplier<Boolean> call) throws IOException {
-        var retryPolicy = Exponential.builder()
-            .type("exponential")
-            .interval(Duration.ofSeconds(1))
-            .maxInterval(Duration.ofSeconds(10))
-            .maxDuration(Duration.ofSeconds(60))
-            .delayFactor(2.0)
-            .build();
+        var attempt = new AtomicInteger(0);
+        try {
+            return RetryUtils.Instance.<Boolean, IOException> builder()
+                .policy(
+                    Exponential.builder()
+                        .delayFactor(2.0)
+                        .interval(Duration.ofSeconds(1))
+                        .maxInterval(Duration.ofSeconds(10))
+                        .maxDuration(Duration.ofSeconds(60))
+                        .maxAttempts(UPLOAD_RETRY_MAX_ATTEMPTS)
+                        .build()
+                )
+                .logger(logger)
+                // On exhaustion, Failsafe's Fallback throws RetryUtils.RetryFailed rather than an IOException,
+                // which would otherwise discard the detailed hint message thrown below. Unwrap it back to the
+                // last real cause so that detail survives all the way to the caller instead of being replaced
+                // by a bare "Failed to call" message.
+                .failureFunction(retryFailed -> retryFailed.getCause() instanceof IOException ioException
+                    ? ioException
+                    : new IOException("Failed to call '" + where + "'", retryFailed.getCause()))
+                .build()
+                // Stay on the result-predicate overload (rather than run(IOException.class, ...), which would
+                // narrow Failsafe's default "retry on any exception" to IOException only): fabric8 calls can
+                // throw KubernetesClientException and other non-IOException runtime errors that must still be
+                // retried the same way a bare `false` result is.
+                .run(
+                    object -> !object,
+                    () ->
+                    {
+                        var currentAttempt = attempt.incrementAndGet();
 
-        Boolean upload = RetryUtils.<Boolean, IOException> of(retryPolicy, logger).run(
-            object -> !object,
-            () ->
-            {
-                var bool = call.get();
+                        if (!call.get()) {
+                            // fabric8's exec/copy calls return a bare boolean and swallow the underlying exec/tar
+                            // error, so there is no exception or stderr to surface here. Throwing here — instead
+                            // of just returning false, as before — makes this failure the retry policy's tracked
+                            // "last exception", so the detailed hint below is what the failureFunction above
+                            // unwraps on exhaustion, rather than a bare RetryFailed with no cause to unwrap.
+                            throw new IOException(
+                                "Failed to call '" + where + "' after " + currentAttempt + "/" + UPLOAD_RETRY_MAX_ATTEMPTS +
+                                    " attempts — the Kubernetes copy/exec call kept reporting failure without further detail; " +
+                                    "verify connectivity to the pod and that the file-sidecar image provides a working 'sh' and 'tar'"
+                            );
+                        }
 
-                if (!bool) {
-                    logger.debug("Failed to call '{}'", where);
-                }
-
-                return bool;
-            }
-        );
-
-        if (!upload) {
-            throw new IOException("Failed to call '" + where + "'");
+                        return true;
+                    }
+                );
+        } catch (IOException e) {
+            throw e;
+        } catch (Throwable e) {
+            throw new IOException("Failed to call '" + where + "'", e);
         }
+    }
 
-        return upload;
+    /**
+     * Runs a command inside a container and returns its stdout, but only if it exits with code 0.
+     * Used to cross-check fabric8 copy/upload results, which can report success even when the
+     * underlying tar transfer was truncated.
+     * <p>
+     * On timeout, only the client-side {@code ExecWatch} is closed (via try-with-resources); fabric8's exec
+     * API has no way to signal the remote process, so it may keep running inside the (short-lived,
+     * verification-only) sidecar container until that container is torn down with the rest of the pod.
+     * <p>
+     * Every fabric8 {@code exec} call re-waits for the whole pod to report Ready (up to
+     * {@link #EXEC_READY_WAIT_TIMEOUT_MS}) before opening the exec connection — see
+     * {@code PodOperationsImpl#getURL}. That wait is structurally doomed to run to its full timeout here:
+     * the pod can't be Ready while the init/sidecar file-transfer containers are still blocked on marker
+     * files, which is exactly when upload verification runs. Since this call always follows an already-successful
+     * exec on the very same container (the upload itself), the container is proven reachable, so skip that
+     * redundant wait entirely instead of paying it again on every verification call.
+     */
+    public static Optional<String> execOutput(ContainerResource container, Logger logger, Duration timeout, String... command) {
+        var output = new ByteArrayOutputStream();
+        try (var watch = container.withReadyWaitTimeout(0).writingOutput(output).exec(command)) {
+            var exitCode = watch.exitCode().get(timeout.toSeconds(), TimeUnit.SECONDS);
+            if (exitCode == null || exitCode != 0) {
+                return Optional.empty();
+            }
+            return Optional.of(output.toString(StandardCharsets.UTF_8));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        } catch (TimeoutException e) {
+            // Best-effort: a timeout here is otherwise indistinguishable from "verification passed", so
+            // log it explicitly rather than silently skipping the check like the generic catch below.
+            logger.info(
+                "Verification command '{}' timed out after {}s in the file-sidecar container, skipping upload verification",
+                String.join(" ", command), timeout.toSeconds()
+            );
+            return Optional.empty();
+        } catch (Exception e) {
+            logger.debug("Verification command '{}' could not be executed in the file-sidecar container", String.join(" ", command), e);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Retries a fallible verification check (e.g. a per-file upload size/count comparison), applying the
+     * same retry treatment given to the raw upload/exec calls above so a single transient exec failure
+     * during verification doesn't turn an otherwise-good upload into a hard task failure.
+     */
+    public static void withVerificationRetries(Logger logger, String where, CheckedRunnable check) throws IOException {
+        try {
+            RetryUtils.Instance.<Void, IOException> builder()
+                .policy(
+                    Exponential.builder()
+                        .delayFactor(2.0)
+                        .interval(Duration.ofSeconds(1))
+                        .maxInterval(Duration.ofSeconds(10))
+                        .maxDuration(Duration.ofSeconds(60))
+                        .maxAttempts(UPLOAD_RETRY_MAX_ATTEMPTS)
+                        .build()
+                )
+                .logger(logger)
+                // On exhaustion, Failsafe's Fallback throws RetryUtils.RetryFailed rather than the checked
+                // exception the policy handles, which would otherwise discard the actionable message built by
+                // verifyUpload (e.g. "expected N file(s) but found M"). Unwrap it back to the last real cause
+                // so that detail survives all the way to the caller instead of being replaced by a bare
+                // "Failed to call" message.
+                .failureFunction(retryFailed -> retryFailed.getCause() instanceof IOException ioException
+                    ? ioException
+                    : new IOException("Failed to call '" + where + "'", retryFailed.getCause()))
+                .build()
+                .run(
+                    IOException.class,
+                    () ->
+                    {
+                        check.run();
+                        return null;
+                    }
+                );
+        } catch (IOException e) {
+            throw e;
+        } catch (Throwable e) {
+            throw new IOException("Failed to call '" + where + "'", e);
+        }
+    }
+
+    @FunctionalInterface
+    public interface CheckedRunnable {
+        void run() throws IOException;
     }
 
     public static void uploadMarker(RunContext runContext, PodResource podResource, Logger logger, String marker, String container) throws IOException {
