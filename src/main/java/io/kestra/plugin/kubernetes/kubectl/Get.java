@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Metric;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.executions.metrics.Counter;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
@@ -37,7 +38,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
 import static io.kestra.core.models.tasks.common.FetchType.NONE;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -227,7 +227,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
         List<ResourceStatus> statusList = new ArrayList<>();
         Logger logger = runContext.logger();
 
-        try (var client = PodService.client(runContext, this.getConnection())) {
+        try (var client = PodService.client(runContext, this.getConnection(), renderInheritClusterConfig(runContext))) {
 
             var resourceDefinitionContext = new ResourceDefinitionContext.Builder()
                 // See: https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-uris

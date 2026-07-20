@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
@@ -24,7 +25,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -223,7 +223,7 @@ public class Apply extends AbstractPod implements RunnableTask<Apply.Output> {
         var rNamespace = runContext.render(this.namespace).as(String.class).orElseThrow();
         var rWaitUntilReady = runContext.render(this.waitUntilReady).as(Duration.class).orElse(Duration.ZERO);
 
-        try (var client = PodService.client(runContext, this.getConnection())) {
+        try (var client = PodService.client(runContext, this.getConnection(), renderInheritClusterConfig(runContext))) {
             var resources = parseSpec(runContext.render(this.spec).as(String.class).orElseThrow());
             Logger logger = runContext.logger();
             logger.debug("Parsed resources: {}", resources);
