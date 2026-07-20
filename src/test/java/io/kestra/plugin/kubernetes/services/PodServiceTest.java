@@ -37,6 +37,7 @@ import static org.mockito.Mockito.when;
 class PodServiceTest {
 
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
     void withRetriesShouldExhaustAttemptsThenSurfaceDetailedHint() {
         var logger = mock(Logger.class);
         var attempts = new AtomicInteger(0);
