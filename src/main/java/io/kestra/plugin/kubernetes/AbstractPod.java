@@ -4,6 +4,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
@@ -33,6 +34,7 @@ import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
 import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
+import static io.kestra.plugin.kubernetes.services.PodService.withVerificationRetries;
 
 @SuperBuilder
 @ToString
@@ -47,6 +49,8 @@ public abstract class AbstractPod extends AbstractConnection {
     // Constants for marker files used in file transfer coordination
     protected static final String READY_MARKER = "ready";
     protected static final String ENDED_MARKER = "ended";
+
+    private static final Duration UPLOAD_VERIFICATION_TIMEOUT = Duration.ofSeconds(10);
 
     @Schema(
         title = "The namespace where the operation will be done",
@@ -172,6 +176,7 @@ public abstract class AbstractPod extends AbstractConnection {
                             .dir(containerTop)
                             .upload(topAbsolute)
                     );
+                    withVerificationRetries(logger, "verifyDirectoryUpload", () -> verifyDirectoryUpload(container, logger, containerTop, topAbsolute));
                     continue;
                 } catch (Exception e) {
                     logger.info("Bulk upload failed for '{}', falling back to per-file upload. Reason: {}", top, e.getMessage());
@@ -179,21 +184,88 @@ public abstract class AbstractPod extends AbstractConnection {
             }
 
             for (String file : entry.getValue()) {
+                String target = "/kestra/working-dir/" + file;
                 withRetries(
                     logger, "uploadInputFiles",
                     () ->
                     {
                         try (var fileInputStream = new FileInputStream(tempDir.resolve(file).toFile())) {
                             return container
-                                .file("/kestra/working-dir/" + file)
+                                .file(target)
                                 .upload(fileInputStream);
                         }
                     }
                 );
+                withVerificationRetries(logger, "verifyFileUpload", () -> verifyFileUpload(container, logger, target, tempDir.resolve(file)));
             }
         }
 
         PodService.uploadMarker(runContext, podResource, logger, READY_MARKER, INIT_FILES_CONTAINER_NAME);
+    }
+
+    /**
+     * fabric8's directory upload can report success even when the tar transfer was truncated (e.g. a
+     * dependency directory silently missing files), so cross-check the actual file count on the pod.
+     *
+     * Both sides count non-directory entries without following symlinks: tar preserves a symlink as its
+     * own entry (type 'l') rather than dereferencing it, so counting only regular files locally (which
+     * follows symlinks by default) would overcount against the pod-side 'find -type f' and falsely flag
+     * a correct upload as truncated whenever the directory contains symlinks (e.g. a Python venv).
+     */
+    private void verifyDirectoryUpload(ContainerResource container, Logger logger, String containerPath, Path localPath) throws IOException {
+        long expectedFileCount;
+        try (Stream<Path> files = Files.walk(localPath)) {
+            expectedFileCount = files.filter(path -> !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)).count();
+        }
+
+        verifyUpload(
+            container, logger, containerPath, expectedFileCount, "file(s)",
+            "find " + shellQuote(containerPath) + " \\( -type f -o -type l \\) | wc -l"
+        );
+    }
+
+    /**
+     * Single-file counterpart of {@link #verifyDirectoryUpload}, comparing the uploaded file's size on
+     * the pod against the local file to catch a partial/corrupt transfer that fabric8 still reports as success.
+     */
+    private void verifyFileUpload(ContainerResource container, Logger logger, String containerPath, Path localFile) throws IOException {
+        verifyUpload(container, logger, containerPath, Files.size(localFile), "byte(s)", "wc -c < " + shellQuote(containerPath));
+    }
+
+    /**
+     * Single-quotes a value for safe interpolation into a `sh -c` command, escaping any embedded quote.
+     */
+    private static String shellQuote(String value) {
+        return "'" + value.replace("'", "'\\''") + "'";
+    }
+
+    /**
+     * Best-effort: if the sidecar image lacks 'find'/'wc', the check is skipped rather than failing the task.
+     */
+    private void verifyUpload(ContainerResource container, Logger logger, String containerPath, long expected, String unit, String shellCommand) throws IOException {
+        Optional<Long> actual = PodService.execOutput(container, logger, UPLOAD_VERIFICATION_TIMEOUT, "sh", "-c", shellCommand)
+            .map(String::trim)
+            .flatMap(AbstractPod::parseLong);
+
+        if (actual.isEmpty()) {
+            logger.debug("Skipping upload verification for '{}': the file-sidecar image does not support this check, or the verification command timed out", containerPath);
+            return;
+        }
+
+        if (!actual.get().equals(expected)) {
+            throw new IOException(
+                "Upload verification failed for '" + containerPath + "': expected " + expected + " " + unit + " but found " +
+                    actual.get() + " in the file-sidecar container — the tar transfer was likely truncated"
+            );
+        }
+    }
+
+    private static Optional<Long> parseLong(String output) {
+        try {
+            return Optional.of(Long.parseLong(output));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
     }
 
     protected Map<Path, Path> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {

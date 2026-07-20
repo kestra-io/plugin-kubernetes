@@ -1,10 +1,13 @@
 package io.kestra.plugin.kubernetes.services;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 
@@ -32,6 +35,73 @@ import static org.mockito.Mockito.when;
 
 @KestraTest
 class PodServiceTest {
+
+    @Test
+    void withRetriesShouldExhaustAttemptsThenSurfaceDetailedHint() {
+        var logger = mock(Logger.class);
+        var attempts = new AtomicInteger(0);
+
+        var exception = assertThrows(
+            IOException.class, () -> PodService.withRetries(
+                logger,
+                "uploadMarker",
+                () ->
+                {
+                    attempts.incrementAndGet();
+                    return false;
+                }
+            )
+        );
+
+        // A persistent `false` result must exhaust every retry attempt, not fail fast on the first one.
+        assertThat("all attempts must be exhausted before giving up", attempts.get(), is(5));
+        // On exhaustion, the detailed hint (attempt count, sh/tar troubleshooting pointer) must survive instead
+        // of being discarded into a bare RetryFailed with no cause, wrapped as a generic "Failed to call" message.
+        assertThat(exception.getMessage(), is(
+            "Failed to call 'uploadMarker' after 5/5 attempts — the Kubernetes copy/exec call kept reporting " +
+                "failure without further detail; verify connectivity to the pod and that the file-sidecar image provides a working 'sh' and 'tar'"
+        ));
+    }
+
+    @Test
+    void withVerificationRetriesShouldSucceedAfterTransientFailure() throws Exception {
+        var logger = mock(Logger.class);
+        var attempts = new AtomicInteger(0);
+
+        PodService.withVerificationRetries(logger, "verifyDirectoryUpload", () ->
+        {
+            if (attempts.incrementAndGet() == 1) {
+                throw new IOException("transient exec failure");
+            }
+        });
+
+        assertThat("the check must have been retried exactly once before succeeding", attempts.get(), is(2));
+    }
+
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    @Test
+    void withVerificationRetriesShouldExhaustAttemptsThenWrapAsIoException() {
+        var logger = mock(Logger.class);
+        var attempts = new AtomicInteger(0);
+
+        var exception = assertThrows(
+            IOException.class, () -> PodService.withVerificationRetries(
+                logger,
+                "verifyDirectoryUpload",
+                () ->
+                {
+                    attempts.incrementAndGet();
+                    throw new IOException("upload verification failed: expected 3 file(s) but found 1");
+                }
+            )
+        );
+
+        // A persistent verification mismatch must exhaust every retry attempt, not fail fast on the first one.
+        assertThat("all attempts must be exhausted before giving up", attempts.get(), is(5));
+        // On exhaustion, the actionable detail built by the check (e.g. the file-count mismatch) must survive
+        // instead of being discarded into a generic "Failed to call" message.
+        assertThat(exception.getMessage(), is("upload verification failed: expected 3 file(s) but found 1"));
+    }
 
     @Test
     void shouldNotReturnPodWhenContainersReadyFalse() {
