@@ -4,6 +4,7 @@ import java.time.Duration;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
@@ -21,7 +22,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -275,7 +275,7 @@ public class Patch extends AbstractPod implements RunnableTask<Patch.Output> {
         var rApiVersion = runContext.render(this.apiVersion).as(String.class).orElse("v1");
         var rWaitUntilReady = runContext.render(this.waitUntilReady).as(Duration.class).orElse(Duration.ZERO);
 
-        try (var client = PodService.client(runContext, this.getConnection())) {
+        try (var client = PodService.client(runContext, this.getConnection(), renderInheritClusterConfig(runContext))) {
             // Build resource definition context
             var resourceContext = new ResourceDefinitionContext.Builder()
                 .withGroup(rApiGroup)

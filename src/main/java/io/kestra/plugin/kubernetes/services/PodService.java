@@ -34,7 +34,11 @@ abstract public class PodService {
     public static final int EXEC_READY_WAIT_TIMEOUT_MS = 30_000;
 
     public static KubernetesClient client(RunContext runContext, Connection connection) throws IllegalVariableEvaluationException {
-        return connection != null ? client(connection.toConfig(runContext)) : client(null);
+        return client(runContext, connection, false);
+    }
+
+    public static KubernetesClient client(RunContext runContext, Connection connection, boolean inheritClusterConfig) throws IllegalVariableEvaluationException {
+        return connection != null ? client(connection.toConfig(runContext, inheritClusterConfig)) : client(null);
     }
 
     public static KubernetesClient client(Config config) {
@@ -164,7 +168,8 @@ abstract public class PodService {
                 j.getStatus()
                     .getContainerStatuses()
                     .stream()
-                    .anyMatch(containerStatus -> !containerStatus.getName().equals(except)) &&
+                    .anyMatch(containerStatus -> !containerStatus.getName().equals(except))
+                &&
                 j.getStatus()
                     .getContainerStatuses()
                     .stream()
