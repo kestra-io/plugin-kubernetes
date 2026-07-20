@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableMap;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
@@ -35,8 +36,8 @@ import io.kestra.plugin.kubernetes.services.PodLogService;
 import io.kestra.plugin.kubernetes.services.PodService;
 import io.kestra.plugin.kubernetes.watchers.PodWatcher;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -319,7 +320,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     @JsonIgnore
     private volatile String currentNamespace;
     @JsonIgnore
-    private volatile Connection currentConnection;
+    private volatile Config currentConfig;
 
     /**
      * Executes the pod creation task and manages its complete lifecycle.
@@ -358,7 +359,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         Duration rWaitUntilRunning = runContext.render(this.waitUntilRunning).as(Duration.class).orElseThrow();
 
         try {
-            this.currentConnection = this.getConnection();
+            Connection connection = this.getConnection();
+            this.currentConfig = connection != null
+                ? connection.toConfig(runContext, renderInheritClusterConfig(runContext))
+                : null;
 
             super.init(runContext);
             Map<String, Object> additionalVars = new HashMap<>();
@@ -401,7 +405,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             }
 
             try (
-                KubernetesClient client = PodService.client(runContext, this.getConnection());
+                KubernetesClient client = PodService.client(currentConfig);
                 PodLogService podLogService = new PodLogService()
             ) {
 
@@ -521,7 +525,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             killed.set(false);
             currentPodName.set(null);
             currentNamespace = null;
-            currentConnection = null;
+            currentConfig = null;
         }
     }
 
@@ -678,7 +682,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         var toRemove = containers.stream()
             .filter(c -> reserved.contains(c.getName()))
             .toList();
-        toRemove.forEach(c -> {
+        toRemove.forEach(c ->
+        {
             logger.warn(
                 "User-provided container '{}' uses a name reserved by Kestra for file transfer. " +
                     "It will be replaced by Kestra's own container.",
@@ -819,7 +824,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
         log.warn("Task was killed, deleting the pod '{}' in namespace '{}'.", currentPodName.get(), currentNamespace);
 
-        try (KubernetesClient client = PodService.client(null, currentConnection)) {
+        try (KubernetesClient client = PodService.client(currentConfig)) {
             client.pods()
                 .inNamespace(currentNamespace)
                 .withName(currentPodName.get())

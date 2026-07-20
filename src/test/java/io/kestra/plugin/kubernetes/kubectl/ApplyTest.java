@@ -2,7 +2,6 @@ package io.kestra.plugin.kubernetes.kubectl;
 
 import java.time.Duration;
 import java.util.List;
-
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
