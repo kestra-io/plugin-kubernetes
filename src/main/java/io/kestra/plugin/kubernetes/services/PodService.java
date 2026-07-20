@@ -356,10 +356,18 @@ abstract public class PodService {
      * On timeout, only the client-side {@code ExecWatch} is closed (via try-with-resources); fabric8's exec
      * API has no way to signal the remote process, so it may keep running inside the (short-lived,
      * verification-only) sidecar container until that container is torn down with the rest of the pod.
+     * <p>
+     * Every fabric8 {@code exec} call re-waits for the whole pod to report Ready (up to
+     * {@link #EXEC_READY_WAIT_TIMEOUT_MS}) before opening the exec connection — see
+     * {@code PodOperationsImpl#getURL}. That wait is structurally doomed to run to its full timeout here:
+     * the pod can't be Ready while the init/sidecar file-transfer containers are still blocked on marker
+     * files, which is exactly when upload verification runs. Since this call always follows an already-successful
+     * exec on the very same container (the upload itself), the container is proven reachable, so skip that
+     * redundant wait entirely instead of paying it again on every verification call.
      */
     public static Optional<String> execOutput(ContainerResource container, Logger logger, Duration timeout, String... command) {
         var output = new ByteArrayOutputStream();
-        try (var watch = container.writingOutput(output).exec(command)) {
+        try (var watch = container.withReadyWaitTimeout(0).writingOutput(output).exec(command)) {
             var exitCode = watch.exitCode().get(timeout.toSeconds(), TimeUnit.SECONDS);
             if (exitCode == null || exitCode != 0) {
                 return Optional.empty();

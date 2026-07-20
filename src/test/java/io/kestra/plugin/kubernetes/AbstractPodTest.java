@@ -100,7 +100,9 @@ class AbstractPodTest {
         ContainerResource container = Mockito.mock(ContainerResource.class);
 
         Mockito.when(podResource.inContainer("init-files")).thenReturn(container);
-        Mockito.when(container.withReadyWaitTimeout(PodService.EXEC_READY_WAIT_TIMEOUT_MS)).thenReturn(container);
+        // Both the raw upload (30s) and the verification-only exec (0s, see PodService#execOutput) reuse
+        // this same container mock, so both readyWaitTimeout values must resolve back to it.
+        Mockito.when(container.withReadyWaitTimeout(Mockito.any(Integer.class))).thenReturn(container);
 
         CopyOrReadable dirUploader = Mockito.mock(CopyOrReadable.class);
         Mockito.when(container.dir(Mockito.anyString())).thenReturn(dirUploader);
@@ -176,7 +178,9 @@ class AbstractPodTest {
         ContainerResource container = Mockito.mock(ContainerResource.class);
 
         Mockito.when(podResource.inContainer("init-files")).thenReturn(container);
-        Mockito.when(container.withReadyWaitTimeout(PodService.EXEC_READY_WAIT_TIMEOUT_MS)).thenReturn(container);
+        // Both the raw upload (30s) and the verification-only exec (0s, see PodService#execOutput) reuse
+        // this same container mock, so both readyWaitTimeout values must resolve back to it.
+        Mockito.when(container.withReadyWaitTimeout(Mockito.any(Integer.class))).thenReturn(container);
 
         CopyOrReadable dirUploader = Mockito.mock(CopyOrReadable.class);
         Mockito.when(container.dir(Mockito.anyString())).thenReturn(dirUploader);
