@@ -14,7 +14,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.utils.IdUtils;
-import io.kestra.plugin.kubernetes.services.ClientService;
+import io.kestra.plugin.kubernetes.shared.services.ClientService;
 
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;

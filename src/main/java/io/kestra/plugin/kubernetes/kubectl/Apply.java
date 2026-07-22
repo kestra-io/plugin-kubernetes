@@ -14,7 +14,7 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Metadata;
-import io.kestra.plugin.kubernetes.services.PodService;
+import io.kestra.plugin.kubernetes.shared.services.PodService;
 import io.kestra.plugin.kubernetes.services.ResourceWaitService;
 
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;

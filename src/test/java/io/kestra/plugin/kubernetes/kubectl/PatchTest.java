@@ -15,7 +15,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.utils.Await;
 import io.kestra.plugin.kubernetes.models.PatchStrategy;
-import io.kestra.plugin.kubernetes.services.PodService;
+import io.kestra.plugin.kubernetes.shared.services.PodService;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import jakarta.inject.Inject;

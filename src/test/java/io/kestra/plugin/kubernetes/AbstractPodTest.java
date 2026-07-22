@@ -18,7 +18,7 @@ import org.slf4j.Logger;
 
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
-import io.kestra.plugin.kubernetes.services.PodService;
+import io.kestra.plugin.kubernetes.shared.services.PodService;
 
 import io.fabric8.kubernetes.client.dsl.ContainerResource;
 import io.fabric8.kubernetes.client.dsl.CopyOrReadable;
