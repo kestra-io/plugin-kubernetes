@@ -578,9 +578,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             // Delete stale pods so a previous attempt cannot break quotas or concurrency limits.
             // Active ones are always removed; terminal ones follow the `delete` property so
             // `delete=false` still keeps them for debugging.
-            boolean deleteEnabled = runContext.render(this.delete).as(Boolean.class).orElse(true);
+            boolean rDelete = runContext.render(this.delete).as(Boolean.class).orElse(true);
             for (Pod other : existingPods) {
-                if (other != resumed && (isActive(other) || deleteEnabled)) {
+                if (other != resumed && (isActive(other) || rDelete)) {
                     logger.warn(
                         "Deleting stale pod '{}' left behind by a previous attempt of taskrun '{}'",
                         other.getMetadata().getName(), taskrunId
