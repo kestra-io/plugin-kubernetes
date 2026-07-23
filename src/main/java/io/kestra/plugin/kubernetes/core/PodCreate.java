@@ -292,7 +292,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
     @Schema(
         title = "Resume an existing pod when possible",
-        description = "Default true. Reconnects to a pod labeled with the current taskrun ID (whatever attempt created it) instead of creating a new one. Stale pods from previous attempts are deleted, and a new pod is created when no resumable one exists."
+        description = "Default true. Reconnects to a pod labeled with the current taskrun ID, whatever attempt created it. Stale pods from previous attempts are deleted."
     )
     @NotNull
     @Builder.Default
@@ -534,11 +534,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
      * Finds an existing pod to resume or creates a new pod.
      *
      * <p>
-     * When {@code resume=true}, this method searches for existing pods matching the current
-     * taskrun ID. The attempt count is deliberately not part of the selector, so a RESUBMITTED
-     * task (higher attempt count after a worker crash) still reconnects to the previous attempt's
-     * pod (see issue #249). The most recent resumable pod is returned; other non-terminal pods of
-     * the same taskrun are deleted to protect quotas, and a new pod is created when none is resumable.
+     * When {@code resume=true}, resumes the most recent resumable pod matching the taskrun ID,
+     * whatever attempt created it (so a RESUBMITTED task reconnects, see issue #249). Other
+     * non-terminal pods of the taskrun are deleted. Creates a new pod when none is resumable.
      *
      * @param runContext execution context for rendering properties and accessing variables
      * @param client Kubernetes client for pod operations
@@ -555,10 +553,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         Map<String, Object> additionalVars,
         Logger logger) throws Exception {
         if (runContext.render(this.resume).as(Boolean.class).orElseThrow()) {
-            // Locate existing pods for this taskrun, whatever attempt created them. The attempt
-            // count is deliberately not part of the selector: a task RESUBMITTED after a worker
-            // crash runs with a higher attempt count and must still reconnect to the previous
-            // attempt's pod instead of leaving it orphaned (see issue #249).
+            // No attempt count in the selector: a RESUBMITTED task runs with a higher attempt
+            // count and must still find the previous attempt's pod (see issue #249).
             // Safe cast: runContext.getVariables() returns Map<String, Object> where "taskrun" is always a Map
             @SuppressWarnings("unchecked")
             Map<String, Object> taskrun = (Map<String, Object>) runContext.getVariables().get("taskrun");
@@ -579,8 +575,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 ))
                 .orElse(null);
 
-            // Delete every other pod of this taskrun that could still consume resources,
-            // so a stale previous attempt cannot break quotas or concurrency limits
+            // Delete stale pods so a previous attempt cannot break quotas or concurrency limits
             for (Pod other : existingPods) {
                 if (other != resumed && isActive(other)) {
                     logger.warn(
@@ -604,8 +599,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     }
 
     /**
-     * A pod can be resumed when it can still deliver a result: not yet started, running,
-     * or completed successfully (logs and output files remain collectable).
+     * A pod is resumable while it can still deliver a result: Pending, Running, or Succeeded.
      */
     private static boolean isResumable(Pod pod) {
         if (pod.getStatus() == null || pod.getStatus().getPhase() == null) {
@@ -618,9 +612,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     }
 
     /**
-     * A pod is still active (consuming or about to consume cluster resources) unless it
-     * reached a terminal phase. Unknown or missing status counts as active so cleanup errs
-     * on the side of protecting quotas.
+     * A pod is active until it reaches a terminal phase. Unknown or missing status counts as active.
      */
     private static boolean isActive(Pod pod) {
         if (pod.getStatus() == null || pod.getStatus().getPhase() == null) {
