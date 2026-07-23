@@ -580,8 +580,7 @@ class PodCreateTest {
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
 
-        // A worker crash is a process death: no cleanup runs, the attempt-0 pod is left behind,
-        // still running, labeled with the previous attempt count. Plant exactly that orphan.
+        // A worker crash runs no cleanup: plant the still-running attempt-0 pod it leaves behind.
         RunContext attempt0Context = runContextInitializer.forWorker(
             (DefaultRunContext) TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep")),
             WorkerTask.builder().task(task).taskRun(taskRun).build()
@@ -616,8 +615,7 @@ class PodCreateTest {
             );
         }
 
-        // RESUBMIT: after a worker crash the executor re-dispatches the same taskrun with a higher
-        // attempt count. Same taskrun id, attemptsCount bumped by the recorded failed attempt.
+        // RESUBMIT: same taskrun id, attemptsCount bumped by the recorded failed attempt.
         TaskRun resubmittedTaskRun = taskRun.toBuilder()
             .attempts(List.of(TaskRunAttempt.builder().build()))
             .build();
@@ -628,8 +626,7 @@ class PodCreateTest {
 
         task.run(attempt1Context);
 
-        // The resubmitted run must reconnect to the attempt-0 pod (or clean it up), never leave it
-        // orphaned: after completion with delete=true nothing may remain for this taskrun id.
+        // No pod may remain for this taskrun: the attempt-0 pod was resumed or cleaned up, never orphaned.
         try (KubernetesClient client = PodService.client(attempt1Context, null)) {
             Await.until(
                 () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
