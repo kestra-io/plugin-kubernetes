@@ -28,13 +28,13 @@ import io.kestra.core.models.tasks.runners.ScriptService;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.plugin.kubernetes.AbstractPod;
-import io.kestra.plugin.kubernetes.models.Connection;
+import io.kestra.plugin.kubernetes.shared.models.Connection;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.PodStatus;
-import io.kestra.plugin.kubernetes.services.InstanceService;
-import io.kestra.plugin.kubernetes.services.PodLogService;
-import io.kestra.plugin.kubernetes.services.PodService;
-import io.kestra.plugin.kubernetes.watchers.PodWatcher;
+import io.kestra.plugin.kubernetes.shared.services.InstanceService;
+import io.kestra.plugin.kubernetes.shared.services.PodLogService;
+import io.kestra.plugin.kubernetes.shared.services.PodService;
+import io.kestra.plugin.kubernetes.shared.watchers.PodWatcher;
 
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.Config;
@@ -47,7 +47,7 @@ import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
-import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
+import static io.kestra.plugin.kubernetes.shared.services.PodService.waitForCompletion;
 
 /**
  * Creates and manages a Kubernetes pod, handling its complete lifecycle from creation to cleanup.
@@ -89,8 +89,8 @@ import static io.kestra.plugin.kubernetes.services.PodService.waitForCompletion;
  * </ol>
  *
  * @see io.kestra.plugin.kubernetes.AbstractPod for file transfer implementation details
- * @see io.kestra.plugin.kubernetes.services.PodService for pod lifecycle utilities
- * @see io.kestra.plugin.kubernetes.services.PodLogService for log streaming
+ * @see io.kestra.plugin.kubernetes.shared.services.PodService for pod lifecycle utilities
+ * @see io.kestra.plugin.kubernetes.shared.services.PodLogService for log streaming
  */
 @SuperBuilder
 @ToString

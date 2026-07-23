@@ -7,7 +7,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
-import io.kestra.plugin.kubernetes.models.Connection;
+import io.kestra.plugin.kubernetes.shared.models.Connection;
 
 import io.fabric8.kubernetes.api.model.ListOptions;
 import io.fabric8.kubernetes.api.model.ListOptionsBuilder;

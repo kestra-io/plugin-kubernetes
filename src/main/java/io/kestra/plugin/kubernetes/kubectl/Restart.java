@@ -11,7 +11,7 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.AbstractPod;
-import io.kestra.plugin.kubernetes.services.PodService;
+import io.kestra.plugin.kubernetes.shared.services.PodService;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.swagger.v3.oas.annotations.media.Schema;

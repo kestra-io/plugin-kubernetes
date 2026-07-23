@@ -36,8 +36,8 @@ import io.kestra.core.utils.Await;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.TestsUtils;
 import io.kestra.plugin.kubernetes.TestUtils;
-import io.kestra.plugin.kubernetes.models.SideCar;
-import io.kestra.plugin.kubernetes.services.PodService;
+import io.kestra.plugin.kubernetes.shared.models.SideCar;
+import io.kestra.plugin.kubernetes.shared.services.PodService;
 
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Quantity;

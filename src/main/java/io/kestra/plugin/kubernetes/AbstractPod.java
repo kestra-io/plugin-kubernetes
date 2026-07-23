@@ -19,9 +19,9 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.plugin.kubernetes.models.SideCar;
-import io.kestra.plugin.kubernetes.services.InstanceService;
-import io.kestra.plugin.kubernetes.services.PodService;
+import io.kestra.plugin.kubernetes.shared.models.SideCar;
+import io.kestra.plugin.kubernetes.shared.services.InstanceService;
+import io.kestra.plugin.kubernetes.shared.services.PodService;
 
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.dsl.ContainerResource;
@@ -33,8 +33,8 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
-import static io.kestra.plugin.kubernetes.services.PodService.withRetries;
-import static io.kestra.plugin.kubernetes.services.PodService.withVerificationRetries;
+import static io.kestra.plugin.kubernetes.shared.services.PodService.withRetries;
+import static io.kestra.plugin.kubernetes.shared.services.PodService.withVerificationRetries;
 
 @SuperBuilder
 @ToString
@@ -322,17 +322,10 @@ public abstract class AbstractPod extends AbstractConnection {
                         );
                     }
                     pathMap.put(resolvedOutputFile, relativePathFromContainerWDir);
-                    moveFile(outputFile, resolvedOutputFile);
+                    PodService.moveFile(outputFile, resolvedOutputFile);
                 }));
         }
         return pathMap;
-    }
-
-    private void moveFile(Path from, Path to) throws IOException {
-        if (Files.notExists(to.getParent())) {
-            Files.createDirectories(to.getParent());
-        }
-        Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
     }
 
     /**
@@ -388,7 +381,7 @@ public abstract class AbstractPod extends AbstractConnection {
                 container.setSecurityContext(InstanceService.fromMap(SecurityContext.class, runContext, Map.of(), defaultSecurityContext));
             } else {
                 // Deep merge: container values take precedence
-                Map<String, Object> mergedSecurityContext = deepMerge(defaultSecurityContext, containerToMap(container.getSecurityContext()));
+                Map<String, Object> mergedSecurityContext = InstanceService.deepMerge(defaultSecurityContext, InstanceService.containerToMap(container.getSecurityContext()));
                 container.setSecurityContext(InstanceService.fromMap(SecurityContext.class, runContext, Map.of(), mergedSecurityContext));
             }
         }
@@ -423,7 +416,7 @@ public abstract class AbstractPod extends AbstractConnection {
             if (container.getResources() == null) {
                 container.setResources(InstanceService.fromMap(ResourceRequirements.class, runContext, Map.of(), defaultResources));
             } else {
-                Map<String, Object> mergedResources = deepMerge(defaultResources, containerToMap(container.getResources()));
+                Map<String, Object> mergedResources = InstanceService.deepMerge(defaultResources, InstanceService.containerToMap(container.getResources()));
                 container.setResources(InstanceService.fromMap(ResourceRequirements.class, runContext, Map.of(), mergedResources));
             }
         }
@@ -452,22 +445,6 @@ public abstract class AbstractPod extends AbstractConnection {
     }
 
     /**
-     * Converts a Kubernetes object to a Map for merging purposes.
-     */
-    private Map<String, Object> containerToMap(Object obj) {
-        if (obj == null) {
-            return new HashMap<>();
-        }
-        try {
-            String yaml = JacksonMapper.ofYaml().writeValueAsString(obj);
-            return JacksonMapper.ofYaml().readValue(yaml, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
-            });
-        } catch (Exception e) {
-            return new HashMap<>();
-        }
-    }
-
-    /**
      * Merges two env var lists, with the override list winning on name collision.
      * Variables present only in the base list are included as-is.
      * The resulting order is: override vars first, then base-only vars.
@@ -487,23 +464,6 @@ public abstract class AbstractPod extends AbstractConnection {
      * Deep merges two maps. Values from the override map take precedence.
      * For nested maps, recursively merges. For other values, override wins.
      */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> deepMerge(Map<String, Object> base, Map<String, Object> override) {
-        Map<String, Object> result = new HashMap<>(base);
-        for (Map.Entry<String, Object> entry : override.entrySet()) {
-            String key = entry.getKey();
-            Object overrideValue = entry.getValue();
-            Object baseValue = result.get(key);
-
-            if (overrideValue instanceof Map && baseValue instanceof Map) {
-                result.put(key, deepMerge((Map<String, Object>) baseValue, (Map<String, Object>) overrideValue));
-            } else if (overrideValue != null) {
-                result.put(key, overrideValue);
-            }
-        }
-        return result;
-    }
-
     protected void handleFiles(RunContext runContext, PodSpec spec) throws IllegalVariableEvaluationException {
         VolumeMount volumeMount = new VolumeMountBuilder()
             .withMountPath("/kestra")
@@ -559,43 +519,6 @@ public abstract class AbstractPod extends AbstractConnection {
         }
 
         return resources;
-    }
-
-    private static ResourceRequirements mapSidecarResources(RunContext runContext, SideCar sideCar) throws IllegalVariableEvaluationException {
-        if (sideCar == null) {
-            return null;
-        }
-
-        Map<String, Object> sidecarResources = runContext.render(sideCar.getResources()).asMap(String.class, Object.class);
-        if (sidecarResources == null) {
-            return null;
-        }
-
-        ResourceRequirements resourceRequirements = new ResourceRequirements();
-        ResourceRequirementsBuilder resourceRequirementsBuilder = new ResourceRequirementsBuilder();
-        if (sidecarResources.containsKey("claims")) {
-            try {
-                resourceRequirementsBuilder.withClaims((List<ResourceClaim>) sidecarResources.get("claims"));
-            } catch (ClassCastException e) {
-                throw new IllegalArgumentException("Sidecar resources claims must be a list of resource claims");
-            }
-        }
-        if (sidecarResources.containsKey("limits")) {
-            try {
-                resourceRequirementsBuilder.withLimits((Map<String, Quantity>) sidecarResources.get("limits"));
-            } catch (ClassCastException e) {
-                throw new IllegalArgumentException("Sidecar resources limits must be a map of string to quantity");
-            }
-        }
-        if (sidecarResources.containsKey("requests")) {
-            try {
-                resourceRequirementsBuilder.withRequests((Map<String, Quantity>) sidecarResources.get("requests"));
-            } catch (ClassCastException e) {
-                throw new IllegalArgumentException("Sidecar resources requests must be a map of string to quantity");
-            }
-        }
-        resourceRequirements = resourceRequirementsBuilder.build();
-        return resourceRequirements;
     }
 
     /**
@@ -699,7 +622,7 @@ public abstract class AbstractPod extends AbstractConnection {
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .withName(finished ? SIDECAR_FILES_CONTAINER_NAME : INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
-            .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
+            .withResources(fileSidecar != null ? PodService.mapSidecarResources(runContext, fileSidecar) : null)
             .withCommand(
                 Arrays.asList(
                     "sh",
@@ -734,7 +657,7 @@ public abstract class AbstractPod extends AbstractConnection {
         Container container = new ContainerBuilder()
             .withName(INIT_FILES_CONTAINER_NAME)
             .withImage(fileSidecar != null ? runContext.render(fileSidecar.getImage()).as(String.class).orElse("busybox") : "busybox")
-            .withResources(fileSidecar != null ? mapSidecarResources(runContext, fileSidecar) : null)
+            .withResources(fileSidecar != null ? PodService.mapSidecarResources(runContext, fileSidecar) : null)
             .withCommand(
                 Arrays.asList(
                     "sh",

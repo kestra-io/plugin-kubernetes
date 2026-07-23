@@ -19,6 +19,8 @@ Single-module plugin. Source packages under `io.kestra.plugin`:
 
 - `kubernetes`
 
+Shared code (Connection, OAuthTokenProvider, SideCar, ClientService, PodService, PodLogService, InstanceService, LoggingOutputStream, watchers) lives in the `io.kestra.plugin:plugin-kubernetes-lib` dependency under `io.kestra.plugin.kubernetes.shared.*`. It is shared with `plugin-ee-kubernetes`. Fixes to that code go to https://github.com/kestra-io/plugin-kubernetes-lib, not here.
+
 ### Key Plugin Classes
 
 - `io.kestra.plugin.kubernetes.core.PodCreate`
@@ -32,8 +34,10 @@ Single-module plugin. Source packages under `io.kestra.plugin`:
 
 ```
 plugin-kubernetes/
-├── src/main/java/io/kestra/plugin/kubernetes/watchers/
-├── src/test/java/io/kestra/plugin/kubernetes/watchers/
+├── src/main/java/io/kestra/plugin/kubernetes/core/
+├── src/main/java/io/kestra/plugin/kubernetes/kubectl/
+├── src/main/java/io/kestra/plugin/kubernetes/models/
+├── src/main/java/io/kestra/plugin/kubernetes/services/
 ├── build.gradle
 └── README.md
 ```
