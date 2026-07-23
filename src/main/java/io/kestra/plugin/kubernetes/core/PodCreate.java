@@ -292,7 +292,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
     @Schema(
         title = "Resume an existing pod when possible",
-        description = "Default true. Reconnects to a pod labeled with the current taskrun ID, whatever attempt created it. Stale pods from previous attempts are deleted."
+        description = "Default true. Reconnects to a pod labeled with the current taskrun ID, whatever attempt created it. Stale pods from previous attempts are deleted. Still-active stale pods are removed even when `delete` is false, to protect quotas and concurrency limits."
     )
     @NotNull
     @Builder.Default
@@ -567,22 +567,30 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 .getItems();
 
             // Resume the most recent pod that can still deliver a result
-            Pod resumed = existingPods.stream()
+            var resumed = existingPods.stream()
                 .filter(PodCreate::isResumable)
                 .max(Comparator.comparing(
-                    p -> p.getMetadata().getCreationTimestamp(),
+                    (Pod p) -> p.getMetadata().getCreationTimestamp(),
                     Comparator.nullsFirst(Comparator.naturalOrder())
-                ))
+                ).thenComparing(p -> p.getMetadata().getName()))
                 .orElse(null);
 
-            // Delete stale pods so a previous attempt cannot break quotas or concurrency limits
+            // Delete stale pods so a previous attempt cannot break quotas or concurrency limits.
+            // Active ones are always removed; terminal ones follow the `delete` property so
+            // `delete=false` still keeps them for debugging.
+            boolean deleteEnabled = runContext.render(this.delete).as(Boolean.class).orElse(true);
             for (Pod other : existingPods) {
-                if (other != resumed && isActive(other)) {
+                if (other != resumed && (isActive(other) || deleteEnabled)) {
                     logger.warn(
                         "Deleting stale pod '{}' left behind by a previous attempt of taskrun '{}'",
                         other.getMetadata().getName(), taskrunId
                     );
-                    PodService.podRef(client, other).delete();
+                    try {
+                        PodService.podRef(client, other).delete();
+                    } catch (Exception e) {
+                        // Best-effort cleanup: never abort the run because a stale pod would not go away
+                        logger.warn("Unable to delete stale pod '{}'", other.getMetadata().getName(), e);
+                    }
                 }
             }
 

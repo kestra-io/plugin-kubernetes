@@ -586,11 +586,12 @@ class PodCreateTest {
             WorkerTask.builder().task(task).taskRun(taskRun).build()
         );
         String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+        String orphanName = "orphan-" + IdUtils.create().toLowerCase();
 
         try (KubernetesClient client = PodService.client(attempt0Context, null)) {
-            Pod orphan = new PodBuilder()
+            var orphan = new PodBuilder()
                 .withNewMetadata()
-                .withName("orphan-" + IdUtils.create().toLowerCase())
+                .withName(orphanName)
                 .withNamespace("default")
                 .addToLabels("kestra.io/taskrun-id", taskRun.getId())
                 .addToLabels("kestra.io/taskrun-attempt", "0")
@@ -624,7 +625,16 @@ class PodCreateTest {
             WorkerTask.builder().task(task).taskRun(resubmittedTaskRun).build()
         );
 
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
         task.run(attempt1Context);
+
+        // The planted attempt-0 pod itself must have been resumed, not replaced by a fresh one
+        List<LogEntry> logs = receive.toStream().toList();
+        assertThat(
+            logs.stream().anyMatch(log -> log.getMessage() != null
+                && log.getMessage().contains("Pod '" + orphanName + "' is resumed")),
+            is(true)
+        );
 
         // No pod may remain for this taskrun: the attempt-0 pod was resumed or cleaned up, never orphaned.
         try (KubernetesClient client = PodService.client(attempt1Context, null)) {
