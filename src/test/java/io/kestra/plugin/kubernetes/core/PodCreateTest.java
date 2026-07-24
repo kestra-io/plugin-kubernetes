@@ -25,6 +25,7 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.executions.TaskRun;
+import io.kestra.core.models.executions.TaskRunAttempt;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.queues.QueueFactoryInterface;
@@ -40,6 +41,8 @@ import io.kestra.plugin.kubernetes.shared.models.SideCar;
 import io.kestra.plugin.kubernetes.shared.services.PodService;
 
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodBuilder;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -548,6 +551,98 @@ class PodCreateTest {
 
         List<LogEntry> logs = receive.toStream().toList();
         assertLogExactlyOnce(logs, "Resume log line 10");
+    }
+
+    @Test
+    void resumeAfterResubmitReconnectsToPreviousAttemptPod() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'seq 1 10 | while read i; do echo \"Resubmit log line $i\"; {{ inputs.command }} 0.5; done'",
+                    "restartPolicy: Never"
+                )
+            )
+            .resume(Property.ofValue(true))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+
+        // A worker crash runs no cleanup: plant the still-running attempt-0 pod it leaves behind.
+        RunContext attempt0Context = runContextInitializer.forWorker(
+            (DefaultRunContext) TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep")),
+            WorkerTask.builder().task(task).taskRun(taskRun).build()
+        );
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+        String orphanName = "orphan-" + IdUtils.create().toLowerCase();
+
+        try (KubernetesClient client = PodService.client(attempt0Context, null)) {
+            var orphan = new PodBuilder()
+                .withNewMetadata()
+                .withName(orphanName)
+                .withNamespace("default")
+                .addToLabels("kestra.io/taskrun-id", taskRun.getId())
+                .addToLabels("kestra.io/taskrun-attempt", "0")
+                .endMetadata()
+                .withNewSpec()
+                .addNewContainer()
+                .withName("unittest")
+                .withImage("debian:stable-slim")
+                .withCommand("bash", "-c", "seq 1 10 | while read i; do echo \"Resubmit log line $i\"; sleep 0.5; done")
+                .endContainer()
+                .withRestartPolicy("Never")
+                .endSpec()
+                .build();
+            client.pods().inNamespace("default").resource(orphan).create();
+
+            Await.until(
+                () -> {
+                    Pod current = client.pods().inNamespace("default").withName(orphan.getMetadata().getName()).get();
+                    return current != null && current.getStatus() != null && "Running".equals(current.getStatus().getPhase());
+                },
+                Duration.ofMillis(200), Duration.ofMinutes(1)
+            );
+        }
+
+        // RESUBMIT: same taskrun id, attemptsCount bumped by the recorded failed attempt.
+        TaskRun resubmittedTaskRun = taskRun.toBuilder()
+            .attempts(List.of(TaskRunAttempt.builder().build()))
+            .build();
+        RunContext attempt1Context = runContextInitializer.forWorker(
+            (DefaultRunContext) TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep")),
+            WorkerTask.builder().task(task).taskRun(resubmittedTaskRun).build()
+        );
+
+        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        task.run(attempt1Context);
+
+        // The planted attempt-0 pod itself must have been resumed, not replaced by a fresh one
+        List<LogEntry> logs = receive.toStream().toList();
+        assertThat(
+            logs.stream().anyMatch(log -> log.getMessage() != null
+                && log.getMessage().contains("Pod '" + orphanName + "' is resumed")),
+            is(true)
+        );
+
+        // No pod may remain for this taskrun: the attempt-0 pod was resumed or cleaned up, never orphaned.
+        try (KubernetesClient client = PodService.client(attempt1Context, null)) {
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(500), Duration.ofSeconds(15)
+            );
+        }
     }
 
     @Test

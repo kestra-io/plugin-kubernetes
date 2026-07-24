@@ -73,9 +73,10 @@ import static io.kestra.plugin.kubernetes.shared.services.PodService.waitForComp
  * </ul>
  *
  * <h2>Resume Behavior</h2>
- * When {@code resume=true} (default), the task attempts to reconnect to an existing pod with matching
- * {@code kestra.io/taskrun-id} and {@code kestra.io/taskrun-attempt} labels. This allows recovery from
- * interrupted executions without restarting the pod. If no matching pod exists, a new one is created.
+ * When {@code resume=true} (default), the task attempts to reconnect to an existing pod with a matching
+ * {@code kestra.io/taskrun-id} label, whatever attempt created it. This allows recovery from
+ * interrupted executions (including RESUBMITTED tasks after a worker crash) without restarting the pod.
+ * Stale non-terminal pods from previous attempts are deleted, and a new pod is created when none is resumable.
  *
  * <h2>Pod Lifecycle</h2>
  * <ol>
@@ -291,7 +292,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
     @Schema(
         title = "Resume an existing pod when possible",
-        description = "Default true. Reconnects to a pod labeled with the current taskrun ID and attempt instead of creating a new one; falls back to a new pod if none or multiple matches exist."
+        description = "Default true. Reconnects to a pod labeled with the current taskrun ID, whatever attempt created it. Stale pods from previous attempts are deleted. Still-active stale pods are removed even when `delete` is false, to protect quotas and concurrency limits."
     )
     @NotNull
     @Builder.Default
@@ -533,9 +534,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
      * Finds an existing pod to resume or creates a new pod.
      *
      * <p>
-     * When {@code resume=true}, this method searches for an existing pod matching the current
-     * taskrun ID and attempt count. If exactly one matching pod is found, it is returned for resumption.
-     * If no pod or multiple pods are found, a new pod is created.
+     * When {@code resume=true}, resumes the most recent resumable pod matching the taskrun ID,
+     * whatever attempt created it (so a RESUBMITTED task reconnects, see issue #249). Other
+     * non-terminal pods of the taskrun are deleted. Creates a new pod when none is resumable.
      *
      * @param runContext execution context for rendering properties and accessing variables
      * @param client Kubernetes client for pod operations
@@ -552,24 +553,50 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         Map<String, Object> additionalVars,
         Logger logger) throws Exception {
         if (runContext.render(this.resume).as(Boolean.class).orElseThrow()) {
-            // Try to locate an existing pod for this taskrun and attempt
+            // No attempt count in the selector: a RESUBMITTED task runs with a higher attempt
+            // count and must still find the previous attempt's pod (see issue #249).
             // Safe cast: runContext.getVariables() returns Map<String, Object> where "taskrun" is always a Map
             @SuppressWarnings("unchecked")
             Map<String, Object> taskrun = (Map<String, Object>) runContext.getVariables().get("taskrun");
             String taskrunId = ScriptService.normalize(String.valueOf(taskrun.get("id")));
-            String attempt = ScriptService.normalize(String.valueOf(taskrun.get("attemptsCount")));
-            String labelSelector = "kestra.io/taskrun-id=" + taskrunId + "," + "kestra.io/taskrun-attempt=" + attempt;
+            String labelSelector = "kestra.io/taskrun-id=" + taskrunId;
 
             var existingPods = client.pods()
                 .inNamespace(namespace)
-                .list(new ListOptionsBuilder().withLabelSelector(labelSelector).build());
+                .list(new ListOptionsBuilder().withLabelSelector(labelSelector).build())
+                .getItems();
 
-            if (existingPods.getItems().size() == 1) {
-                Pod pod = existingPods.getItems().get(0);
-                logger.info("Pod '{}' is resumed from an already running pod", pod.getMetadata().getName());
-                return pod;
-            } else if (!existingPods.getItems().isEmpty()) {
-                logger.warn("More than one pod exists for the label selector {}, no pods will be resumed.", labelSelector);
+            // Resume the most recent pod that can still deliver a result
+            var resumed = existingPods.stream()
+                .filter(PodCreate::isResumable)
+                .max(Comparator.comparing(
+                    (Pod p) -> p.getMetadata().getCreationTimestamp(),
+                    Comparator.nullsFirst(Comparator.naturalOrder())
+                ).thenComparing(p -> p.getMetadata().getName()))
+                .orElse(null);
+
+            // Delete stale pods so a previous attempt cannot break quotas or concurrency limits.
+            // Active ones are always removed; terminal ones follow the `delete` property so
+            // `delete=false` still keeps them for debugging.
+            boolean rDelete = runContext.render(this.delete).as(Boolean.class).orElse(true);
+            for (Pod other : existingPods) {
+                if (other != resumed && (isActive(other) || rDelete)) {
+                    logger.warn(
+                        "Deleting stale pod '{}' left behind by a previous attempt of taskrun '{}'",
+                        other.getMetadata().getName(), taskrunId
+                    );
+                    try {
+                        PodService.podRef(client, other).delete();
+                    } catch (Exception e) {
+                        // Best-effort cleanup: never abort the run because a stale pod would not go away
+                        logger.warn("Unable to delete stale pod '{}'", other.getMetadata().getName(), e);
+                    }
+                }
+            }
+
+            if (resumed != null) {
+                logger.info("Pod '{}' is resumed from an already running pod", resumed.getMetadata().getName());
+                return resumed;
             }
         }
 
@@ -577,6 +604,31 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         Pod pod = createPod(runContext, client, namespace, additionalVars);
         logger.info("Pod '{}' is created", pod.getMetadata().getName());
         return pod;
+    }
+
+    /**
+     * A pod is resumable while it can still deliver a result: Pending, Running, or Succeeded.
+     */
+    private static boolean isResumable(Pod pod) {
+        if (pod.getStatus() == null || pod.getStatus().getPhase() == null) {
+            return false;
+        }
+        String phase = pod.getStatus().getPhase();
+        return PodService.PodPhase.PENDING.value().equals(phase)
+            || PodService.PodPhase.RUNNING.value().equals(phase)
+            || PodService.PodPhase.SUCCEEDED.value().equals(phase);
+    }
+
+    /**
+     * A pod is active until it reaches a terminal phase. Unknown or missing status counts as active.
+     */
+    private static boolean isActive(Pod pod) {
+        if (pod.getStatus() == null || pod.getStatus().getPhase() == null) {
+            return true;
+        }
+        String phase = pod.getStatus().getPhase();
+        return !PodService.PodPhase.SUCCEEDED.value().equals(phase)
+            && !PodService.PodPhase.FAILED.value().equals(phase);
     }
 
     /**
