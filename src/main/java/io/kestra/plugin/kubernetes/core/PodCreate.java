@@ -554,8 +554,6 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         Map<String, Object> additionalVars,
         Logger logger) throws Exception {
         if (runContext.render(this.resume).as(Boolean.class).orElseThrow()) {
-            // No attempt count in the selector: a RESUBMITTED task runs with a higher attempt
-            // count and must still find the previous attempt's pod (see issue #249).
             // Safe cast: runContext.getVariables() returns Map<String, Object> where "taskrun" is always a Map
             @SuppressWarnings("unchecked")
             Map<String, Object> taskrun = (Map<String, Object>) runContext.getVariables().get("taskrun");
@@ -567,8 +565,6 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 .list(new ListOptionsBuilder().withLabelSelector(labelSelector).build())
                 .getItems();
 
-            // Resume the pod most likely to deliver a result: a Succeeded pod already holds it,
-            // then Running, then Pending; recency breaks ties.
             Comparator<Pod> byPriority = Comparator.comparingInt(PodCreate::resumePriority);
             var resumed = existingPods.stream()
                 .filter(PodCreate::isResumable)
