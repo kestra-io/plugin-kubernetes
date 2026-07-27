@@ -481,9 +481,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                             try {
                                 // Full retry budget on success; a short one on failure so an already-failed pod
                                 // does not burn the whole ~60s window for best-effort output files.
-                                Map<Path, Path> pathMap = failure == null
-                                    ? this.downloadOutputFiles(runContext, podRef, logger, additionalVars)
-                                    : this.downloadOutputFiles(runContext, podRef, logger, additionalVars, FAILED_OUTPUT_FILES_RETRY_MAX_DURATION);
+                                Duration downloadRetryBudget = failure == null
+                                    ? PodService.DEFAULT_RETRY_MAX_DURATION
+                                    : FAILED_OUTPUT_FILES_RETRY_MAX_DURATION;
+                                Map<Path, Path> pathMap = this.downloadOutputFiles(runContext, podRef, logger, additionalVars, downloadRetryBudget);
                                 output.outputFiles(outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap));
                             } catch (Exception e) {
                                 // On success a download error is a real failure and must propagate.
