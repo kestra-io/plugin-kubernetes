@@ -53,6 +53,7 @@ import reactor.core.publisher.Flux;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 @KestraTest
 @Timeout(value = 15, unit = java.util.concurrent.TimeUnit.MINUTES)
@@ -588,19 +589,19 @@ class PodCreateTest {
         try (KubernetesClient client = PodService.client(attempt1Context, null)) {
             // A worker crash runs no cleanup: plant what it leaves behind - a stale duplicate
             // and the still-running attempt-0 pod, created in that order so the orphan is newest.
-            plantPod(client, staleName, taskRun.getId(), "sleep 300");
+            plantPod(client, staleName, taskRun.getId(), "0", "sleep 300");
             awaitPhase(client, staleName, "Running");
             Thread.sleep(1500);
-            plantPod(client, orphanName, taskRun.getId(), "seq 1 10 | while read i; do echo \"Resubmit log line $i\"; sleep 0.5; done");
+            plantPod(client, orphanName, taskRun.getId(), "0", "seq 1 10 | while read i; do echo \"Resubmit log line $i\"; sleep 0.5; done");
             awaitPhase(client, orphanName, "Running");
 
-            Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+            List<LogEntry> logs = new CopyOnWriteArrayList<>();
+            TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
             task.run(attempt1Context);
-            List<LogEntry> logs = receive.toStream().toList();
 
             // The newest attempt-0 pod itself was resumed, the older duplicate deleted
-            assertLogContains(logs, "Pod '" + orphanName + "' is resumed");
-            assertLogContains(logs, "Deleting stale pod '" + staleName + "'");
+            awaitLogContains(logs, "Pod '" + orphanName + "' is resumed");
+            awaitLogContains(logs, "Deleting stale pod '" + staleName + "'");
 
             Await.until(
                 () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
@@ -629,7 +630,7 @@ class PodCreateTest {
                     "  command: ",
                     "    - 'bash' ",
                     "    - '-c'",
-                    "    - 'echo \"Pinned rerun done\"'",
+                    "    - 'sleep 2; echo \"Pinned rerun done\"; sleep 2'",
                     "restartPolicy: Never"
                 )
             )
@@ -646,20 +647,120 @@ class PodCreateTest {
         try (KubernetesClient client = PodService.client(attempt1Context, null)) {
             // The previous attempt failed and its pod uses the same pinned name the resubmit
             // will want: cleanup must wait for finalization or the create hits 409 AlreadyExists.
-            plantPod(client, pinnedName, taskRun.getId(), "exit 1");
+            plantPod(client, pinnedName, taskRun.getId(), "0", "exit 1");
             awaitPhase(client, pinnedName, "Failed");
 
-            Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+            List<LogEntry> logs = new CopyOnWriteArrayList<>();
+            TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
             task.run(attempt1Context);
-            List<LogEntry> logs = receive.toStream().toList();
 
-            assertLogContains(logs, "Deleting stale pod '" + pinnedName + "'");
-            assertLogContains(logs, "Pinned rerun done");
+            awaitLogContains(logs, "Deleting stale pod '" + pinnedName + "'");
+            awaitLogContains(logs, "Pinned rerun done");
 
             Await.until(
                 () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
                 Duration.ofMillis(500), Duration.ofMinutes(1)
             );
+        } finally {
+            deleteLeftoverPods(attempt1Context, labelSelector);
+        }
+    }
+
+    @Test
+    void retryDoesNotResumeSucceededPodFromPreviousAttempt() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'sleep 2; echo \"Retry rerun done\"; sleep 2'",
+                    "restartPolicy: Never"
+                )
+            )
+            .resume(Property.ofValue(true))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext attempt1Context = resubmitContext(task, taskRun);
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+        String succeededName = "succeeded-" + IdUtils.create().toLowerCase();
+
+        try (KubernetesClient client = PodService.client(attempt1Context, null)) {
+            // A retry bumps the attempt count like a resubmit does, but the previous attempt's
+            // Succeeded pod must not be resumed: the retry has to re-run the workload.
+            plantPod(client, succeededName, taskRun.getId(), "0", "echo done");
+            awaitPhase(client, succeededName, "Succeeded");
+
+            List<LogEntry> logs = new CopyOnWriteArrayList<>();
+            TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
+            task.run(attempt1Context);
+
+            awaitLogContains(logs, "Retry rerun done");
+            assertThat(
+                logs.stream().anyMatch(log -> log.getMessage() != null
+                    && log.getMessage().contains("Pod '" + succeededName + "' is resumed")),
+                is(false)
+            );
+        } finally {
+            deleteLeftoverPods(attempt1Context, labelSelector);
+        }
+    }
+
+    @Test
+    void resumingSucceededPodWithInputFilesSkipsUploadAndCompletes() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .inputFiles(Map.of("data.txt", "content"))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo unused'",
+                    "restartPolicy: Never"
+                )
+            )
+            .resume(Property.ofValue(true))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext attempt1Context = resubmitContext(task, taskRun);
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+        String succeededName = "completed-" + IdUtils.create().toLowerCase();
+
+        try (KubernetesClient client = PodService.client(attempt1Context, null)) {
+            // Same attempt, so the Succeeded pod is resumed. The init-container wait and input
+            // file upload must be skipped for it, or the run blocks for the full waitUntilRunning.
+            plantPod(client, succeededName, taskRun.getId(), "1", "echo \"Completed while worker was down\"");
+            awaitPhase(client, succeededName, "Succeeded");
+
+            List<LogEntry> logs = new CopyOnWriteArrayList<>();
+            TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
+            assertTimeoutPreemptively(Duration.ofMinutes(2), () -> task.run(attempt1Context));
+
+            awaitLogContains(logs, "Pod '" + succeededName + "' is resumed");
         } finally {
             deleteLeftoverPods(attempt1Context, labelSelector);
         }
@@ -676,13 +777,13 @@ class PodCreateTest {
         );
     }
 
-    private void plantPod(KubernetesClient client, String name, String taskrunId, String script) {
+    private void plantPod(KubernetesClient client, String name, String taskrunId, String attempt, String script) {
         var pod = new PodBuilder()
             .withNewMetadata()
             .withName(name)
             .withNamespace("default")
             .addToLabels("kestra.io/taskrun-id", taskrunId)
-            .addToLabels("kestra.io/taskrun-attempt", "0")
+            .addToLabels("kestra.io/taskrun-attempt", attempt)
             .endMetadata()
             .withNewSpec()
             .addNewContainer()
@@ -712,11 +813,14 @@ class PodCreateTest {
         }
     }
 
-    private static void assertLogContains(List<LogEntry> logs, String needle) {
-        assertThat(
-            "expected a log containing: " + needle,
-            logs.stream().anyMatch(log -> log.getMessage() != null && log.getMessage().contains(needle)),
-            is(true)
+    /**
+     * Log queue delivery is asynchronous, so expected entries are awaited, never just collected.
+     */
+    private static void awaitLogContains(List<LogEntry> logs, String needle) {
+        TestsUtils.awaitLogs(
+            logs,
+            log -> log.getMessage() != null && log.getMessage().contains(needle),
+            1
         );
     }
 

@@ -73,4 +73,30 @@ class PodCreateResumeSelectionTest {
         assertThat(succeeded, is(greaterThan(running)));
         assertThat(running, is(greaterThan(pending)));
     }
+
+    @Test
+    void missingStatusRanksLowest() {
+        assertThat(PodCreate.resumePriority(pod(null, false)), is(0));
+    }
+
+    @Test
+    void succeededPodIsOnlyResumableWithinTheSameAttempt() {
+        assertThat(PodCreate.isResumableForAttempt(podWithAttempt("Succeeded", "1"), "1"), is(true));
+        assertThat(PodCreate.isResumableForAttempt(podWithAttempt("Succeeded", "0"), "1"), is(false));
+        // Live pods stay resumable across attempts - that is the issue #249 reconnect
+        assertThat(PodCreate.isResumableForAttempt(podWithAttempt("Running", "0"), "1"), is(true));
+        assertThat(PodCreate.isResumableForAttempt(podWithAttempt("Pending", "0"), "1"), is(true));
+    }
+
+    private Pod podWithAttempt(String phase, String attempt) {
+        return new PodBuilder()
+            .withNewMetadata()
+            .withName("selection-test")
+            .addToLabels("kestra.io/taskrun-attempt", attempt)
+            .endMetadata()
+            .withNewStatus()
+            .withPhase(phase)
+            .endStatus()
+            .build();
+    }
 }

@@ -293,7 +293,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
     @Schema(
         title = "Resume an existing pod when possible",
-        description = "Default true. Reconnects to a pod labeled with the current taskrun ID, whatever attempt created it. Stale pods from previous attempts are deleted. Still-active stale pods are removed even when `delete` is false, to protect quotas and concurrency limits."
+        description = "Default true. Reconnects to a pod labeled with the current taskrun ID, whatever attempt created it. A completed (Succeeded) pod is only resumed within the same attempt, so task retries re-run the workload. Stale pods from previous attempts are deleted. Still-active stale pods are removed even when `delete` is false, to protect quotas and concurrency limits."
     )
     @NotNull
     @Builder.Default
@@ -558,6 +558,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             @SuppressWarnings("unchecked")
             Map<String, Object> taskrun = (Map<String, Object>) runContext.getVariables().get("taskrun");
             String taskrunId = ScriptService.normalize(String.valueOf(taskrun.get("id")));
+            String attempt = ScriptService.normalize(String.valueOf(taskrun.get("attemptsCount")));
             String labelSelector = "kestra.io/taskrun-id=" + taskrunId;
 
             var existingPods = client.pods()
@@ -565,9 +566,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 .list(new ListOptionsBuilder().withLabelSelector(labelSelector).build())
                 .getItems();
 
+            // creationTimestamp has 1-second granularity; equal stamps fall back to name, which is arbitrary
             Comparator<Pod> byPriority = Comparator.comparingInt(PodCreate::resumePriority);
             var resumed = existingPods.stream()
-                .filter(PodCreate::isResumable)
+                .filter(p -> isResumableForAttempt(p, attempt))
                 .max(byPriority
                     .thenComparing(p -> p.getMetadata().getCreationTimestamp(), Comparator.nullsFirst(Comparator.naturalOrder()))
                     .thenComparing(p -> p.getMetadata().getName()))
@@ -639,6 +641,24 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             && !PodService.PodPhase.FAILED.value().equals(phase);
     }
 
+    /**
+     * Cross-attempt resume is what lets a RESUBMITTED task reconnect (issue #249), but a Succeeded
+     * pod is only reused within the same attempt: task-level retries bump the attempt count too,
+     * and resuming the completed pod would turn the retry into a no-op.
+     */
+    static boolean isResumableForAttempt(Pod pod, String attempt) {
+        if (!isResumable(pod)) {
+            return false;
+        }
+        if (!PodService.PodPhase.SUCCEEDED.value().equals(pod.getStatus().getPhase())) {
+            return true;
+        }
+        String podAttempt = pod.getMetadata() != null && pod.getMetadata().getLabels() != null
+            ? pod.getMetadata().getLabels().get("kestra.io/taskrun-attempt")
+            : null;
+        return attempt.equals(podAttempt);
+    }
+
     private static boolean isTerminating(Pod pod) {
         return pod.getMetadata() != null && pod.getMetadata().getDeletionTimestamp() != null;
     }
@@ -647,6 +667,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
      * Succeeded outranks Running outranks Pending: a completed pod already holds the taskrun's result.
      */
     static int resumePriority(Pod pod) {
+        if (pod.getStatus() == null || pod.getStatus().getPhase() == null) {
+            return 0;
+        }
         String phase = pod.getStatus().getPhase();
         if (PodService.PodPhase.SUCCEEDED.value().equals(phase)) {
             return 3;
