@@ -290,13 +290,18 @@ public abstract class AbstractPod extends AbstractConnection {
     }
 
     protected Map<Path, Path> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars) throws Exception {
+        return downloadOutputFiles(runContext, podResource, logger, additionalVars, PodService.DEFAULT_RETRY_MAX_DURATION);
+    }
+
+    protected Map<Path, Path> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars, Duration retryMaxDuration) throws Exception {
         withRetries(
             logger,
             "downloadOutputFiles",
             () -> podResource
                 .inContainer(SIDECAR_FILES_CONTAINER_NAME)
                 .dir("/kestra/working-dir/")
-                .copy(PodService.tempDir(runContext))
+                .copy(PodService.tempDir(runContext)),
+            retryMaxDuration
         );
 
         // Download output files

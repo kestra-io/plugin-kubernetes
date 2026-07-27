@@ -313,6 +313,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private static final String WORKING_DIR_VAR = "workingDir";
     private static final String OUTPUT_FILES_VAR = "outputFiles";
 
+    // Short retry budget for the best-effort output-file download after a pod has already failed.
+    private static final Duration FAILED_OUTPUT_FILES_RETRY_MAX_DURATION = Duration.ofSeconds(5);
+
     // Kill handling state (internal runtime state, not user-configurable)
     @JsonIgnore
     private final AtomicBoolean killed = new AtomicBoolean(false);
@@ -474,13 +477,16 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         Output.OutputBuilder output = baseOutput(ended, logConsumer);
 
                         if (this.outputFiles != null) {
+                            var podRef = PodService.podRef(client, pod);
                             try {
-                                Map<Path, Path> pathMap = this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars);
+                                // Full retry budget on success; a short one on failure so an already-failed pod
+                                // does not burn the whole ~60s window for best-effort output files.
+                                Map<Path, Path> pathMap = failure == null
+                                    ? this.downloadOutputFiles(runContext, podRef, logger, additionalVars)
+                                    : this.downloadOutputFiles(runContext, podRef, logger, additionalVars, FAILED_OUTPUT_FILES_RETRY_MAX_DURATION);
                                 output.outputFiles(outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap));
                             } catch (Exception e) {
-                                // On success a download error is a real failure and must propagate. On the failure
-                                // path it is best-effort: a failed pod may not have written the files, and the
-                                // sidecar copy can burn the full withRetries budget (~60s) before giving up.
+                                // On success a download error is a real failure and must propagate.
                                 if (failure == null) {
                                     throw e;
                                 }
