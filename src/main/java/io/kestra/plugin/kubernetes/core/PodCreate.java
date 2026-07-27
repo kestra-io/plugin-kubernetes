@@ -450,7 +450,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                                 // A pod that exits before ContainersReady is observed lands here; build the Output
                                 // so vars already parsed by fetchFinalLogs survive the failure (issue #322).
                                 IllegalStateException failure = PodService.failedMessage(pod);
-                                throw new RunnableTaskException(failure.getMessage(), failure, baseOutput(pod, logConsumer).build());
+                                throw new RunnableTaskException(failure.getMessage(), failure, buildOutput(pod, logConsumer, null));
                             }
                         }
 
@@ -476,8 +476,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
                         IllegalStateException failure = handleEnd(ended, runContext, this.outputFiles != null, client, podLogService, logConsumer);
 
-                        Output.OutputBuilder output = baseOutput(ended, logConsumer);
-
+                        Map<String, URI> capturedOutputFiles = null;
                         if (this.outputFiles != null) {
                             var podRef = PodService.podRef(client, pod);
                             try {
@@ -487,7 +486,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                                     ? PodService.DEFAULT_RETRY_MAX_DURATION
                                     : FAILED_OUTPUT_FILES_RETRY_MAX_DURATION;
                                 Map<Path, Path> pathMap = this.downloadOutputFiles(runContext, podRef, logger, additionalVars, downloadRetryBudget);
-                                output.outputFiles(outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap));
+                                capturedOutputFiles = outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap);
                             } catch (Exception e) {
                                 // On success a download error is a real failure and must propagate.
                                 if (failure == null) {
@@ -497,7 +496,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                             }
                         }
 
-                        Output builtOutput = output.build();
+                        Output builtOutput = buildOutput(ended, logConsumer, capturedOutputFiles);
 
                         if (failure != null) {
                             throw new RunnableTaskException(failure.getMessage(), failure, builtOutput);
@@ -827,14 +826,17 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     }
 
     /**
-     * Builds the task {@link Output} from a pod's final state: metadata, status, and the vars parsed
-     * from its logs. Shared by the success and failure paths so a non-zero exit still surfaces them.
+     * Builds the task {@link Output} from a pod's final state: metadata, status, the vars parsed from
+     * its logs, and any captured output files (may be null). Shared by the success and failure paths so
+     * a non-zero exit still surfaces them.
      */
-    private Output.OutputBuilder baseOutput(Pod pod, AbstractLogConsumer logConsumer) {
+    private Output buildOutput(Pod pod, AbstractLogConsumer logConsumer, Map<String, URI> outputFiles) {
         return Output.builder()
             .metadata(Metadata.from(pod.getMetadata()))
             .status(PodStatus.from(pod.getStatus()))
-            .vars(logConsumer.getOutputs());
+            .vars(logConsumer.getOutputs())
+            .outputFiles(outputFiles)
+            .build();
     }
 
     /**
