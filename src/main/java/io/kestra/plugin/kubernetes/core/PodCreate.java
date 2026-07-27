@@ -21,6 +21,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.State;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.RunnableTaskException;
 import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
 import io.kestra.core.models.tasks.runners.DefaultLogConsumer;
 import io.kestra.core.models.tasks.runners.PluginUtilsService;
@@ -312,6 +313,9 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     private static final String WORKING_DIR_VAR = "workingDir";
     private static final String OUTPUT_FILES_VAR = "outputFiles";
 
+    // Short retry budget for the best-effort output-file download after a pod has already failed.
+    private static final Duration FAILED_OUTPUT_FILES_RETRY_MAX_DURATION = Duration.ofSeconds(5);
+
     // Kill handling state (internal runtime state, not user-configurable)
     @JsonIgnore
     private final AtomicBoolean killed = new AtomicBoolean(false);
@@ -350,6 +354,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
      * @return Output containing pod metadata, status, output files, and any variables extracted from logs
      * @throws Exception if pod creation fails, times out, or terminates with a non-zero exit code
      * @throws IllegalStateException if input files are invalid or if pod fails to reach Running state
+     * @throws RunnableTaskException if the pod or a container exits non-zero after completion; carries the Output so vars are not lost
      * @throws InterruptedException if the task is interrupted and returns null
      * @see #kill() for handling task interruption
      */
@@ -440,7 +445,10 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                                     podLogService.fetchFinalLogs(client, pod, runContext);
                                 }
                                 PodService.logPodEvents(client, pod, logger, logConsumer);
-                                throw PodService.failedMessage(pod);
+                                // A pod that exits before ContainersReady is observed lands here; build the Output
+                                // so vars already parsed by fetchFinalLogs survive the failure (issue #322).
+                                IllegalStateException failure = PodService.failedMessage(pod);
+                                throw new RunnableTaskException(failure.getMessage(), failure, baseOutput(pod, logConsumer).build());
                             }
                         }
 
@@ -464,23 +472,36 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                             ended = waitForCompletion(client, logger, pod, waitRunningValue);
                         }
 
-                        // Collect late logs and check for failures (throws if container failed)
-                        handleEnd(ended, runContext, this.outputFiles != null, client, podLogService, logConsumer);
+                        IllegalStateException failure = handleEnd(ended, runContext, this.outputFiles != null, client, podLogService, logConsumer);
 
-                        PodStatus podStatus = PodStatus.from(ended.getStatus());
-                        Output.OutputBuilder output = Output.builder()
-                            .metadata(Metadata.from(ended.getMetadata()))
-                            .status(podStatus)
-                            .vars(logConsumer.getOutputs());
+                        Output.OutputBuilder output = baseOutput(ended, logConsumer);
 
-                        // Download output files if configured and task succeeded
                         if (this.outputFiles != null) {
-                            Map<Path, Path> pathMap = this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars);
-                            output.outputFiles(outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap));
+                            var podRef = PodService.podRef(client, pod);
+                            try {
+                                // Full retry budget on success; a short one on failure so an already-failed pod
+                                // does not burn the whole ~60s window for best-effort output files.
+                                Duration downloadRetryBudget = failure == null
+                                    ? PodService.DEFAULT_RETRY_MAX_DURATION
+                                    : FAILED_OUTPUT_FILES_RETRY_MAX_DURATION;
+                                Map<Path, Path> pathMap = this.downloadOutputFiles(runContext, podRef, logger, additionalVars, downloadRetryBudget);
+                                output.outputFiles(outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap));
+                            } catch (Exception e) {
+                                // On success a download error is a real failure and must propagate.
+                                if (failure == null) {
+                                    throw e;
+                                }
+                                logger.warn("Unable to download output files after pod failure: {}", e.getMessage(), e);
+                            }
                         }
 
-                        return output
-                            .build();
+                        Output builtOutput = output.build();
+
+                        if (failure != null) {
+                            throw new RunnableTaskException(failure.getMessage(), failure, builtOutput);
+                        }
+
+                        return builtOutput;
                     } finally {
                         // Signal sidecar to exit gracefully before pod deletion
                         // The sidecar container only exists when outputFiles is configured
@@ -704,7 +725,24 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         }
     }
 
-    private void handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles, KubernetesClient client, PodLogService podLogService, AbstractLogConsumer logConsumer) throws Exception {
+    /**
+     * Builds the task {@link Output} from a pod's final state: metadata, status, and the vars parsed
+     * from its logs. Shared by the success and failure paths so a non-zero exit still surfaces them.
+     */
+    private Output.OutputBuilder baseOutput(Pod pod, AbstractLogConsumer logConsumer) {
+        return Output.builder()
+            .metadata(Metadata.from(pod.getMetadata()))
+            .status(PodStatus.from(pod.getStatus()))
+            .vars(logConsumer.getOutputs());
+    }
+
+    /**
+     * Collects late logs and returns the failure as an {@link IllegalStateException} if the pod or a
+     * container failed, {@code null} otherwise. It does not throw on pod/container failure (it may still
+     * throw while fetching logs), so the caller can build the {@link Output} before raising the failure
+     * and keep the original exception as the cause.
+     */
+    private IllegalStateException handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles, KubernetesClient client, PodLogService podLogService, AbstractLogConsumer logConsumer) throws Exception {
         Logger logger = runContext.logger();
 
         // Wait for async log stream (watchLog) to finish processing
@@ -727,11 +765,17 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         if (hasOutputFiles) {
             // For pods with outputFiles, check container exit codes
             // (pod phase stays "Running" due to sidecar container)
-            PodService.checkContainerFailures(ended, SIDECAR_FILES_CONTAINER_NAME, logger);
+            try {
+                PodService.checkContainerFailures(ended, SIDECAR_FILES_CONTAINER_NAME, logger);
+            } catch (IllegalStateException e) {
+                return e;
+            }
         } else if (ended.getStatus() != null && ended.getStatus().getPhase().equals(PodService.PodPhase.FAILED.value())) {
             // For pods without outputFiles, check pod phase
-            throw PodService.failedMessage(ended);
+            return PodService.failedMessage(ended);
         }
+
+        return null;
     }
 
     @Builder

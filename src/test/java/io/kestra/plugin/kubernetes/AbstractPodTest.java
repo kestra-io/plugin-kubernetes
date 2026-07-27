@@ -79,6 +79,8 @@ class AbstractPodTest {
             ).then(inv -> null);
 
             staticMock.when(() -> PodService.withRetries(Mockito.any(), Mockito.anyString(), Mockito.any())).thenCallRealMethod();
+            // The 3-arg withRetries delegates to the 4-arg (Duration) overload, so it must run for real too.
+            staticMock.when(() -> PodService.withRetries(Mockito.any(), Mockito.anyString(), Mockito.any(), Mockito.any())).thenCallRealMethod();
 
             pod.uploadInputFiles(runContext, podResource, logger, inputFiles);
         }
