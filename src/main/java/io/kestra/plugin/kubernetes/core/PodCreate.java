@@ -5,6 +5,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -566,18 +567,21 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                 .list(new ListOptionsBuilder().withLabelSelector(labelSelector).build())
                 .getItems();
 
-            // Resume the most recent pod that can still deliver a result
+            // Resume the pod most likely to deliver a result: a Succeeded pod already holds it,
+            // then Running, then Pending; recency breaks ties.
+            Comparator<Pod> byPriority = Comparator.comparingInt(PodCreate::resumePriority);
             var resumed = existingPods.stream()
                 .filter(PodCreate::isResumable)
-                .max(Comparator.comparing(
-                    (Pod p) -> p.getMetadata().getCreationTimestamp(),
-                    Comparator.nullsFirst(Comparator.naturalOrder())
-                ).thenComparing(p -> p.getMetadata().getName()))
+                .max(byPriority
+                    .thenComparing(p -> p.getMetadata().getCreationTimestamp(), Comparator.nullsFirst(Comparator.naturalOrder()))
+                    .thenComparing(p -> p.getMetadata().getName()))
                 .orElse(null);
 
             // Delete stale pods so a previous attempt cannot break quotas or concurrency limits.
             // Active ones are always removed; terminal ones follow the `delete` property so
-            // `delete=false` still keeps them for debugging.
+            // `delete=false` still keeps them for debugging. The delete waits for finalization:
+            // with a pinned metadata name, creating the replacement before the old pod is gone
+            // would fail with 409 AlreadyExists.
             boolean rDelete = runContext.render(this.delete).as(Boolean.class).orElse(true);
             for (Pod other : existingPods) {
                 if (other != resumed && (isActive(other) || rDelete)) {
@@ -586,7 +590,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                         other.getMetadata().getName(), taskrunId
                     );
                     try {
-                        PodService.podRef(client, other).delete();
+                        PodService.podRef(client, other).withTimeout(30, TimeUnit.SECONDS).delete();
                     } catch (Exception e) {
                         // Best-effort cleanup: never abort the run because a stale pod would not go away
                         logger.warn("Unable to delete stale pod '{}'", other.getMetadata().getName(), e);
@@ -607,9 +611,13 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     }
 
     /**
-     * A pod is resumable while it can still deliver a result: Pending, Running, or Succeeded.
+     * A pod is resumable while it can still deliver a result: Pending, Running, or Succeeded,
+     * and not already terminating (a deleted pod keeps its phase until finalized).
      */
-    private static boolean isResumable(Pod pod) {
+    static boolean isResumable(Pod pod) {
+        if (isTerminating(pod)) {
+            return false;
+        }
         if (pod.getStatus() == null || pod.getStatus().getPhase() == null) {
             return false;
         }
@@ -620,15 +628,37 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
     }
 
     /**
-     * A pod is active until it reaches a terminal phase. Unknown or missing status counts as active.
+     * A pod is active until it reaches a terminal phase or starts terminating.
+     * Unknown or missing status counts as active.
      */
-    private static boolean isActive(Pod pod) {
+    static boolean isActive(Pod pod) {
+        if (isTerminating(pod)) {
+            return false;
+        }
         if (pod.getStatus() == null || pod.getStatus().getPhase() == null) {
             return true;
         }
         String phase = pod.getStatus().getPhase();
         return !PodService.PodPhase.SUCCEEDED.value().equals(phase)
             && !PodService.PodPhase.FAILED.value().equals(phase);
+    }
+
+    private static boolean isTerminating(Pod pod) {
+        return pod.getMetadata() != null && pod.getMetadata().getDeletionTimestamp() != null;
+    }
+
+    /**
+     * Succeeded outranks Running outranks Pending: a completed pod already holds the taskrun's result.
+     */
+    static int resumePriority(Pod pod) {
+        String phase = pod.getStatus().getPhase();
+        if (PodService.PodPhase.SUCCEEDED.value().equals(phase)) {
+            return 3;
+        }
+        if (PodService.PodPhase.RUNNING.value().equals(phase)) {
+            return 2;
+        }
+        return 1;
     }
 
     /**

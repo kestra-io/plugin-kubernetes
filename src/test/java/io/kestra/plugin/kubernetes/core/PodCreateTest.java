@@ -579,70 +579,145 @@ class PodCreateTest {
         Flow flow = TestsUtils.mockFlow();
         Execution execution = TestsUtils.mockExecution(flow, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext attempt1Context = resubmitContext(task, taskRun);
 
-        // A worker crash runs no cleanup: plant the still-running attempt-0 pod it leaves behind.
-        RunContext attempt0Context = runContextInitializer.forWorker(
-            (DefaultRunContext) TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep")),
-            WorkerTask.builder().task(task).taskRun(taskRun).build()
-        );
         String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+        String staleName = "stale-" + IdUtils.create().toLowerCase();
         String orphanName = "orphan-" + IdUtils.create().toLowerCase();
 
-        try (KubernetesClient client = PodService.client(attempt0Context, null)) {
-            var orphan = new PodBuilder()
-                .withNewMetadata()
-                .withName(orphanName)
-                .withNamespace("default")
-                .addToLabels("kestra.io/taskrun-id", taskRun.getId())
-                .addToLabels("kestra.io/taskrun-attempt", "0")
-                .endMetadata()
-                .withNewSpec()
-                .addNewContainer()
-                .withName("unittest")
-                .withImage("debian:stable-slim")
-                .withCommand("bash", "-c", "seq 1 10 | while read i; do echo \"Resubmit log line $i\"; sleep 0.5; done")
-                .endContainer()
-                .withRestartPolicy("Never")
-                .endSpec()
-                .build();
-            client.pods().inNamespace("default").resource(orphan).create();
-
-            Await.until(
-                () -> {
-                    Pod current = client.pods().inNamespace("default").withName(orphan.getMetadata().getName()).get();
-                    return current != null && current.getStatus() != null && "Running".equals(current.getStatus().getPhase());
-                },
-                Duration.ofMillis(200), Duration.ofMinutes(1)
-            );
-        }
-
-        // RESUBMIT: same taskrun id, attemptsCount bumped by the recorded failed attempt.
-        TaskRun resubmittedTaskRun = taskRun.toBuilder()
-            .attempts(List.of(TaskRunAttempt.builder().build()))
-            .build();
-        RunContext attempt1Context = runContextInitializer.forWorker(
-            (DefaultRunContext) TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep")),
-            WorkerTask.builder().task(task).taskRun(resubmittedTaskRun).build()
-        );
-
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
-        task.run(attempt1Context);
-
-        // The planted attempt-0 pod itself must have been resumed, not replaced by a fresh one
-        List<LogEntry> logs = receive.toStream().toList();
-        assertThat(
-            logs.stream().anyMatch(log -> log.getMessage() != null
-                && log.getMessage().contains("Pod '" + orphanName + "' is resumed")),
-            is(true)
-        );
-
-        // No pod may remain for this taskrun: the attempt-0 pod was resumed or cleaned up, never orphaned.
         try (KubernetesClient client = PodService.client(attempt1Context, null)) {
+            // A worker crash runs no cleanup: plant what it leaves behind - a stale duplicate
+            // and the still-running attempt-0 pod, created in that order so the orphan is newest.
+            plantPod(client, staleName, taskRun.getId(), "sleep 300");
+            awaitPhase(client, staleName, "Running");
+            Thread.sleep(1500);
+            plantPod(client, orphanName, taskRun.getId(), "seq 1 10 | while read i; do echo \"Resubmit log line $i\"; sleep 0.5; done");
+            awaitPhase(client, orphanName, "Running");
+
+            Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+            task.run(attempt1Context);
+            List<LogEntry> logs = receive.toStream().toList();
+
+            // The newest attempt-0 pod itself was resumed, the older duplicate deleted
+            assertLogContains(logs, "Pod '" + orphanName + "' is resumed");
+            assertLogContains(logs, "Deleting stale pod '" + staleName + "'");
+
             Await.until(
                 () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
-                Duration.ofMillis(500), Duration.ofSeconds(15)
+                Duration.ofMillis(500), Duration.ofMinutes(1)
             );
+        } finally {
+            deleteLeftoverPods(attempt1Context, labelSelector);
         }
+    }
+
+    @Test
+    void resubmitReplacesFailedPodWithPinnedName() throws Exception {
+        String pinnedName = "pinned-" + IdUtils.create().toLowerCase();
+        PodCreate task = PodCreate.builder()
+            .id(PodCreate.class.getSimpleName())
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .metadata(Map.of("name", pinnedName))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: unittest",
+                    "  image: debian:stable-slim",
+                    "  command: ",
+                    "    - 'bash' ",
+                    "    - '-c'",
+                    "    - 'echo \"Pinned rerun done\"'",
+                    "restartPolicy: Never"
+                )
+            )
+            .resume(Property.ofValue(true))
+            .build();
+
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        RunContext attempt1Context = resubmitContext(task, taskRun);
+
+        String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
+
+        try (KubernetesClient client = PodService.client(attempt1Context, null)) {
+            // The previous attempt failed and its pod uses the same pinned name the resubmit
+            // will want: cleanup must wait for finalization or the create hits 409 AlreadyExists.
+            plantPod(client, pinnedName, taskRun.getId(), "exit 1");
+            awaitPhase(client, pinnedName, "Failed");
+
+            Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+            task.run(attempt1Context);
+            List<LogEntry> logs = receive.toStream().toList();
+
+            assertLogContains(logs, "Deleting stale pod '" + pinnedName + "'");
+            assertLogContains(logs, "Pinned rerun done");
+
+            Await.until(
+                () -> client.pods().inNamespace("default").withLabelSelector(labelSelector).list().getItems().isEmpty(),
+                Duration.ofMillis(500), Duration.ofMinutes(1)
+            );
+        } finally {
+            deleteLeftoverPods(attempt1Context, labelSelector);
+        }
+    }
+
+    private RunContext resubmitContext(PodCreate task, TaskRun taskRun) {
+        // A RESUBMIT reruns the same taskrun id with the failed attempt recorded, so attemptsCount is higher
+        TaskRun resubmitted = taskRun.toBuilder()
+            .attempts(List.of(TaskRunAttempt.builder().build()))
+            .build();
+        return runContextInitializer.forWorker(
+            (DefaultRunContext) TestsUtils.mockRunContext(runContextFactory, task, Map.of("command", "sleep")),
+            WorkerTask.builder().task(task).taskRun(resubmitted).build()
+        );
+    }
+
+    private void plantPod(KubernetesClient client, String name, String taskrunId, String script) {
+        var pod = new PodBuilder()
+            .withNewMetadata()
+            .withName(name)
+            .withNamespace("default")
+            .addToLabels("kestra.io/taskrun-id", taskrunId)
+            .addToLabels("kestra.io/taskrun-attempt", "0")
+            .endMetadata()
+            .withNewSpec()
+            .addNewContainer()
+            .withName("unittest")
+            .withImage("debian:stable-slim")
+            .withCommand("bash", "-c", script)
+            .endContainer()
+            .withRestartPolicy("Never")
+            .endSpec()
+            .build();
+        client.pods().inNamespace("default").resource(pod).create();
+    }
+
+    private void awaitPhase(KubernetesClient client, String name, String phase) throws Exception {
+        Await.until(
+            () -> {
+                Pod current = client.pods().inNamespace("default").withName(name).get();
+                return current != null && current.getStatus() != null && phase.equals(current.getStatus().getPhase());
+            },
+            Duration.ofMillis(200), Duration.ofMinutes(1)
+        );
+    }
+
+    private void deleteLeftoverPods(RunContext runContext, String labelSelector) throws Exception {
+        try (KubernetesClient client = PodService.client(runContext, null)) {
+            client.pods().inNamespace("default").withLabelSelector(labelSelector).delete();
+        }
+    }
+
+    private static void assertLogContains(List<LogEntry> logs, String needle) {
+        assertThat(
+            "expected a log containing: " + needle,
+            logs.stream().anyMatch(log -> log.getMessage() != null && log.getMessage().contains(needle)),
+            is(true)
+        );
     }
 
     @Test
