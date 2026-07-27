@@ -27,6 +27,7 @@ import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.executions.TaskRun;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.RunnableTaskException;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.runners.*;
@@ -213,7 +214,8 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
 
-        assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+        RunnableTaskException exception = assertThrows(RunnableTaskException.class, () -> task.run(runContextFinal));
+        assertThat(exception.getOutput(), notNullValue());
     }
 
     @Test
@@ -244,7 +246,8 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
 
-        assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+        RunnableTaskException exception = assertThrows(RunnableTaskException.class, () -> task.run(runContextFinal));
+        assertThat(exception.getOutput(), notNullValue());
     }
 
     @Test
@@ -918,6 +921,48 @@ class PodCreateTest {
     }
 
     @Test
+    void parseOutputsSurviveContainerFailure() throws Exception {
+        PodCreate task = PodCreate.builder()
+            .id("special-char-failure-test")
+            .type(PodCreate.class.getName())
+            .namespace(Property.ofValue("default"))
+            .resume(Property.ofValue(false))
+            .waitForLogInterval(Property.ofValue(Duration.ofSeconds(1)))
+            .spec(
+                TestUtils.convert(
+                    ObjectMeta.class,
+                    "containers:",
+                    "- name: special-char-container",
+                    "  image: debian:stable-slim",
+                    "  command:",
+                    "    - 'bash'",
+                    "    - '-c'",
+                    "    - \"echo '::{\\\"outputs\\\": {\\\"PROJECT_ID\\\": 101, \\\"PROJECT_NAME\\\": \\\"One O One\\\"}}::' && sleep 1 && exit 1\"",
+                    "restartPolicy: Never"
+                )
+            )
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        runContext = runContextInitializer.forWorker(
+            (DefaultRunContext) runContext,
+            WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build()
+        );
+
+        RunContext runContextFinal = runContext;
+        RunnableTaskException exception = assertThrows(RunnableTaskException.class, () -> task.run(runContextFinal));
+
+        PodCreate.Output output = (PodCreate.Output) exception.getOutput();
+        assertThat(output, notNullValue());
+        assertThat(output.getVars().get("PROJECT_ID").toString(), is("101"));
+        assertThat(output.getVars().get("PROJECT_NAME"), is("One O One"));
+        assertThat(output.getStatus(), notNullValue());
+        assertThat(output.getMetadata(), notNullValue());
+    }
+
+    @Test
     void successWithOutputFiles() throws Exception {
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -989,9 +1034,10 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+        RunnableTaskException exception = assertThrows(RunnableTaskException.class, () -> task.run(runContextFinal));
         assertThat(exception.getMessage(), containsString("container-failure"));
         assertThat(exception.getMessage(), containsString("exit code 1"));
+        assertThat(exception.getOutput(), notNullValue());
 
         List<LogEntry> logs = receive.collectList().block();
 
@@ -1032,7 +1078,7 @@ class PodCreateTest {
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(taskRun).build());
-        assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+        assertThrows(RunnableTaskException.class, () -> task.run(runContextFinal));
 
         // Wait for all 20 numbered logs (ignores DEBUG/system logs from queue)
         TestsUtils.awaitLogs(

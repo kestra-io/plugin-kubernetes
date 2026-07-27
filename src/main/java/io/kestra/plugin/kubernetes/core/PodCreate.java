@@ -21,6 +21,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.State;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.RunnableTaskException;
 import io.kestra.core.models.tasks.runners.AbstractLogConsumer;
 import io.kestra.core.models.tasks.runners.DefaultLogConsumer;
 import io.kestra.core.models.tasks.runners.PluginUtilsService;
@@ -350,6 +351,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
      * @return Output containing pod metadata, status, output files, and any variables extracted from logs
      * @throws Exception if pod creation fails, times out, or terminates with a non-zero exit code
      * @throws IllegalStateException if input files are invalid or if pod fails to reach Running state
+     * @throws RunnableTaskException if the pod or a container exits non-zero after completion; carries the Output so vars are not lost
      * @throws InterruptedException if the task is interrupted and returns null
      * @see #kill() for handling task interruption
      */
@@ -464,8 +466,7 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                             ended = waitForCompletion(client, logger, pod, waitRunningValue);
                         }
 
-                        // Collect late logs and check for failures (throws if container failed)
-                        handleEnd(ended, runContext, this.outputFiles != null, client, podLogService, logConsumer);
+                        String failureMessage = handleEnd(ended, runContext, this.outputFiles != null, client, podLogService, logConsumer);
 
                         PodStatus podStatus = PodStatus.from(ended.getStatus());
                         Output.OutputBuilder output = Output.builder()
@@ -473,14 +474,22 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
                             .status(podStatus)
                             .vars(logConsumer.getOutputs());
 
-                        // Download output files if configured and task succeeded
                         if (this.outputFiles != null) {
-                            Map<Path, Path> pathMap = this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars);
-                            output.outputFiles(outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap));
+                            try {
+                                Map<Path, Path> pathMap = this.downloadOutputFiles(runContext, PodService.podRef(client, pod), logger, additionalVars);
+                                output.outputFiles(outputFiles(runContext, runContext.render(this.outputFiles).asList(String.class), pathMap));
+                            } catch (Exception e) {
+                                logger.warn("Unable to download output files: {}", e.getMessage(), e);
+                            }
                         }
 
-                        return output
-                            .build();
+                        Output builtOutput = output.build();
+
+                        if (failureMessage != null) {
+                            throw new RunnableTaskException(failureMessage, builtOutput);
+                        }
+
+                        return builtOutput;
                     } finally {
                         // Signal sidecar to exit gracefully before pod deletion
                         // The sidecar container only exists when outputFiles is configured
@@ -704,7 +713,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         }
     }
 
-    private void handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles, KubernetesClient client, PodLogService podLogService, AbstractLogConsumer logConsumer) throws Exception {
+    /**
+     * Collects late logs and returns the failure message if the pod or a container failed, {@code null}
+     * otherwise. Does not throw, so the caller can build the {@link Output} before raising the failure.
+     */
+    private String handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles, KubernetesClient client, PodLogService podLogService, AbstractLogConsumer logConsumer) throws Exception {
         Logger logger = runContext.logger();
 
         // Wait for async log stream (watchLog) to finish processing
@@ -727,11 +740,17 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
         if (hasOutputFiles) {
             // For pods with outputFiles, check container exit codes
             // (pod phase stays "Running" due to sidecar container)
-            PodService.checkContainerFailures(ended, SIDECAR_FILES_CONTAINER_NAME, logger);
+            try {
+                PodService.checkContainerFailures(ended, SIDECAR_FILES_CONTAINER_NAME, logger);
+            } catch (IllegalStateException e) {
+                return e.getMessage();
+            }
         } else if (ended.getStatus() != null && ended.getStatus().getPhase().equals(PodService.PodPhase.FAILED.value())) {
             // For pods without outputFiles, check pod phase
-            throw PodService.failedMessage(ended);
+            return PodService.failedMessage(ended).getMessage();
         }
+
+        return null;
     }
 
     @Builder
