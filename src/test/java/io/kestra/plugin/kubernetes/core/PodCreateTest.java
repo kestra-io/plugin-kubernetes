@@ -177,7 +177,10 @@ class PodCreateTest {
         String labelSelector = "kestra.io/taskrun-id=" + taskRun.getId();
 
         try (KubernetesClient client = PodService.client(runContextFinal, null)) {
-            assertThrows(IllegalStateException.class, () -> task.run(runContextFinal));
+            // A container that exits immediately can take the early-failure path; it must still raise
+            // RunnableTaskException (carrying the Output), same as a container that fails after startup.
+            RunnableTaskException exception = assertThrows(RunnableTaskException.class, () -> task.run(runContextFinal));
+            assertThat(exception.getOutput(), notNullValue());
 
             // Verify pod was deleted after failure
             Await.until(
@@ -235,7 +238,7 @@ class PodCreateTest {
                     "  command: ",
                     "    - 'bash' ",
                     "    - '-c'",
-                    "    - 'echo \"Container failing\" && sleep 1 && exit 1'",
+                    "    - 'echo \"{\\\"partial\\\": true}\" > {{ workingDir }}/results.json && sleep 1 && exit 1'",
                     "restartPolicy: Never"
                 )
             )
@@ -247,7 +250,10 @@ class PodCreateTest {
         RunContext runContextFinal = runContextInitializer.forWorker((DefaultRunContext) runContext, WorkerTask.builder().task(task).taskRun(TestsUtils.mockTaskRun(execution, task)).build());
 
         RunnableTaskException exception = assertThrows(RunnableTaskException.class, () -> task.run(runContextFinal));
-        assertThat(exception.getOutput(), notNullValue());
+        PodCreate.Output output = (PodCreate.Output) exception.getOutput();
+        assertThat(output, notNullValue());
+        // Files written before the container exited non-zero are still surfaced on the failed run.
+        assertThat(output.getOutputFiles(), hasKey("results.json"));
     }
 
     @Test
@@ -923,7 +929,7 @@ class PodCreateTest {
     @Test
     void parseOutputsSurviveContainerFailure() throws Exception {
         PodCreate task = PodCreate.builder()
-            .id("special-char-failure-test")
+            .id(PodCreate.class.getSimpleName())
             .type(PodCreate.class.getName())
             .namespace(Property.ofValue("default"))
             .resume(Property.ofValue(false))
