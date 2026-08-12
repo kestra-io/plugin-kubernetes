@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -18,7 +17,6 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.kubernetes.shared.models.SideCar;
 import io.kestra.plugin.kubernetes.shared.services.InstanceService;
 import io.kestra.plugin.kubernetes.shared.services.PodService;
@@ -179,7 +177,7 @@ public abstract class AbstractPod extends AbstractConnection {
                             .upload(topAbsolute)
                     );
                     // A genuine truncation won't self-heal across retries — every attempt re-runs the same
-                    // 'find | wc -l' to the same wrong count, burning the full backoff before falling back.
+                    // count check to the same wrong number, burning the full backoff before falling back.
                     // Retrying here anyway is intentional: it's the only thing that catches the transient
                     // race where 'find' runs just before the tar extraction is fully visible on the pod.
                     // Accepted tradeoff — correctness for the race case over shaving a few seconds off a
@@ -224,10 +222,9 @@ public abstract class AbstractPod extends AbstractConnection {
      * fabric8's directory upload can report success even when the tar transfer was truncated (e.g. a
      * dependency directory silently missing files), so cross-check the actual file count on the pod.
      *
-     * Both sides count non-directory entries without following symlinks: tar preserves a symlink as its
-     * own entry (type 'l') rather than dereferencing it, so counting only regular files locally (which
-     * follows symlinks by default) would overcount against the pod-side 'find -type f' and falsely flag
-     * a correct upload as truncated whenever the directory contains symlinks (e.g. a Python venv).
+     * Both sides count non-directory entries. The pod side separates them with NUL rather than newline:
+     * a filename may legally contain a newline, and 'wc -l' would then count one entry several times and
+     * falsely flag a correct upload as truncated.
      *
      * This is a count-only check: a truncation that drops bytes from a file's content while keeping its
      * entry (correct count, short file) is not caught here — only the single-file path ({@link
@@ -241,7 +238,7 @@ public abstract class AbstractPod extends AbstractConnection {
 
         verifyUpload(
             container, logger, containerPath, expectedFileCount, "file(s)",
-            "find " + shellQuote(containerPath) + " \\( -type f -o -type l \\) | wc -l"
+            "find " + shellQuote(containerPath) + " ! -type d -print0 | tr -dc '\\0' | wc -c"
         );
     }
 
@@ -273,7 +270,8 @@ public abstract class AbstractPod extends AbstractConnection {
             return;
         }
 
-        if (!actual.get().equals(expected)) {
+        // Only a shortfall means truncation — a transfer cannot add entries.
+        if (actual.get() < expected) {
             throw new IOException(
                 "Upload verification failed for '" + containerPath + "': expected " + expected + " " + unit + " but found " +
                     actual.get() + " in the file-sidecar container — the tar transfer was likely truncated"
@@ -289,7 +287,8 @@ public abstract class AbstractPod extends AbstractConnection {
         }
     }
 
-    protected Map<Path, Path> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars, Duration retryMaxDuration) throws Exception {
+    protected Map<Path, Path> downloadOutputFiles(RunContext runContext, PodResource podResource, Logger logger, Map<String, Object> additionalVars, Duration retryMaxDuration)
+        throws Exception {
         withRetries(
             logger,
             "downloadOutputFiles",

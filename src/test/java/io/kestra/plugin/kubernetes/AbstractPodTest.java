@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -27,6 +28,10 @@ import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.fabric8.kubernetes.client.dsl.TtyExecErrorable;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 
 @MicronautTest
 class AbstractPodTest {
@@ -235,5 +240,77 @@ class AbstractPodTest {
 
         // ...counts matched, so no per-file fallback upload was needed.
         Mockito.verify(container, Mockito.never()).file(Mockito.anyString());
+    }
+
+    @Timeout(value = 15, unit = TimeUnit.MINUTES)
+    @Test
+    void shouldAcceptBulkUploadWhenPodReportsMoreEntriesThanExpected() throws Exception {
+        // Regression test: a filename containing a newline used to make the pod-side 'find | wc -l' count
+        // one file several times, so the check reported a truncated transfer on a perfectly good upload.
+        PodResource podResource = Mockito.mock(PodResource.class);
+        Logger logger = Mockito.mock(Logger.class);
+        ContainerResource container = Mockito.mock(ContainerResource.class);
+
+        Mockito.when(podResource.inContainer("init-files")).thenReturn(container);
+        Mockito.when(container.withReadyWaitTimeout(Mockito.any(Integer.class))).thenReturn(container);
+
+        CopyOrReadable dirUploader = Mockito.mock(CopyOrReadable.class);
+        Mockito.when(container.dir(Mockito.anyString())).thenReturn(dirUploader);
+        Mockito.when(dirUploader.upload(Mockito.any(Path.class))).thenReturn(true);
+
+        CopyOrReadable fileUploader = Mockito.mock(CopyOrReadable.class);
+        Mockito.when(container.file(Mockito.anyString())).thenReturn(fileUploader);
+        Mockito.when(fileUploader.upload(Mockito.any(InputStream.class))).thenReturn(true);
+
+        AtomicReference<String> directoryCheck = new AtomicReference<>();
+
+        // Two files locally, but the pod reports six — the shape a line-counting check produced.
+        Mockito.when(container.writingOutput(Mockito.any(OutputStream.class))).thenAnswer(writingOutputInvocation ->
+        {
+            OutputStream out = writingOutputInvocation.getArgument(0);
+            TtyExecErrorable errorable = Mockito.mock(TtyExecErrorable.class);
+            Mockito.when(errorable.exec(Mockito.any(String[].class))).thenAnswer(execInvocation ->
+            {
+                Object[] command = execInvocation.getArguments();
+                String shellCommand = (String) command[command.length - 1];
+                if (shellCommand.contains("find")) {
+                    directoryCheck.set(shellCommand);
+                }
+                out.write("6".getBytes(StandardCharsets.UTF_8));
+
+                ExecWatch watch = Mockito.mock(ExecWatch.class);
+                Mockito.when(watch.exitCode()).thenReturn(CompletableFuture.completedFuture(0));
+                return watch;
+            });
+            return errorable;
+        });
+
+        RunContext runContext = runContextFactory.of(Map.of());
+        Path temp = PodService.tempDir(runContext);
+
+        Files.createDirectories(temp.resolve("deps"));
+        Files.writeString(temp.resolve("deps/pkg1.txt"), "AA");
+        Files.writeString(temp.resolve("deps/\n\n--- Changes ---\n\n"), "BBB");
+
+        Set<String> inputFiles = Set.of("deps/pkg1.txt", "deps/\n\n--- Changes ---\n\n");
+
+        TestPod pod = new TestPod();
+
+        try (var staticMock = Mockito.mockStatic(PodService.class, Mockito.CALLS_REAL_METHODS)) {
+            staticMock.when(() -> PodService.tempDir(runContext)).thenReturn(temp);
+            staticMock.when(
+                () -> PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
+            ).thenAnswer(inv -> null);
+
+            pod.uploadInputFiles(runContext, podResource, logger, inputFiles);
+        }
+
+        // An excess count is not a truncation, so the bulk upload stands and nothing is re-uploaded.
+        Mockito.verify(dirUploader, Mockito.times(1)).upload(temp.resolve("deps"));
+        Mockito.verify(container, Mockito.never()).file(Mockito.anyString());
+
+        // The count itself must be NUL-separated, otherwise a newline in a filename inflates it.
+        assertThat(directoryCheck.get(), containsString("-print0"));
+        assertThat(directoryCheck.get(), not(containsString("wc -l")));
     }
 }
