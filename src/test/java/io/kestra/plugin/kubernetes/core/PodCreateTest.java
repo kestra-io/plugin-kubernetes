@@ -732,8 +732,10 @@ class PodCreateTest {
 
             awaitLogContains(logs, "Retry rerun done");
             assertThat(
-                logs.stream().anyMatch(log -> log.getMessage() != null
-                    && log.getMessage().contains("Pod '" + succeededName + "' is resumed")),
+                logs.stream().anyMatch(
+                    log -> log.getMessage() != null
+                        && log.getMessage().contains("Pod '" + succeededName + "' is resumed")
+                ),
                 is(false)
             );
         } finally {
@@ -822,7 +824,8 @@ class PodCreateTest {
 
     private void awaitPhase(KubernetesClient client, String name, String phase) throws Exception {
         Await.until(
-            () -> {
+            () ->
+            {
                 Pod current = client.pods().inNamespace("default").withName(name).get();
                 return current != null && current.getStatus() != null && phase.equals(current.getStatus().getPhase());
             },
