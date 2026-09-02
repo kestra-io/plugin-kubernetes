@@ -25,8 +25,8 @@ import io.kestra.core.serializers.FileSerde;
 import io.kestra.plugin.kubernetes.AbstractPod;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.ResourceStatus;
-import io.kestra.plugin.kubernetes.shared.services.PodService;
 import io.kestra.plugin.kubernetes.services.ResourceWaitService;
+import io.kestra.plugin.kubernetes.shared.services.PodService;
 
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;

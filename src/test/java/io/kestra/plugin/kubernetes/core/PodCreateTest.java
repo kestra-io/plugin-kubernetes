@@ -105,7 +105,8 @@ class PodCreateTest {
 
     @Test
     void run() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -138,7 +139,13 @@ class PodCreateTest {
 
         assertThat(runOutput.getMetadata().getName(), containsString("podcreate"));
 
-        List<LogEntry> logs = receive.collectList().block();
+        // The log queue delivers asynchronously, so wait for all expected entries to land before asserting exactly-once
+        Await.until(
+            () -> logs.stream().filter(l -> l.getMessage() != null && l.getMessage().startsWith("Log line ")).count() >= 20
+                && logs.stream().anyMatch(l -> "error".equals(l.getMessage())),
+            Duration.ofMillis(100),
+            Duration.ofSeconds(30)
+        );
 
         // Verify all 20 log lines are present exactly once (no duplicates, no missing)
         for (int i = 1; i <= 20; i++) {
@@ -503,7 +510,8 @@ class PodCreateTest {
 
     @Test
     void resume() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -559,7 +567,13 @@ class PodCreateTest {
 
         task.run(finalRunContext);
 
-        List<LogEntry> logs = receive.toStream().toList();
+        // The log queue delivers asynchronously, so wait for all expected entries to land before asserting exactly-once
+        Await.until(
+            () -> logs.stream().anyMatch(l -> "Resume log line 10".equals(l.getMessage())),
+            Duration.ofMillis(100),
+            Duration.ofSeconds(30)
+        );
+
         assertLogExactlyOnce(logs, "Resume log line 10");
     }
 
@@ -718,8 +732,10 @@ class PodCreateTest {
 
             awaitLogContains(logs, "Retry rerun done");
             assertThat(
-                logs.stream().anyMatch(log -> log.getMessage() != null
-                    && log.getMessage().contains("Pod '" + succeededName + "' is resumed")),
+                logs.stream().anyMatch(
+                    log -> log.getMessage() != null
+                        && log.getMessage().contains("Pod '" + succeededName + "' is resumed")
+                ),
                 is(false)
             );
         } finally {
@@ -808,7 +824,8 @@ class PodCreateTest {
 
     private void awaitPhase(KubernetesClient client, String name, String phase) throws Exception {
         Await.until(
-            () -> {
+            () ->
+            {
                 Pod current = client.pods().inNamespace("default").withName(name).get();
                 return current != null && current.getStatus() != null && phase.equals(current.getStatus().getPhase());
             },
@@ -1280,7 +1297,8 @@ class PodCreateTest {
 
     @Test
     void multipleContainersOneFailsWithOutputFiles() throws Exception {
-        Flux<LogEntry> receive = TestsUtils.receive(workerTaskLogQueue);
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        TestsUtils.receive(workerTaskLogQueue, l -> logs.add(l.getLeft()));
 
         PodCreate task = PodCreate.builder()
             .id(PodCreate.class.getSimpleName())
@@ -1319,7 +1337,13 @@ class PodCreateTest {
         assertThat(exception.getMessage(), containsString("exit code 1"));
         assertThat(exception.getOutput(), notNullValue());
 
-        List<LogEntry> logs = receive.collectList().block();
+        // The log queue delivers asynchronously, so wait for all expected entries to land before asserting exactly-once
+        Await.until(
+            () -> logs.stream().anyMatch(l -> "First container succeeded".equals(l.getMessage()))
+                && logs.stream().anyMatch(l -> "Second container failing".equals(l.getMessage())),
+            Duration.ofMillis(100),
+            Duration.ofSeconds(30)
+        );
 
         // Verify logs from both containers were collected exactly once (no duplicates)
         assertLogExactlyOnce(logs, "First container succeeded");

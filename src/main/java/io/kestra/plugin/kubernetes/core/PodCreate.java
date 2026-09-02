@@ -30,9 +30,9 @@ import io.kestra.core.models.tasks.runners.ScriptService;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.plugin.kubernetes.AbstractPod;
-import io.kestra.plugin.kubernetes.shared.models.Connection;
 import io.kestra.plugin.kubernetes.models.Metadata;
 import io.kestra.plugin.kubernetes.models.PodStatus;
+import io.kestra.plugin.kubernetes.shared.models.Connection;
 import io.kestra.plugin.kubernetes.shared.services.InstanceService;
 import io.kestra.plugin.kubernetes.shared.services.PodLogService;
 import io.kestra.plugin.kubernetes.shared.services.PodService;
@@ -590,9 +590,11 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
             Comparator<Pod> byPriority = Comparator.comparingInt(PodCreate::resumePriority);
             var resumed = existingPods.stream()
                 .filter(p -> isResumableForAttempt(p, attempt))
-                .max(byPriority
-                    .thenComparing(p -> p.getMetadata().getCreationTimestamp(), Comparator.nullsFirst(Comparator.naturalOrder()))
-                    .thenComparing(p -> p.getMetadata().getName()))
+                .max(
+                    byPriority
+                        .thenComparing(p -> p.getMetadata().getCreationTimestamp(), Comparator.nullsFirst(Comparator.naturalOrder()))
+                        .thenComparing(p -> p.getMetadata().getName())
+                )
                 .orElse(null);
 
             // Delete stale pods so a previous attempt cannot break quotas or concurrency limits.
@@ -845,7 +847,8 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
      * throw while fetching logs), so the caller can build the {@link Output} before raising the failure
      * and keep the original exception as the cause.
      */
-    private IllegalStateException handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles, KubernetesClient client, PodLogService podLogService, AbstractLogConsumer logConsumer) throws Exception {
+    private IllegalStateException handleEnd(Pod ended, RunContext runContext, boolean hasOutputFiles, KubernetesClient client, PodLogService podLogService, AbstractLogConsumer logConsumer)
+        throws Exception {
         Logger logger = runContext.logger();
 
         // Wait for async log stream (watchLog) to finish processing
