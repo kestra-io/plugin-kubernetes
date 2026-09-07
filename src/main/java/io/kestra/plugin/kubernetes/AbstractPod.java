@@ -164,6 +164,14 @@ public abstract class AbstractPod extends AbstractConnection {
         // proved this container is Running via PodService.waitForInitContainerRunning() right before this
         // call, so skip the redundant, unsatisfiable pod-Ready wait entirely instead of paying it on every
         // retry attempt.
+        //
+        // Do NOT restore a positive timeout here. This value has already round-tripped once: it was set to
+        // 30s (bf45e73) to stop intermittent "exec endpoint not initialized yet" failures seen even while
+        // the pod was Running. That concern is real, but a pod-Ready wait cannot address it at THIS call
+        // site — the condition it waits on is unsatisfiable until after this very upload, so any positive
+        // value is dead time that expires and proceeds anyway, never protection. Transient exec-endpoint
+        // failures are covered instead by PodService.withRetries (5 attempts, 1s→10s backoff, 60s budget),
+        // which only became effective once each attempt stopped burning the full timeout first.
         ContainerResource container = podResource
             .inContainer(INIT_FILES_CONTAINER_NAME)
             .withReadyWaitTimeout(0);
