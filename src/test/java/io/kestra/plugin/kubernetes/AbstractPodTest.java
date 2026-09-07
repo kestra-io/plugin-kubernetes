@@ -55,7 +55,7 @@ class AbstractPodTest {
         Mockito.when(podResource.inContainer("init-files"))
             .thenReturn(container);
 
-        Mockito.when(container.withReadyWaitTimeout(PodService.EXEC_READY_WAIT_TIMEOUT_MS))
+        Mockito.when(container.withReadyWaitTimeout(0))
             .thenReturn(container);
 
         Mockito.when(container.file(Mockito.anyString()))
@@ -89,6 +89,10 @@ class AbstractPodTest {
 
             pod.uploadInputFiles(runContext, podResource, logger, inputFiles);
         }
+
+        // Pins the fix for #329: init-files uploads must skip the pod-Ready wait, since the pod
+        // structurally cannot become Ready while init-files itself is blocked on the ready marker.
+        Mockito.verify(container).withReadyWaitTimeout(0);
 
         Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/a.txt");
         Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/b.txt");
