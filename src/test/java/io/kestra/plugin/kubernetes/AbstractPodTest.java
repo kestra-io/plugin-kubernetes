@@ -1,5 +1,6 @@
 package io.kestra.plugin.kubernetes;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +22,12 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.plugin.kubernetes.shared.services.PodService;
 
+import io.fabric8.kubernetes.api.model.ContainerStateBuilder;
+import io.fabric8.kubernetes.api.model.ContainerStateTerminatedBuilder;
+import io.fabric8.kubernetes.api.model.ContainerStatus;
+import io.fabric8.kubernetes.api.model.ContainerStatusBuilder;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodBuilder;
 import io.fabric8.kubernetes.client.dsl.ContainerResource;
 import io.fabric8.kubernetes.client.dsl.CopyOrReadable;
 import io.fabric8.kubernetes.client.dsl.ExecWatch;
@@ -32,6 +39,8 @@ import jakarta.inject.Inject;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @MicronautTest
 class AbstractPodTest {
@@ -98,6 +107,79 @@ class AbstractPodTest {
         Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/b.txt");
 
         Mockito.verify(fileUploader, Mockito.times(2)).upload(Mockito.any(InputStream.class));
+    }
+
+    @Test
+    void shouldTolerateMarkerUploadFailureWhenInitContainerSucceeded() throws Exception {
+        // Regression test: fabric8's exec WebSocket can close before reporting a clean result even though
+        // the init container already consumed the ready marker and exited. That must be tolerated, not
+        // surfaced as a task failure.
+        PodResource podResource = Mockito.mock(PodResource.class);
+        ContainerResource container = Mockito.mock(ContainerResource.class);
+        Logger logger = Mockito.mock(Logger.class);
+
+        Mockito.when(podResource.inContainer("init-files")).thenReturn(container);
+        Mockito.when(container.withReadyWaitTimeout(0)).thenReturn(container);
+
+        ContainerStatus initFilesStatus = new ContainerStatusBuilder()
+            .withName(AbstractPod.INIT_FILES_CONTAINER_NAME)
+            .withState(new ContainerStateBuilder()
+                .withTerminated(new ContainerStateTerminatedBuilder().withExitCode(0).build())
+                .build())
+            .build();
+        Pod terminatedPod = new PodBuilder()
+            .withNewStatus()
+                .withInitContainerStatuses(initFilesStatus)
+            .endStatus()
+            .build();
+        Mockito.when(podResource.get()).thenReturn(terminatedPod);
+
+        RunContext runContext = runContextFactory.of(Map.of());
+        TestPod pod = new TestPod();
+
+        // inputFiles is empty, so tempDir is computed but never dereferenced — no need to stub it.
+        try (MockedStatic<PodService> staticMock = Mockito.mockStatic(PodService.class)) {
+            staticMock.when(
+                () -> PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
+            ).thenThrow(new IOException("exec WebSocket closed before result"));
+
+            assertDoesNotThrow(() -> pod.uploadInputFiles(runContext, podResource, logger, Set.of()));
+        }
+    }
+
+    @Test
+    void shouldPropagateMarkerUploadFailureWhenInitContainerDidNotSucceed() throws Exception {
+        PodResource podResource = Mockito.mock(PodResource.class);
+        ContainerResource container = Mockito.mock(ContainerResource.class);
+        Logger logger = Mockito.mock(Logger.class);
+
+        Mockito.when(podResource.inContainer("init-files")).thenReturn(container);
+        Mockito.when(container.withReadyWaitTimeout(0)).thenReturn(container);
+
+        ContainerStatus initFilesStatus = new ContainerStatusBuilder()
+            .withName(AbstractPod.INIT_FILES_CONTAINER_NAME)
+            .withState(new ContainerStateBuilder()
+                .withTerminated(new ContainerStateTerminatedBuilder().withExitCode(1).build())
+                .build())
+            .build();
+        Pod failedPod = new PodBuilder()
+            .withNewStatus()
+                .withInitContainerStatuses(initFilesStatus)
+            .endStatus()
+            .build();
+        Mockito.when(podResource.get()).thenReturn(failedPod);
+
+        RunContext runContext = runContextFactory.of(Map.of());
+        TestPod pod = new TestPod();
+
+        // inputFiles is empty, so tempDir is computed but never dereferenced — no need to stub it.
+        try (MockedStatic<PodService> staticMock = Mockito.mockStatic(PodService.class)) {
+            staticMock.when(
+                () -> PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
+            ).thenThrow(new IOException("exec WebSocket closed before result"));
+
+            assertThrows(IOException.class, () -> pod.uploadInputFiles(runContext, podResource, logger, Set.of()));
+        }
     }
 
     @Timeout(value = 15, unit = TimeUnit.MINUTES)
