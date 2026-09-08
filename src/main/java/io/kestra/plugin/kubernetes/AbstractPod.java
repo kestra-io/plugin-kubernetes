@@ -157,9 +157,24 @@ public abstract class AbstractPod extends AbstractConnection {
                 return p.getNameCount() > 0 ? p.getName(0).toString() : file;
             }));
 
+        // Every fabric8 exec/upload call re-waits for the whole pod to report Ready before opening the
+        // connection — see PodOperationsImpl#getURL. That wait is structurally doomed to run to its full
+        // timeout here: the pod can't be Ready while init-files is itself still blocked waiting for the
+        // ready marker file, which is exactly the upload this call is about to perform. The caller already
+        // proved this container is Running via PodService.waitForInitContainerRunning() right before this
+        // call, so skip the redundant, unsatisfiable pod-Ready wait entirely instead of paying it on every
+        // retry attempt.
+        //
+        // Do NOT restore a positive timeout here. This value has already round-tripped once: it was set to
+        // 30s (bf45e73) to stop intermittent "exec endpoint not initialized yet" failures seen even while
+        // the pod was Running. That concern is real, but a pod-Ready wait cannot address it at THIS call
+        // site — the condition it waits on is unsatisfiable until after this very upload, so any positive
+        // value is dead time that expires and proceeds anyway, never protection. Transient exec-endpoint
+        // failures are covered instead by PodService.withRetries (5 attempts, 1s→10s backoff, 60s budget),
+        // which only became effective once each attempt stopped burning the full timeout first.
         ContainerResource container = podResource
             .inContainer(INIT_FILES_CONTAINER_NAME)
-            .withReadyWaitTimeout(PodService.EXEC_READY_WAIT_TIMEOUT_MS);
+            .withReadyWaitTimeout(0);
 
         for (Map.Entry<String, List<String>> entry : grouped.entrySet()) {
 
