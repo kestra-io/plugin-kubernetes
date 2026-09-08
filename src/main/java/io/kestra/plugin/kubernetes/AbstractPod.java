@@ -241,7 +241,14 @@ public abstract class AbstractPod extends AbstractConnection {
         } catch (IOException e) {
             // The init container exits only when it finds /kestra/ready, so exit code 0 means
             // the marker arrived even if the exec WebSocket closed before fabric8 got a clean result.
-            Pod current = podResource.get();
+            Pod current;
+            try {
+                current = podResource.get();
+            } catch (RuntimeException lookupError) {
+                // Status lookup failed too — surface the original upload error, not this one.
+                e.addSuppressed(lookupError);
+                throw e;
+            }
             boolean initContainerSucceeded = current != null &&
                 current.getStatus() != null &&
                 current.getStatus().getInitContainerStatuses() != null &&
