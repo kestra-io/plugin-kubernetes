@@ -205,6 +205,12 @@ public abstract class AbstractPod extends AbstractConnection {
                 }
             }
 
+            // OSS keys always resolve to regular files here: PodCreate passes
+            // validatedInputFiles.keySet(), and PluginUtilsService.createInputFilesInternal materialises
+            // every key through a FileOutputStream (creating only parent dirs). Only the grouped top-level
+            // name can be a directory, which the bulk branch above already handles. EE differs because it
+            // walks the working dir into a List<Path> that can contain directory entries — do not "fix"
+            // this to match EE.
             for (String file : entry.getValue()) {
                 String target = "/kestra/working-dir/" + file;
                 withRetries(
@@ -230,7 +236,35 @@ public abstract class AbstractPod extends AbstractConnection {
             }
         }
 
-        PodService.uploadMarker(runContext, podResource, logger, READY_MARKER, INIT_FILES_CONTAINER_NAME);
+        try {
+            PodService.uploadMarker(runContext, podResource, logger, READY_MARKER, INIT_FILES_CONTAINER_NAME);
+        } catch (IOException e) {
+            // The init container exits only when it finds /kestra/ready, so exit code 0 means
+            // the marker arrived even if the exec WebSocket closed before fabric8 got a clean result.
+            Pod current;
+            try {
+                current = podResource.get();
+            } catch (RuntimeException lookupError) {
+                // Status lookup failed too — surface the original upload error, not this one.
+                e.addSuppressed(lookupError);
+                throw e;
+            }
+            boolean initContainerSucceeded = current != null &&
+                current.getStatus() != null &&
+                current.getStatus().getInitContainerStatuses() != null &&
+                current.getStatus().getInitContainerStatuses().stream()
+                    .filter(cs -> INIT_FILES_CONTAINER_NAME.equals(cs.getName()))
+                    .anyMatch(
+                        cs -> cs.getState() != null &&
+                            cs.getState().getTerminated() != null &&
+                            Integer.valueOf(0).equals(cs.getState().getTerminated().getExitCode())
+                    );
+            if (initContainerSucceeded) {
+                logger.debug("uploadMarker exec failed but init container exited with code 0, marker was received");
+            } else {
+                throw e;
+            }
+        }
     }
 
     /**
