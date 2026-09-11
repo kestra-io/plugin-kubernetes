@@ -1,19 +1,12 @@
 package io.kestra.plugin.kubernetes;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
@@ -30,15 +23,10 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodBuilder;
 import io.fabric8.kubernetes.client.dsl.ContainerResource;
 import io.fabric8.kubernetes.client.dsl.CopyOrReadable;
-import io.fabric8.kubernetes.client.dsl.ExecWatch;
 import io.fabric8.kubernetes.client.dsl.PodResource;
-import io.fabric8.kubernetes.client.dsl.TtyExecErrorable;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -70,7 +58,7 @@ class AbstractPodTest {
         Mockito.when(container.file(Mockito.anyString()))
             .thenReturn(fileUploader);
 
-        Mockito.when(fileUploader.upload(Mockito.any(InputStream.class)))
+        Mockito.when(fileUploader.upload(Mockito.any(Path.class)))
             .thenReturn(true);
 
         RunContext runContext = runContextFactory.of(Map.of());
@@ -84,7 +72,9 @@ class AbstractPodTest {
 
         TestPod pod = new TestPod();
 
-        try (MockedStatic<PodService> staticMock = Mockito.mockStatic(PodService.class)) {
+        // This delegate now forwards to the real PodService.uploadInputFiles (see plugin-kubernetes-lib),
+        // so let unstubbed statics run for real and only intercept the ones this test needs to control.
+        try (MockedStatic<PodService> staticMock = Mockito.mockStatic(PodService.class, Mockito.CALLS_REAL_METHODS)) {
 
             staticMock.when(() -> PodService.tempDir(runContext)).thenReturn(temp);
 
@@ -92,21 +82,20 @@ class AbstractPodTest {
                 () -> PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
             ).then(inv -> null);
 
-            staticMock.when(() -> PodService.withRetries(Mockito.any(), Mockito.anyString(), Mockito.any())).thenCallRealMethod();
-            // The 3-arg withRetries delegates to the 4-arg (Duration) overload, so it must run for real too.
-            staticMock.when(() -> PodService.withRetries(Mockito.any(), Mockito.anyString(), Mockito.any(), Mockito.any())).thenCallRealMethod();
-
             pod.uploadInputFiles(runContext, podResource, logger, inputFiles);
         }
 
         // Pins the fix for #329: init-files uploads must skip the pod-Ready wait, since the pod
         // structurally cannot become Ready while init-files itself is blocked on the ready marker.
-        Mockito.verify(container).withReadyWaitTimeout(0);
+        // atLeastOnce (not an exact count): PodService.uploadMarker also builds its own container chain
+        // through withReadyWaitTimeout(0), so the call count is an implementation detail — the value 0 is
+        // the guard, not how many times it's set.
+        Mockito.verify(container, Mockito.atLeastOnce()).withReadyWaitTimeout(0);
 
         Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/a.txt");
         Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/b.txt");
 
-        Mockito.verify(fileUploader, Mockito.times(2)).upload(Mockito.any(InputStream.class));
+        Mockito.verify(fileUploader, Mockito.times(2)).upload(Mockito.any(Path.class));
     }
 
     @Test
@@ -138,7 +127,9 @@ class AbstractPodTest {
         TestPod pod = new TestPod();
 
         // inputFiles is empty, so tempDir is computed but never dereferenced — no need to stub it.
-        try (MockedStatic<PodService> staticMock = Mockito.mockStatic(PodService.class)) {
+        // CALLS_REAL_METHODS: the delegate now forwards to the real PodService.uploadInputFiles, which
+        // must actually run (and reach uploadMarker) for this regression test to be meaningful.
+        try (MockedStatic<PodService> staticMock = Mockito.mockStatic(PodService.class, Mockito.CALLS_REAL_METHODS)) {
             staticMock.when(
                 () -> PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
             ).thenThrow(new IOException("exec WebSocket closed before result"));
@@ -173,232 +164,14 @@ class AbstractPodTest {
         TestPod pod = new TestPod();
 
         // inputFiles is empty, so tempDir is computed but never dereferenced — no need to stub it.
-        try (MockedStatic<PodService> staticMock = Mockito.mockStatic(PodService.class)) {
+        // CALLS_REAL_METHODS: the delegate now forwards to the real PodService.uploadInputFiles, which
+        // must actually run (and reach uploadMarker) for this regression test to be meaningful.
+        try (MockedStatic<PodService> staticMock = Mockito.mockStatic(PodService.class, Mockito.CALLS_REAL_METHODS)) {
             staticMock.when(
                 () -> PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
             ).thenThrow(new IOException("exec WebSocket closed before result"));
 
             assertThrows(IOException.class, () -> pod.uploadInputFiles(runContext, podResource, logger, Set.of()));
         }
-    }
-
-    @Timeout(value = 15, unit = TimeUnit.MINUTES)
-    @Test
-    void shouldFallBackToPerFileUploadWhenBulkVerificationDetectsTruncatedTransfer() throws Exception {
-        // Regression test: fabric8's dir().upload() can report success even when the tar transfer was
-        // truncated (e.g. a Python dependency directory silently missing files). Post-upload verification
-        // must catch the mismatch and fall back to re-uploading every file individually.
-        PodResource podResource = Mockito.mock(PodResource.class);
-        Logger logger = Mockito.mock(Logger.class);
-        ContainerResource container = Mockito.mock(ContainerResource.class);
-
-        Mockito.when(podResource.inContainer("init-files")).thenReturn(container);
-        // Both the raw upload and the verification-only exec (see PodService#execOutput) now pass a 0
-        // readyWaitTimeout and reuse this same container mock, so keep the lenient matcher here: the
-        // exact value is pinned by shouldUploadInputFiles instead.
-        Mockito.when(container.withReadyWaitTimeout(Mockito.any(Integer.class))).thenReturn(container);
-
-        CopyOrReadable dirUploader = Mockito.mock(CopyOrReadable.class);
-        Mockito.when(container.dir(Mockito.anyString())).thenReturn(dirUploader);
-        // fabric8 falsely reports success even though the transfer was truncated
-        Mockito.when(dirUploader.upload(Mockito.any(Path.class))).thenReturn(true);
-
-        CopyOrReadable fileUploader = Mockito.mock(CopyOrReadable.class);
-        Mockito.when(container.file(Mockito.anyString())).thenReturn(fileUploader);
-        Mockito.when(fileUploader.upload(Mockito.any(InputStream.class))).thenReturn(true);
-
-        // Simulate the verification exec: the directory file-count check reports only 1 file (truncated),
-        // while the per-file size checks that follow during the fallback report the correct byte counts.
-        Mockito.when(container.writingOutput(Mockito.any(OutputStream.class))).thenAnswer(writingOutputInvocation ->
-        {
-            OutputStream out = writingOutputInvocation.getArgument(0);
-            TtyExecErrorable errorable = Mockito.mock(TtyExecErrorable.class);
-            Mockito.when(errorable.exec(Mockito.any(String[].class))).thenAnswer(execInvocation ->
-            {
-                // Mockito expands varargs into individual arguments for InvocationOnMock, regardless of
-                // how the real call packed them, so read them via getArguments() rather than getArgument(0).
-                Object[] command = execInvocation.getArguments();
-                String shellCommand = (String) command[command.length - 1];
-                String response = shellCommand.contains("find")
-                    ? "1"
-                    : shellCommand.contains("pkg1.txt") ? "2" : "3";
-                out.write(response.getBytes(StandardCharsets.UTF_8));
-
-                ExecWatch watch = Mockito.mock(ExecWatch.class);
-                Mockito.when(watch.exitCode()).thenReturn(CompletableFuture.completedFuture(0));
-                return watch;
-            });
-            return errorable;
-        });
-
-        RunContext runContext = runContextFactory.of(Map.of());
-        Path temp = PodService.tempDir(runContext);
-
-        Files.createDirectories(temp.resolve("deps"));
-        Files.writeString(temp.resolve("deps/pkg1.txt"), "AA");
-        Files.writeString(temp.resolve("deps/pkg2.txt"), "BBB");
-
-        Set<String> inputFiles = Set.of("deps/pkg1.txt", "deps/pkg2.txt");
-
-        TestPod pod = new TestPod();
-
-        try (var staticMock = Mockito.mockStatic(PodService.class, Mockito.CALLS_REAL_METHODS)) {
-            staticMock.when(() -> PodService.tempDir(runContext)).thenReturn(temp);
-            staticMock.when(
-                () -> PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
-            ).thenAnswer(inv -> null);
-
-            pod.uploadInputFiles(runContext, podResource, logger, inputFiles);
-        }
-
-        // Bulk directory upload was attempted first...
-        Mockito.verify(container, Mockito.times(1)).dir("/kestra/working-dir/deps");
-        Mockito.verify(dirUploader, Mockito.times(1)).upload(temp.resolve("deps"));
-
-        // ...but verification detected the truncated transfer, so every file was re-uploaded individually.
-        Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/deps/pkg1.txt");
-        Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/deps/pkg2.txt");
-        Mockito.verify(fileUploader, Mockito.times(2)).upload(Mockito.any(InputStream.class));
-    }
-
-    @Timeout(value = 15, unit = TimeUnit.MINUTES)
-    @Test
-    void shouldAcceptBulkUploadWhenVerificationCountsMatch() throws Exception {
-        // Happy-path companion to shouldFallBackToPerFileUploadWhenBulkVerificationDetectsTruncatedTransfer:
-        // the pod-side file count matches the local directory, so verification passes and no per-file
-        // fallback upload happens.
-        PodResource podResource = Mockito.mock(PodResource.class);
-        Logger logger = Mockito.mock(Logger.class);
-        ContainerResource container = Mockito.mock(ContainerResource.class);
-
-        Mockito.when(podResource.inContainer("init-files")).thenReturn(container);
-        // Both the raw upload and the verification-only exec (see PodService#execOutput) now pass a 0
-        // readyWaitTimeout and reuse this same container mock, so keep the lenient matcher here: the
-        // exact value is pinned by shouldUploadInputFiles instead.
-        Mockito.when(container.withReadyWaitTimeout(Mockito.any(Integer.class))).thenReturn(container);
-
-        CopyOrReadable dirUploader = Mockito.mock(CopyOrReadable.class);
-        Mockito.when(container.dir(Mockito.anyString())).thenReturn(dirUploader);
-        Mockito.when(dirUploader.upload(Mockito.any(Path.class))).thenReturn(true);
-
-        CopyOrReadable fileUploader = Mockito.mock(CopyOrReadable.class);
-        Mockito.when(container.file(Mockito.anyString())).thenReturn(fileUploader);
-        Mockito.when(fileUploader.upload(Mockito.any(InputStream.class))).thenReturn(true);
-
-        // Realistic verification exec: the pod-side file count matches the two files uploaded locally.
-        Mockito.when(container.writingOutput(Mockito.any(OutputStream.class))).thenAnswer(writingOutputInvocation ->
-        {
-            OutputStream out = writingOutputInvocation.getArgument(0);
-            TtyExecErrorable errorable = Mockito.mock(TtyExecErrorable.class);
-            Mockito.when(errorable.exec(Mockito.any(String[].class))).thenAnswer(execInvocation ->
-            {
-                out.write("2".getBytes(StandardCharsets.UTF_8));
-
-                ExecWatch watch = Mockito.mock(ExecWatch.class);
-                Mockito.when(watch.exitCode()).thenReturn(CompletableFuture.completedFuture(0));
-                return watch;
-            });
-            return errorable;
-        });
-
-        RunContext runContext = runContextFactory.of(Map.of());
-        Path temp = PodService.tempDir(runContext);
-
-        Files.createDirectories(temp.resolve("deps"));
-        Files.writeString(temp.resolve("deps/pkg1.txt"), "AA");
-        Files.writeString(temp.resolve("deps/pkg2.txt"), "BBB");
-
-        Set<String> inputFiles = Set.of("deps/pkg1.txt", "deps/pkg2.txt");
-
-        TestPod pod = new TestPod();
-
-        try (var staticMock = Mockito.mockStatic(PodService.class, Mockito.CALLS_REAL_METHODS)) {
-            staticMock.when(() -> PodService.tempDir(runContext)).thenReturn(temp);
-            staticMock.when(
-                () -> PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
-            ).thenAnswer(inv -> null);
-
-            pod.uploadInputFiles(runContext, podResource, logger, inputFiles);
-        }
-
-        // Bulk directory upload was attempted, and the verification exec actually ran...
-        Mockito.verify(container, Mockito.times(1)).dir("/kestra/working-dir/deps");
-        Mockito.verify(dirUploader, Mockito.times(1)).upload(temp.resolve("deps"));
-        Mockito.verify(container, Mockito.atLeastOnce()).writingOutput(Mockito.any(OutputStream.class));
-
-        // ...counts matched, so no per-file fallback upload was needed.
-        Mockito.verify(container, Mockito.never()).file(Mockito.anyString());
-    }
-
-    @Timeout(value = 15, unit = TimeUnit.MINUTES)
-    @Test
-    void shouldAcceptBulkUploadWhenPodReportsMoreEntriesThanExpected() throws Exception {
-        // Regression test: a filename containing a newline used to make the pod-side 'find | wc -l' count
-        // one file several times, so the check reported a truncated transfer on a perfectly good upload.
-        PodResource podResource = Mockito.mock(PodResource.class);
-        Logger logger = Mockito.mock(Logger.class);
-        ContainerResource container = Mockito.mock(ContainerResource.class);
-
-        Mockito.when(podResource.inContainer("init-files")).thenReturn(container);
-        Mockito.when(container.withReadyWaitTimeout(Mockito.any(Integer.class))).thenReturn(container);
-
-        CopyOrReadable dirUploader = Mockito.mock(CopyOrReadable.class);
-        Mockito.when(container.dir(Mockito.anyString())).thenReturn(dirUploader);
-        Mockito.when(dirUploader.upload(Mockito.any(Path.class))).thenReturn(true);
-
-        CopyOrReadable fileUploader = Mockito.mock(CopyOrReadable.class);
-        Mockito.when(container.file(Mockito.anyString())).thenReturn(fileUploader);
-        Mockito.when(fileUploader.upload(Mockito.any(InputStream.class))).thenReturn(true);
-
-        AtomicReference<String> directoryCheck = new AtomicReference<>();
-
-        // Two files locally, but the pod reports six — the shape a line-counting check produced.
-        Mockito.when(container.writingOutput(Mockito.any(OutputStream.class))).thenAnswer(writingOutputInvocation ->
-        {
-            OutputStream out = writingOutputInvocation.getArgument(0);
-            TtyExecErrorable errorable = Mockito.mock(TtyExecErrorable.class);
-            Mockito.when(errorable.exec(Mockito.any(String[].class))).thenAnswer(execInvocation ->
-            {
-                Object[] command = execInvocation.getArguments();
-                String shellCommand = (String) command[command.length - 1];
-                if (shellCommand.contains("find")) {
-                    directoryCheck.set(shellCommand);
-                }
-                out.write("6".getBytes(StandardCharsets.UTF_8));
-
-                ExecWatch watch = Mockito.mock(ExecWatch.class);
-                Mockito.when(watch.exitCode()).thenReturn(CompletableFuture.completedFuture(0));
-                return watch;
-            });
-            return errorable;
-        });
-
-        RunContext runContext = runContextFactory.of(Map.of());
-        Path temp = PodService.tempDir(runContext);
-
-        Files.createDirectories(temp.resolve("deps"));
-        Files.writeString(temp.resolve("deps/pkg1.txt"), "AA");
-        Files.writeString(temp.resolve("deps/\n\n--- Changes ---\n\n"), "BBB");
-
-        Set<String> inputFiles = Set.of("deps/pkg1.txt", "deps/\n\n--- Changes ---\n\n");
-
-        TestPod pod = new TestPod();
-
-        try (var staticMock = Mockito.mockStatic(PodService.class, Mockito.CALLS_REAL_METHODS)) {
-            staticMock.when(() -> PodService.tempDir(runContext)).thenReturn(temp);
-            staticMock.when(
-                () -> PodService.uploadMarker(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString(), Mockito.anyString())
-            ).thenAnswer(inv -> null);
-
-            pod.uploadInputFiles(runContext, podResource, logger, inputFiles);
-        }
-
-        // An excess count is not a truncation, so the bulk upload stands and nothing is re-uploaded.
-        Mockito.verify(dirUploader, Mockito.times(1)).upload(temp.resolve("deps"));
-        Mockito.verify(container, Mockito.never()).file(Mockito.anyString());
-
-        // The count itself must be NUL-separated, otherwise a newline in a filename inflates it.
-        assertThat(directoryCheck.get(), containsString("-print0"));
-        assertThat(directoryCheck.get(), not(containsString("wc -l")));
     }
 }

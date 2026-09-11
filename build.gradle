@@ -56,7 +56,7 @@ dependencies {
 
     // plugins
     // Shared kernel with plugin-ee-kubernetes; brings io.fabric8:kubernetes-client and commons-compress transitively.
-    api 'io.kestra.plugin:plugin-kubernetes-lib:1.0.1'
+    api 'io.kestra.plugin:plugin-kubernetes-lib:1.0.3-SNAPSHOT'
 }
 
 
