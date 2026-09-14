@@ -152,7 +152,7 @@ public abstract class AbstractPod extends AbstractConnection {
             podResource,
             logger,
             PodService.tempDir(runContext),
-            Path.of("/kestra/working-dir"),
+            "/kestra/working-dir",
             inputFiles.stream().map(Path::of).toList()
         );
     }

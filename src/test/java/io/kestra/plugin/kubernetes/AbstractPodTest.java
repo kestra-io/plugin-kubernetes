@@ -1,6 +1,7 @@
 package io.kestra.plugin.kubernetes;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -58,6 +59,12 @@ class AbstractPodTest {
         Mockito.when(container.file(Mockito.anyString()))
             .thenReturn(fileUploader);
 
+        // OSS standalone regular files stream through upload(InputStream); the tar-based upload(Path)
+        // overload is only used by the ready marker, which is statically mocked below. Stub both to
+        // mirror the lib's PodServiceUploadInputFilesTest and to avoid an unstubbed overload returning
+        // false (which withRetries would read as a failed copy and retry until it exhausts attempts).
+        Mockito.when(fileUploader.upload(Mockito.any(InputStream.class)))
+            .thenReturn(true);
         Mockito.when(fileUploader.upload(Mockito.any(Path.class)))
             .thenReturn(true);
 
@@ -95,7 +102,10 @@ class AbstractPodTest {
         Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/a.txt");
         Mockito.verify(container, Mockito.times(1)).file("/kestra/working-dir/b.txt");
 
-        Mockito.verify(fileUploader, Mockito.times(2)).upload(Mockito.any(Path.class));
+        // The two standalone input files stream via upload(InputStream), not the tar path. The marker's
+        // upload(Path) never runs here because PodService.uploadMarker is statically mocked out.
+        Mockito.verify(fileUploader, Mockito.times(2)).upload(Mockito.any(InputStream.class));
+        Mockito.verify(fileUploader, Mockito.never()).upload(Mockito.any(Path.class));
     }
 
     @Test
