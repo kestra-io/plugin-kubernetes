@@ -783,19 +783,16 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
         this.handleFiles(runContext, spec);
 
-        return createWithConflictRetry(
-            runContext.logger(),
-            client,
-            namespace,
-            new PodBuilder()
-                .withMetadata(metadata)
-                .withSpec(spec)
-                .build()
-        );
-    }
+        var pod = new PodBuilder()
+            .withMetadata(metadata)
+            .withSpec(spec)
+            .build();
 
-    static Pod createWithConflictRetry(Logger logger, KubernetesClient client, String namespace, Pod pod) {
-        return PodService.createWithConflictRetry(logger, "pod", () -> client.pods().inNamespace(namespace).resource(pod).create());
+        return PodService.createWithConflictRetry(
+            runContext.logger(),
+            "pod",
+            () -> client.pods().inNamespace(namespace).resource(pod).create()
+        );
     }
 
     /**
