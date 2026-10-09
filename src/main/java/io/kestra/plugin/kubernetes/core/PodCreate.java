@@ -102,7 +102,7 @@ import static io.kestra.plugin.kubernetes.shared.services.PodService.waitForComp
 @NoArgsConstructor
 @Schema(
     title = "Run a Kubernetes pod and collect logs",
-    description = "Creates or resumes a pod from the provided spec, streams container logs, and handles file upload/download via init and sidecar containers. Deletes the pod by default after completion and waits briefly for late-arriving logs."
+    description = "Creates or resumes a pod from the provided spec, streams container logs, and handles file upload/download via init and sidecar containers. Deletes the pod by default after completion and waits briefly for late-arriving logs. Transient ResourceQuota `409 Conflict` errors on pod creation are retried automatically (up to 5 attempts)."
 )
 @Plugin(
     aliases = { "io.kestra.plugin.kubernetes.PodCreate" },
@@ -783,15 +783,19 @@ public class PodCreate extends AbstractPod implements RunnableTask<PodCreate.Out
 
         this.handleFiles(runContext, spec);
 
-        return client.pods()
-            .inNamespace(namespace)
-            .resource(
-                new PodBuilder()
-                    .withMetadata(metadata)
-                    .withSpec(spec)
-                    .build()
-            )
-            .create();
+        return createWithConflictRetry(
+            runContext.logger(),
+            client,
+            namespace,
+            new PodBuilder()
+                .withMetadata(metadata)
+                .withSpec(spec)
+                .build()
+        );
+    }
+
+    static Pod createWithConflictRetry(Logger logger, KubernetesClient client, String namespace, Pod pod) {
+        return PodService.createWithConflictRetry(logger, "pod", () -> client.pods().inNamespace(namespace).resource(pod).create());
     }
 
     /**
