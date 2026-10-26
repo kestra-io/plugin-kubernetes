@@ -47,9 +47,9 @@ public abstract class ResourceWaitService {
             timeout, resourceName, namespace
         );
 
-        var resourceClient = client.genericKubernetesResources(resourceContext)
-            .inNamespace(namespace)
-            .withName(resourceName);
+        var resources = client.genericKubernetesResources(resourceContext);
+        var scopedResources = resourceContext.isNamespaceScoped() ? resources.inNamespace(namespace) : resources;
+        var resourceClient = scopedResources.withName(resourceName);
 
         GenericKubernetesResource readyResource = null;
 

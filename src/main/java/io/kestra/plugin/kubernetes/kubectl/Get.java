@@ -47,6 +47,26 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
 @Plugin(
     examples = {
         @Example(
+            title = "Get a cluster-scoped PersistentVolume without a namespace.",
+            full = true,
+            code = """
+                id: get_persistent_volume
+                namespace: company.team
+
+                tasks:
+                  - id: get
+                    type: io.kestra.plugin.kubernetes.kubectl.Get
+                    connection:
+                      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+                      oauthToken: "{{ secret('K8S_TOKEN') }}"
+                    namespace: ""
+                    resourceType: persistentvolumes
+                    resourcesNames:
+                      - retained-data
+                    fetchType: FETCH_ONE
+                """
+        ),
+        @Example(
             title = "Get all pods from Kubernetes with a service account and log the status of the pods.",
             full = true,
             code = """
@@ -169,7 +189,12 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
 )
 @Schema(
     title = "Fetch Kubernetes resources with optional storage",
-    description = "Reads resources of a given kind in a namespace, optionally filtering by name. Supports waiting for readiness, returning data to the flow, or storing results in internal storage depending on fetchType."
+    description = """
+        Reads resources of a given kind, optionally filtering by name.
+        Set namespace to an empty string to read cluster-scoped resources such as PersistentVolumes, Nodes or StorageClasses.
+        When namespace is omitted, the default namespace is used.
+        Supports waiting for readiness, returning data to the flow or storing results in internal storage depending on fetchType.
+        """
 )
 public class Get extends AbstractPod implements RunnableTask<Get.Output> {
 
@@ -215,6 +240,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     public Output run(RunContext runContext) throws Exception {
         var rNamespace = runContext.render(this.namespace).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("namespace must be provided and rendered."));
+        var rNamespaced = !rNamespace.isBlank();
         var rResourceType = runContext.render(this.resourceType).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("resourceType must be provided and rendered."));
         var rResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
@@ -234,17 +260,19 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                 .withGroup(rApiGroup)
                 .withVersion(rApiVersion)
                 .withKind(rResourceType)
-                .withNamespaced(true) // Assuming resources are namespaced as we take namespace input
+                .withNamespaced(rNamespaced)
                 .build();
+
+            var resources = client.genericKubernetesResources(resourceDefinitionContext);
+            var scopedResources = rNamespaced ? resources.inNamespace(rNamespace) : resources;
 
             if (rResourcesNames.isEmpty()) {
                 logger.debug("Fetching all resources of kind '{}' in namespace '{}'", rResourceType, rNamespace);
-                var resources = client.genericKubernetesResources(resourceDefinitionContext)
-                    .inNamespace(rNamespace)
+                var items = scopedResources
                     .list()
                     .getItems();
 
-                for (var resource : resources) {
+                for (var resource : items) {
                     if (resource != null && resource.getMetadata() != null) {
                         metadataList.add(Metadata.from(resource.getMetadata()));
                         statusList.add(ResourceStatus.from(resource));
@@ -260,8 +288,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                         rResourceType, name, rNamespace
                     );
 
-                    var resource = client.genericKubernetesResources(resourceDefinitionContext)
-                        .inNamespace(rNamespace)
+                    var resource = scopedResources
                         .withName(name)
                         .get();
 
