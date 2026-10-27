@@ -464,4 +464,76 @@ public class GetTest {
 
         log.info("Verified output for pod {} reflects Ready state with phase=Running and container ready=true", podName);
     }
+
+    @Test
+    void shouldGetClusterScopedResourcesWithEmptyNamespace() throws Exception {
+        var runContext = runContextFactory.of();
+
+        var all = Get.builder()
+            .id(Get.class.getSimpleName())
+            .type(Get.class.getName())
+            .namespace(Property.ofValue(""))
+            .resourceType(Property.ofValue("namespaces"))
+            .fetchType(Property.ofValue(FetchType.FETCH))
+            .build()
+            .run(runContext);
+        var names = all.getMetadataItems().stream().map(metadata -> metadata.getName()).toList();
+        assertThat(names.contains("kube-system"), is(true));
+
+        var one = Get.builder()
+            .id(Get.class.getSimpleName())
+            .type(Get.class.getName())
+            .namespace(Property.ofValue(""))
+            .resourceType(Property.ofValue("namespaces"))
+            .resourcesNames(Property.ofValue(List.of("kube-system")))
+            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
+            .build()
+            .run(runContext);
+        assertThat(one.getMetadataItem().getName(), is("kube-system"));
+        assertThat(one.getStatusItem().getStatus().get("phase"), is("Active"));
+    }
+
+    @Test
+    void shouldGetNodesWithEmptyNamespace() throws Exception {
+        var runContext = runContextFactory.of();
+
+        var all = Get.builder()
+            .id(Get.class.getSimpleName())
+            .type(Get.class.getName())
+            .namespace(Property.ofValue(""))
+            .resourceType(Property.ofValue("nodes"))
+            .fetchType(Property.ofValue(FetchType.FETCH))
+            .build()
+            .run(runContext);
+        assertThat(all.getMetadataItems().isEmpty(), is(false));
+        var nodeName = all.getMetadataItems().get(0).getName();
+
+        var one = Get.builder()
+            .id(Get.class.getSimpleName())
+            .type(Get.class.getName())
+            .namespace(Property.ofValue(""))
+            .resourceType(Property.ofValue("nodes"))
+            .resourcesNames(Property.ofValue(List.of(nodeName)))
+            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
+            .build()
+            .run(runContext);
+        assertThat(one.getMetadataItem().getName(), is(nodeName));
+    }
+
+    @Test
+    void shouldListNamespacedKindAcrossAllNamespacesWithEmptyNamespace() throws Exception {
+        var runContext = runContextFactory.of();
+
+        var output = Get.builder()
+            .id(Get.class.getSimpleName())
+            .type(Get.class.getName())
+            .namespace(Property.ofValue(""))
+            .resourceType(Property.ofValue("pods"))
+            .fetchType(Property.ofValue(FetchType.FETCH))
+            .build()
+            .run(runContext);
+
+        var podNamespaces = output.getMetadataItems().stream().map(metadata -> metadata.getNamespace()).distinct().toList();
+        assertThat(podNamespaces.contains("kube-system"), is(true));
+    }
 }

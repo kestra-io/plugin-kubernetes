@@ -192,6 +192,7 @@ import static io.kestra.core.models.tasks.common.FetchType.NONE;
     description = """
         Reads resources of a given kind, optionally filtering by name.
         Set namespace to an empty string to read cluster-scoped resources such as PersistentVolumes, Nodes or StorageClasses.
+        With an empty namespace, namespaced kinds such as pods are listed across all namespaces, like `kubectl get -A`.
         When namespace is omitted, the default namespace is used.
         Supports waiting for readiness, returning data to the flow or storing results in internal storage depending on fetchType.
         """
@@ -240,7 +241,7 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
     public Output run(RunContext runContext) throws Exception {
         var rNamespace = runContext.render(this.namespace).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("namespace must be provided and rendered."));
-        var rNamespaced = !rNamespace.isBlank();
+        var namespaced = !rNamespace.isBlank();
         var rResourceType = runContext.render(this.resourceType).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("resourceType must be provided and rendered."));
         var rResourcesNames = runContext.render(this.resourcesNames).asList(String.class);
@@ -260,11 +261,11 @@ public class Get extends AbstractPod implements RunnableTask<Get.Output> {
                 .withGroup(rApiGroup)
                 .withVersion(rApiVersion)
                 .withKind(rResourceType)
-                .withNamespaced(rNamespaced)
+                .withNamespaced(namespaced)
                 .build();
 
             var resources = client.genericKubernetesResources(resourceDefinitionContext);
-            var scopedResources = rNamespaced ? resources.inNamespace(rNamespace) : resources;
+            var scopedResources = namespaced ? resources.inNamespace(rNamespace) : resources;
 
             if (rResourcesNames.isEmpty()) {
                 logger.debug("Fetching all resources of kind '{}' in namespace '{}'", rResourceType, rNamespace);
