@@ -470,7 +470,7 @@ public class GetTest {
         var runContext = runContextFactory.of();
 
         var all = Get.builder()
-            .id(Get.class.getSimpleName())
+            .id(IdUtils.create())
             .type(Get.class.getName())
             .namespace(Property.ofValue(""))
             .resourceType(Property.ofValue("namespaces"))
@@ -481,7 +481,7 @@ public class GetTest {
         assertThat(names.contains("kube-system"), is(true));
 
         var one = Get.builder()
-            .id(Get.class.getSimpleName())
+            .id(IdUtils.create())
             .type(Get.class.getName())
             .namespace(Property.ofValue(""))
             .resourceType(Property.ofValue("namespaces"))
@@ -498,7 +498,7 @@ public class GetTest {
         var runContext = runContextFactory.of();
 
         var all = Get.builder()
-            .id(Get.class.getSimpleName())
+            .id(IdUtils.create())
             .type(Get.class.getName())
             .namespace(Property.ofValue(""))
             .resourceType(Property.ofValue("nodes"))
@@ -506,10 +506,10 @@ public class GetTest {
             .build()
             .run(runContext);
         assertThat(all.getMetadataItems().isEmpty(), is(false));
-        var nodeName = all.getMetadataItems().get(0).getName();
+        var nodeName = all.getMetadataItems().getFirst().getName();
 
         var one = Get.builder()
-            .id(Get.class.getSimpleName())
+            .id(IdUtils.create())
             .type(Get.class.getName())
             .namespace(Property.ofValue(""))
             .resourceType(Property.ofValue("nodes"))
@@ -525,7 +525,7 @@ public class GetTest {
         var runContext = runContextFactory.of();
 
         var output = Get.builder()
-            .id(Get.class.getSimpleName())
+            .id(IdUtils.create())
             .type(Get.class.getName())
             .namespace(Property.ofValue(""))
             .resourceType(Property.ofValue("pods"))
